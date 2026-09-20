@@ -18,6 +18,9 @@ const MESSAGES: Record<string, string> = {
   invalid_argument: '提交的内容不合法',
   not_found: '要找的东西不存在',
   conflict_duplicate_key: '已经有一个同名的了',
+  // 目前只有"换 embedding 模型会和库里已有的向量冲突"这一种，detail 里有
+  // 具体是哪张表、多少行，所以这里只给一句概括，细节靠 detail 补充。
+  conflict: '和已有的数据冲突了，这次改动没有生效',
   context_overflow: '上下文超出了模型的窗口，减少一些输入或换窗口更大的模型',
   upstream_llm_error: '上游模型服务出错，检查一下 API Key 和配额',
   internal_error: '服务内部错误',

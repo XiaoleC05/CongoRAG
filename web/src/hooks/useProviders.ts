@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@congorag/api-client'
+import type { Schemas } from '@congorag/api-client'
+
+type ProviderWithModels = Schemas['ProviderWithModels']
 
 /**
  * Provider 列表在缓存里的 key。同一份写法见 useKnowledgeBases.ts 的注释：
@@ -72,6 +75,20 @@ export function useCreateProvider() {
       if (error) throw error
       return data
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: PROVIDERS_KEY }),
+    // 【为什么要写穿缓存，而不是只作废】保存成功时用户还停在 /onboarding
+    // 上，RequireProvider 没有挂载，['providers'] 这个 query 是无观察者的。
+    // 此时 invalidateQueries 默认 refetchType: 'active' 只会把它标记为
+    // stale、不会重新拉取；等用户跳回主界面、RequireProvider 重新挂载时，
+    // 它读到的仍是那份"空"的旧缓存，于是立刻把人弹回引导页——provider 明明
+    // 已经创建成功。把返回的这条写进缓存，守卫就有真实数据可读，不依赖
+    // "将来某个 observer 挂载时会不会补拉一次"。
+    // 作废仍然保留：它让随后挂载的 observer 去后端核对一次（比如后端补齐了
+    // models 列表），写穿只是保证这一刻的判定是对的。
+    // 写穿发生在 onSuccess 里，也就是服务端已经确认创建之后——上面说的
+    // "不做乐观更新"仍然成立，这里只是把已确认的结果放进缓存。
+    onSuccess: (created) => {
+      queryClient.setQueryData<ProviderWithModels[]>(PROVIDERS_KEY, (old) => [...(old ?? []), created])
+      return queryClient.invalidateQueries({ queryKey: PROVIDERS_KEY })
+    },
   })
 }

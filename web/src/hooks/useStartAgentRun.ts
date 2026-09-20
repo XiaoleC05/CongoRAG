@@ -50,47 +50,47 @@ export function useStartAgentRun(agentId: string) {
         setTimeline([...items])
       }
 
-      await streamAgentRun(agentId, input, {
-        onEvent: (event) => {
-          switch (event.type) {
-            case 'token':
-              appendText(event.data.text)
-              break
-            case 'tool_call': {
-              const items = itemsRef.current
-              items.push({ kind: 'tool', id: event.data.id, name: event.data.name, args: event.data.args })
-              setTimeline([...items])
-              break
-            }
-            case 'tool_result': {
-              const items = itemsRef.current
-              const target = items.find((it) => it.kind === 'tool' && it.id === event.data.id)
-              if (target?.kind === 'tool') {
-                target.result = event.data.result
+      try {
+        await streamAgentRun(agentId, input, {
+          onEvent: (event) => {
+            switch (event.type) {
+              case 'token':
+                appendText(event.data.text)
+                break
+              case 'tool_call': {
+                const items = itemsRef.current
+                items.push({ kind: 'tool', id: event.data.id, name: event.data.name, args: event.data.args })
                 setTimeline([...items])
+                break
               }
-              break
+              case 'tool_result': {
+                const items = itemsRef.current
+                const target = items.find((it) => it.kind === 'tool' && it.id === event.data.id)
+                if (target?.kind === 'tool') {
+                  target.result = event.data.result
+                  setTimeline([...items])
+                }
+                break
+              }
+              case 'error':
+                setRunError(event.data)
+                break
             }
-            case 'error':
-              setRunError(event.data)
-              break
-            case 'done':
-              setIsRunning(false)
-              // 运行结束后作废这个 Agent 的运行列表缓存——列表页/详情页
-              // 靠它看到刚结束的这次运行（技术方案的乐观更新原则在
-              // 这里的落地：流结束这一刻就主动应用，不等用户手动刷新）。
-              queryClient.invalidateQueries({ queryKey: agentRunsKey(agentId) })
-              queryClient.invalidateQueries({ queryKey: AGENTS_KEY })
-              break
-          }
-        },
-        onError: (err) => {
-          setRunError(err)
-          setIsRunning(false)
-        },
-      })
-
-      setIsRunning(false)
+          },
+          onError: (err) => {
+            setRunError(err)
+          },
+        })
+      } finally {
+        // 不管这次流是怎么收场的——done 事件、error 事件、还是中途断开
+        // （onError 或流没发 done 就关了）——都作废运行列表缓存：失败的那次
+        // run 同样已经落库，而 useAgentRuns 只在缓存里已有 pending/running
+        // 行时才轮询，不主动失效的话它要等页面重挂载才出现（乐观更新原则
+        // 在这里的落地：流结束这一刻就应用，不等用户手动刷新）。
+        queryClient.invalidateQueries({ queryKey: agentRunsKey(agentId) })
+        queryClient.invalidateQueries({ queryKey: AGENTS_KEY })
+        setIsRunning(false)
+      }
     },
     [agentId, queryClient],
   )
