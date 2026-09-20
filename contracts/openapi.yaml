@@ -1,0 +1,1005 @@
+openapi: 3.0.4
+
+info:
+  title: ConGoRAG API
+  version: 0.1.0
+  description: |
+    依靠上下文提供 RAG 服务的全栈开源工具
+
+    这份文件是唯一真相：Go 的接口和 TS 的类型都从它生成，
+    两边不会对不上。改接口先改这里，再跑 make generate。
+
+servers:
+  - url: http://localhost:3210
+    description: 本地开发
+
+# ══════════════════════════════════════════════════════════════
+# paths —— 有哪些 URL，每个支持什么方法
+#
+# operationId 用来当生成出来的函数名，要有业务含义且全局唯一。
+# 状态码必须加引号：'200' 是字符串，200 会被解析成数字。
+# ══════════════════════════════════════════════════════════════
+paths:
+
+  # ── 存活检查 ────────────────────────────────────────────────
+  /healthz:
+    get:
+      operationId: healthz
+      summary: 存活探针
+      responses:
+        '200':
+          description: 服务正常
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  # ── 知识库：列表 + 新建 ─────────────────────────────────────
+  /api/v1/knowledge-bases:
+
+    get:
+      operationId: listKnowledgeBases
+      summary: 列出全部知识库（按创建时间倒序）
+      responses:
+        '200':
+          description: 知识库列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/KnowledgeBase'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      operationId: createKnowledgeBase
+      summary: 新建一个知识库
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKnowledgeBaseRequest'
+      responses:
+        # 201 = 创建成功。创建类操作用 201 而不是 200。
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBase'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── 知识库：单个 ────────────────────────────────────────────
+  /api/v1/knowledge-bases/{id}:
+
+    # 路径参数写在路径这一级，三个方法共用：
+    # 写在这里等于给下面三个方法都加上了这个参数，不用各写一遍。
+    parameters:
+      - name: id
+        in: path
+        required: true          # 路径参数必须是 true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getKnowledgeBase
+      summary: 取一个知识库
+      responses:
+        '200':
+          description: 找到了
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBase'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    patch:
+      operationId: renameKnowledgeBase
+      summary: 改知识库的名字
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameKnowledgeBaseRequest'
+      responses:
+        # 204 = 成功但没有返回内容。
+        #
+        # 不用 200 + 返回改好的对象，是因为：
+        # 那需要 usecase 的 Rename 之后再查一次库，多一次往返。
+        # 而客户端本来就知道新名字（是它自己传上来的），不需要服务端再告诉它一遍。
+        #
+        # 如果你的前端希望直接拿到最新对象（比如要更新缓存里的 updatedAt），
+        # 改成 200 + KnowledgeBase，handler 里 Rename 完再 Get 一次即可。
+        '204':
+          description: 改好了，无返回内容
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      operationId: deleteKnowledgeBase
+      summary: 删除知识库（连带它的文档和分块）
+      responses:
+        '204':
+          description: 删掉了，无返回内容
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── 文档：某个知识库下的列表 + 上传 ──────────────────────────
+  /api/v1/knowledge-bases/{id}/documents:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: listDocuments
+      summary: 列出这个知识库下的全部文档
+      responses:
+        '200':
+          description: 文档列表（按创建时间倒序）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Document'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      operationId: uploadDocument
+      summary: 上传一个文档（异步处理：落盘 + 入队，立即返回）
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        # 202 = 已接受，但处理还没完成——文档此刻是 queued 状态，
+        # 真正的 parse/chunk/embed/index 由 worker 异步做。
+        # 不是 201：201 暗示"资源已经完整创建好了"，这里只是排上了队。
+        '202':
+          description: 已接收，进入处理队列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── 文档：单个 ──────────────────────────────────────────────
+  /api/v1/documents/{id}:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getDocument
+      summary: 查一份文档的当前状态（前端拿它做处理中的轮询）
+      responses:
+        '200':
+          description: 找到了
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      operationId: deleteDocument
+      summary: 删除一份文档（连带它的分块；磁盘文件异步清理）
+      responses:
+        '204':
+          description: 删掉了，无返回内容
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── 会话 ────────────────────────────────────────────────────
+  /api/v1/conversations:
+
+    post:
+      operationId: createConversation
+      summary: 新建一个会话
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConversationRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/conversations/{id}/messages:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: listConversationMessages
+      summary: 按顺序列出一个会话的全部消息（前端刷新页面重载历史用）
+      responses:
+        '200':
+          description: 消息列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Message'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      operationId: sendMessage
+      summary: |
+        发一条消息，响应是 SSE 流（text/event-stream），不是普通 JSON。
+        帧格式和事件类型见 docs/sse-protocol.md，那份文档是唯一权威来源，
+        这里的 schema 只是占位（OpenAPI 对流式响应体的描述能力有限）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        '200':
+          description: SSE 流开始。之后的成功/失败都通过流内事件表达
+            （token/citation/error/done），不再改变这个 200。
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/conversations/{id}/events:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: subscribeConversationEvents
+      summary: 断线续传入口（SSE），docs/sse-protocol.md「断线续传」一节
+      parameters:
+        - name: after_event_id
+          in: query
+          required: false
+          description: 只返回这个 id 之后的事件；省略或传 0 表示从头开始
+          schema:
+            type: integer
+            format: int64
+            default: 0
+      responses:
+        '200':
+          description: SSE 流（补发历史事件后保持连接，继续推送新事件）
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── BYOK：模型接入配置 ─────────────────────────────────────
+  #
+  # 一次 POST 做完引导页"保存并开始"那一刻的全部事情：
+  # 存 provider（Key 加密落盘）→ 存 chat 模型 → 探测 embedding 维度 →
+  # 存 embedding 模型 → ALTER 向量列为 halfvec(N) → 建 HNSW 索引。
+  # 开发文档 §4.4 有完整流程说明。
+  /api/v1/providers:
+
+    get:
+      operationId: listProviders
+      summary: 列出已配置的模型接入（Key 不会出现在响应里）
+      responses:
+        '200':
+          description: Provider 列表，每个带它挂着的模型
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProviderWithModels'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      operationId: createProvider
+      summary: 保存一个模型接入配置（引导页"保存并开始"）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProviderRequest'
+      responses:
+        '201':
+          description: 探测成功，三行已落库，向量列已建好
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderWithModels'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '502':
+          description: 上游模型服务出错（Base URL / Key / 模型名有问题，或探测请求失败）
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── M4-A：Agent ────────────────────────────────────────────
+  /api/v1/tools:
+
+    get:
+      operationId: listToolCatalog
+      summary: 列出可用工具目录（创建 Agent 表单的勾选列表用）
+      responses:
+        '200':
+          description: 工具目录
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ToolCatalogEntry'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/agents:
+
+    get:
+      operationId: listAgents
+      summary: 列出已创建的 Agent
+      responses:
+        '200':
+          description: Agent 列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Agent'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      operationId: createAgent
+      summary: 创建一个 Agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAgentRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/agents/{id}:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getAgent
+      summary: 查一个 Agent 的配置
+      responses:
+        '200':
+          description: Agent 详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/agents/{id}/runs:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: listAgentRuns
+      summary: 列出一个 Agent 的历史执行记录
+      responses:
+        '200':
+          description: Run 列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentRun'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      operationId: startAgentRun
+      summary: |
+        启动一次 Agent 执行，响应是 SSE 流（text/event-stream）——
+        和 sendMessage 同一个模式,帧格式见 docs/sse-protocol.md。
+        这一轮没有 run 维度的断线重订阅（M4-B 才做),这次连接就是
+        唯一能实时看到过程的机会,执行记录本身（agent_runs/
+        agent_run_steps）落库后可以事后通过 GET .../runs/{runId}/steps 查。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartAgentRunRequest'
+      responses:
+        '200':
+          description: SSE 流开始
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/runs/{runId}/steps:
+
+    parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: listRunSteps
+      summary: 列出一次执行的全部步骤（执行轨迹页用）
+      responses:
+        '200':
+          description: Step 列表，按 seq 升序
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AgentRunStep'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+# ══════════════════════════════════════════════════════════════
+# components —— 可复用的东西，被上面的 $ref 引用
+# ══════════════════════════════════════════════════════════════
+components:
+
+  # ── 数据长什么样 ────────────────────────────────────────────
+  schemas:
+
+    KnowledgeBase:
+      type: object
+      required: [id, name, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid        # 提示生成器：Go 用 uuid.UUID，TS 用 string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200      # 和 internal/knowledge/usecase.go 的 maxNameLen 保持一致
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ── 会话 ──────────────────────────────────────────────────
+
+    Conversation:
+      type: object
+      required: [id, title, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          maxLength: 200
+        knowledgeBaseId:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            可选关联的知识库——关联了，发消息时会做检索增强；
+            不关联就是一次不带 RAG 的纯对话。方案文档没有定义这个字段，
+            是实现时补上的决策（见 internal/conversation/model.go 的注释）。
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateConversationRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          example: 关于 ConGoRAG 的问答
+        knowledgeBaseId:
+          type: string
+          format: uuid
+          nullable: true
+
+    SendMessageRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          example: ConGoRAG 的默认端口是多少？
+
+    Message:
+      type: object
+      required: [id, conversationId, role, content, status, sequenceNo, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversationId:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [system, user, assistant, tool]
+        content:
+          type: string
+        status:
+          type: string
+          enum: [streaming, completed, failed]
+        sequenceNo:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── 文档 ──────────────────────────────────────────────────
+
+    Document:
+      type: object
+      required: [id, knowledgeBaseId, filename, status, byteSize, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        knowledgeBaseId:
+          type: string
+          format: uuid
+        filename:
+          type: string
+          description: 用户上传时的原始文件名
+        status:
+          type: string
+          enum: [queued, processing, ready, failed]
+          description: |
+            四态状态机（代码架构设计 §5.4）：queued → processing → ready，
+            任意阶段失败进 failed，failed 只能退回 queued 重试。
+        byteSize:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    # 请求体和响应体是两个 schema，不复用 KnowledgeBase：
+    # 创建时客户端只该传 name——id 和两个时间戳由服务端生成。
+    # 复用的话，生成的类型里会多出三个客户端不该填的字段。
+    CreateKnowledgeBaseRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: 我的知识库
+
+    RenameKnowledgeBaseRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: 新的名字
+
+    # ── BYOK ──────────────────────────────────────────────────
+
+    Capabilities:
+      type: object
+      description: |
+        模型声明支持的能力，全部由用户手动勾选——OpenAI 兼容 API
+        不保证能自动查询这些（技术方案 §五）。embedding 这一位不在这里：
+        它由服务端根据这个模型是 chatModel 还是 embeddingModel 自动决定，
+        不需要用户勾选。
+      properties:
+        chat:
+          type: boolean
+          default: true
+        streaming:
+          type: boolean
+          default: false
+        toolCalling:
+          type: boolean
+          default: false
+        reasoning:
+          type: boolean
+          default: false
+
+    ChatModelInput:
+      type: object
+      required: [modelId, contextWindow, maxOutputTokens, tokenizerType]
+      properties:
+        modelId:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: Qwen/Qwen2.5-7B-Instruct
+        capabilities:
+          $ref: '#/components/schemas/Capabilities'
+        contextWindow:
+          type: integer
+          minimum: 1
+          example: 32000
+        maxOutputTokens:
+          type: integer
+          minimum: 1
+          example: 4096
+        tokenizerType:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: cl100k_base
+
+    CreateProviderRequest:
+      type: object
+      required: [baseUrl, apiKey, chatModel, embeddingModelId]
+      properties:
+        baseUrl:
+          type: string
+          minLength: 1
+          maxLength: 500
+          example: https://api.siliconflow.cn/v1
+        apiKey:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: 落盘前用应用级主密钥加密，明文只在这一次请求体里出现
+        chatModel:
+          $ref: '#/components/schemas/ChatModelInput'
+        embeddingModelId:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: |
+            只要模型名——维度不用填，服务端用这个字段连同 baseUrl/apiKey
+            发一次真实的 embedding 请求探测出来。
+          example: BAAI/bge-m3
+
+    # 响应里的模型：比 ChatModelInput 多 id/kind/embeddingDim/createdAt，
+    # 少不了（chat 模型的 embeddingDim 恒为 0，见 internal/llm/model.go）。
+    ModelSummary:
+      type: object
+      required: [id, modelId, kind, capabilities, contextWindow, maxOutputTokens, tokenizerType, embeddingDim, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        modelId:
+          type: string
+        kind:
+          type: string
+          enum: [chat, embedding]
+        capabilities:
+          $ref: '#/components/schemas/Capabilities'
+        contextWindow:
+          type: integer
+        maxOutputTokens:
+          type: integer
+        tokenizerType:
+          type: string
+        embeddingDim:
+          type: integer
+          description: 只对 kind = embedding 有意义；chat 模型这一位恒为 0
+        createdAt:
+          type: string
+          format: date-time
+
+    ProviderWithModels:
+      type: object
+      required: [id, baseUrl, createdAt, models]
+      properties:
+        id:
+          type: string
+          format: uuid
+        baseUrl:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelSummary'
+
+    # ── Agent ─────────────────────────────────────────────────
+
+    ToolCatalogEntry:
+      type: object
+      required: [name, description, sideEffectLevel]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        sideEffectLevel:
+          type: string
+          enum: [READ_ONLY, WRITE_IDEMPOTENT, WRITE_NON_IDEMPOTENT]
+
+    Agent:
+      type: object
+      required: [id, name, description, instruction, toolNames, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 2000
+        instruction:
+          type: string
+          maxLength: 4000
+          description: 系统提示词
+        toolNames:
+          type: array
+          items:
+            type: string
+          description: 这个 Agent 被允许使用的工具名子集（见 ToolCatalogEntry.name）
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateAgentRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: 计算助手
+        description:
+          type: string
+          maxLength: 2000
+        instruction:
+          type: string
+          maxLength: 4000
+          example: 你是一个帮助用户做算术和资料检索的助手。
+        toolNames:
+          type: array
+          items:
+            type: string
+          example: [calculator]
+
+    StartAgentRunRequest:
+      type: object
+      required: [input]
+      properties:
+        input:
+          type: string
+          minLength: 1
+          example: 3 个 128 的和乘以 2 是多少？
+
+    AgentRun:
+      type: object
+      required: [id, agentId, status, currentStep, input, output, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        agentId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled, interrupted]
+        currentStep:
+          type: integer
+        input:
+          type: string
+        output:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AgentRunStep:
+      type: object
+      required: [id, runId, seq, type, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        seq:
+          type: integer
+        type:
+          type: string
+          enum: [llm, tool]
+        status:
+          type: string
+          enum: [pending, running, completed, failed, interrupted]
+        toolName:
+          type: string
+          nullable: true
+        toolArgs:
+          nullable: true
+          description: 原始 JSON，形状由具体工具决定，前端不需要强类型解析
+        toolResult:
+          nullable: true
+        latencyMs:
+          type: integer
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    # 统一错误体，遵循 RFC 7807（application/problem+json）。
+    # 前端按 type 字段分发处理，不看 description 文案。
+    Problem:
+      type: object
+      required: [type, status]
+      properties:
+        type:
+          type: string
+          example: not_found
+          description: 机器可读的错误类型，前端按它分支
+        title:
+          type: string
+          example: 资源不存在
+          description: 人类可读的简短说明
+        status:
+          type: integer
+          example: 404
+        detail:
+          type: string
+          example: knowledge base 3f2b1c... not found
+          description: 具体说明
+
+  # ── 可复用的响应 ────────────────────────────────────────────
+  responses:
+
+    InvalidArgument:
+      description: 参数不合法
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    NotFound:
+      description: 资源不存在
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    InternalError:
+      description: 服务内部错误
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

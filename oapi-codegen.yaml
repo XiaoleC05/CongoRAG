@@ -1,0 +1,45 @@
+# oapi-codegen 的配置。
+#
+# 用法：make generate
+#
+# 它读 contracts/openapi.yaml，吐出 apps/api/internal/api/generated.go。
+# generated.go 不要手改，它是产物，改了下次生成就覆盖。
+# 要改接口，改 contracts/openapi.yaml，然后重新生成。
+
+# 生成出来的 Go 代码属于哪个包。
+# 和同目录下手写的 server.go / problem.go / sse.go 是同一个包，
+# 所以它们之间直接互相访问，不用 import。
+package: api
+
+# 产物写到哪。
+# 产物提交进 git：CI 里会跑生成 + git diff --exit-code，
+# 检查"契约改了但忘了重新生成"这种情况。
+output: apps/api/internal/api/generated.go
+
+generate:
+
+  # 生成数据形状对应的 Go 结构体。
+  # openapi.yaml 里 components/schemas 下的每个定义都变成一个 struct：
+  #   KnowledgeBase                 → type KnowledgeBase struct {...}
+  #   CreateKnowledgeBaseRequest    → type CreateKnowledgeBaseRequest struct {...}
+  #   Problem                       → type Problem struct {...}
+  models: true
+
+  # 生成 Gin 的接口和路由注册。
+  #
+  # 会多出两样东西：
+  #
+  #   type ServerInterface interface {
+  #       Healthz(c *gin.Context)
+  #       ListKnowledgeBases(c *gin.Context)
+  #       CreateKnowledgeBase(c *gin.Context)
+  #       ...
+  #   }
+  #
+  #   func RegisterHandlers(router gin.IRouter, si ServerInterface)
+  #
+  # ServerInterface 是这次生成最有价值的部分：
+  # 你手写一个类型去实现它，编译器就盯着你：
+  # 契约里加了一个端点而你没实现 → 编译失败。
+  # 这就是"契约是唯一真相"落到编译期的那一步。
+  gin-server: true

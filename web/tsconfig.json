@@ -1,0 +1,15 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  "compilerOptions": {
+    /* 根这里也写一份同名别名，覆盖编辑器直接打开根 tsconfig 的场景。
+       真正生效的是 tsconfig.app.json 里那份（tsc -b 用被引用项目的配置）。
+       两边的值必须一致。 */
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  }
+}

@@ -1,0 +1,52 @@
+# ConGoRAG 开发期依赖服务
+#
+# 【这个文件只管"依赖"，不管"应用"】
+# 开发期只有 PostgreSQL 跑在 Docker 里，api / worker / 前端都跑在宿主机上——
+# 改一行代码就要重建镜像的话，反馈从 1 秒变 30 秒，开发循环受不了。
+#
+# 交付期的启动包是另一个 compose 文件，那时候 postgres / api / worker 三个都在容器里。
+
+name: congorag
+
+services:
+  postgres:
+    # pgvector 官方镜像 = PostgreSQL 18 + 已编译好的 pgvector 扩展。
+    # tag 的读法：0.8.6 是 pgvector 版本（可锁到补丁），pg18 是 PG 大版本（只能锁大版本——
+    # 官方镜像不为每个 PG 小版本发 tag）。
+    # 【不要降到 0.8.1 及以下】0.8.2 修了并行 HNSW 索引构建的缓冲区溢出（CVE-2026-3172）。
+    image: pgvector/pgvector:0.8.6-pg18
+
+    container_name: congorag-postgres
+
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: congorag
+
+    ports:
+      # 只绑宿主机回环。局域网上的其他机器连不进来——方案 §1 的安全基线。
+      # 写成 "5432:5432" 会绑 0.0.0.0，那才是暴露。
+      - "127.0.0.1:5432:5432"
+
+    volumes:
+      # 【路径必须是 /var/lib/postgresql，不是 /var/lib/postgresql/data】
+      # PG 18 把 PGDATA 改成了 /var/lib/postgresql/18/docker，所以要挂它的上一级。
+      # 挂到旧的 .../data 路径会怎样，取决于那个路径里有没有数据：
+      #   - 全新安装：不报错，但 Docker 会因为镜像声明的 VOLUME 另建一个匿名卷承载真正的
+      #     PGDATA，你的命名卷停在旧路径里空着——数据不在你以为的地方。
+      #   - 旧路径已有 PG 数据：入口脚本报 unused mount/volume 并退出。
+      # 判据不要靠猜，见 adr 或开发文档 §3.3 的三条命令。
+      - pgdata:/var/lib/postgresql
+
+    healthcheck:
+      # 让我们能用 `docker compose up -d --wait` 等到数据库真的可接受连接，
+      # 而不是"容器起来了但 PG 还在初始化"就开始跑迁移。
+      test: ["CMD-SHELL", "pg_isready -U postgres -d congorag"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  # 命名卷。down 时默认保留（不加 -v 就不会删），所以数据能活过容器重建。
+  pgdata:

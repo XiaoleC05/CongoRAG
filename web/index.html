@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ConGoRAG</title>
+    <script>
+      // 深色优先：<html> 上默认就带 class="dark"，浅色只在用户显式选过时才生效。
+      //
+      // 这段脚本必须【同步执行且排在 main.tsx 之前】：
+      // 前端是纯静态构建（产物被 go:embed 进 Go 二进制，没有 SSR），
+      // 这是唯一能在首帧之前改类名的位置。放到 React 里做会先闪一下深色再变浅色。
+      try {
+        if (localStorage.getItem('congorag-theme') === 'light') {
+          document.documentElement.classList.remove('dark')
+        }
+      } catch (e) {
+        // localStorage 被禁用时保持默认的深色
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- 入口。Vite 会从这里开始顺着 import 追依赖。 -->
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

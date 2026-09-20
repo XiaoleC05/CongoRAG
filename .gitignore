@@ -1,0 +1,42 @@
+# ── 设计文档：本地保留，不进仓库 ──
+helperDoc/
+
+# ── 前端构建产物 ──
+# 这是 go:embed 的目标目录，由 `make build-web` 生成。
+#
+# 【整目录忽略，只保留 .gitkeep】
+# 不能只忽略 assets/ 而提交 index.html——index.html 里引用的是带内容哈希的文件名
+# （/assets/index-XXXX.js），哈希每次构建都变。提交了它但没提交 assets/，
+# 全新克隆拿到的 index.html 会指向不存在的文件，浏览器白屏且不报错。
+#
+# .gitkeep 的作用只是让目录存在，好让 go:embed 能编译过（空目录 git 不跟踪）。
+# 没构建前端时，MountSPA 会在启动时警告，访问页面会得到一条明确的提示而不是白屏。
+apps/api/web/*
+!apps/api/web/.gitkeep
+
+# ── 运行时数据 ──
+data/
+
+# ── 环境变量（含 API Key 与主密钥，绝不入库） ──
+.env
+.env.local
+.env.*.local
+
+# ── Go ──
+*.exe
+*.exe~
+*.test
+*.out
+vendor/
+
+# ── 前端 ──
+node_modules/
+web/dist/
+.pnpm-store/
+
+# ── 编辑器 / 系统 ──
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

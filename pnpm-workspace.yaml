@@ -1,0 +1,13 @@
+# pnpm 的 monorepo 配置。
+#
+# 声明"哪些目录算一个包"。
+# 声明之后：
+#   - 根目录一条 `pnpm install` 装全部包的依赖
+#   - 包之间可以直接互相 import（web 里能 import '@congorag/api-client'）
+#
+# 为什么只有一个 web 还要用 workspace：
+# 因为类型生成物要单独一个包（见 packages/api-client），
+# 让生成物和手写代码物理隔开。
+packages:
+  - web
+  - packages/*
