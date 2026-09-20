@@ -161,6 +161,12 @@ build: build-web build-go
 # cmd.exe 和 bash 里，而两者没有一个共同的"创建空文件"命令。$(file ...)
 # 是 make 自己的函数，不经过 shell——正好符合文件头那条规则。内容是什么
 # 无所谓（make 会补一个换行），这个文件的作用只是让目录在 git 里活下来。
+#
+# 【web/package.json 的 build 脚本里也补了一次，不是重复】直接跑
+# `pnpm --filter web build`（CI 的 web job 就是这么跑的）不会经过这个
+# Makefile，占位文件照样会被 emptyOutDir 擦掉。两处写的都是平台换行符
+# （make 补 \n/\r\n，node 写 os.EOL），和 git 检出的那份内容一致，所以
+# 两种入口跑完工作区都是干净的。
 build-web: build-web-assets build-web-placeholder
 
 # 【这两条依赖声明不是多余的】上面那行把两个 target 并列为 build-web 的前提，
