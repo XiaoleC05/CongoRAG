@@ -523,6 +523,15 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description 与已有状态冲突 */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description 资源不存在 */
         NotFound: {
             headers: {
@@ -742,6 +751,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -787,6 +797,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -813,6 +824,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -938,6 +950,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidArgument"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
             /** @description 上游模型服务出错（Base URL / Key / 模型名有问题，或探测请求失败） */
             502: {

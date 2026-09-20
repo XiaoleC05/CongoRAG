@@ -195,6 +195,11 @@ paths:
                 $ref: '#/components/schemas/Document'
         '400':
           $ref: '#/components/responses/InvalidArgument'
+        # 目标知识库不存在时，documents.knowledge_base_id 的外键插入会失败，
+        # 错误管线的 classify 把外键违规和"查不到"一起映射成 404
+        # （apps/api/internal/api/problem.go）。不声明的话这个状态码就是契约外的。
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -230,6 +235,10 @@ paths:
       responses:
         '204':
           description: 删掉了，无返回内容
+        # 文档不存在（已被删、或 id 从来不存在）→ platform.ErrNotFound → 404。
+        # 和上面的 getDocument 走同一套错误管线。
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -254,6 +263,9 @@ paths:
                 $ref: '#/components/schemas/Conversation'
         '400':
           $ref: '#/components/responses/InvalidArgument'
+        # knowledgeBaseId 指向的知识库不存在 → conversations 的外键插入失败 → 404。
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -382,6 +394,8 @@ paths:
                 $ref: '#/components/schemas/ProviderWithModels'
         '400':
           $ref: '#/components/responses/InvalidArgument'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '502':
           description: 上游模型服务出错（Base URL / Key / 模型名有问题，或探测请求失败）
           content:
@@ -985,6 +999,17 @@ components:
 
     InvalidArgument:
       description: 参数不合法
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    # 409：请求本身合法，但和库里已有的状态冲突。目前唯一的来源是
+    # POST /providers——改 embedding 模型会让库里已有的向量变成检索
+    # 匹配不上的行，所以拒绝而不是静默清空（见 internal/llm/postgres.go
+    # 的 alterVectorColumns）。detail 会写清楚冲突在哪张表、多少行。
+    Conflict:
+      description: 与已有状态冲突
       content:
         application/problem+json:
           schema:

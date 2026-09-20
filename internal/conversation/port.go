@@ -31,12 +31,20 @@ type Repo interface {
 	// "当前最大值"，脱离锁调用这个方法不提供任何顺序保证。
 	NextSequenceNo(ctx context.Context, q platform.Querier, convID uuid.UUID) (int64, error)
 
-	// RecentMessages 按 sequence_no 倒序取最近 limit 条，且只取
-	// sequence_no > afterSequenceNo 的部分——afterSequenceNo 传当前摘要的
-	// CoveredUntilSequenceNo（没有摘要就传 0），这样已经被摘要吸收的历史
-	// 不会和摘要重复出现在同一次 ctxmgr.Request 里（memory.go 顶部注释）。
-	// 调用方负责按需要的顺序重新排列——这里只管"取最近的"。
-	RecentMessages(ctx context.Context, q platform.Querier, convID uuid.UUID, afterSequenceNo int64, limit int) ([]*Message, error)
+	// RecentMessages 取最近 limit 条，并且**按 sequence_no 正序（旧 → 新）
+	// 返回**——顺序由这里负责，调用方不需要也不应该再重排一次：
+	// ctxmgr.Request.RecentMessages 的契约就是"旧 → 新"，唯一真正知道
+	// 时间方向的查询层如果返回倒序，下游每一层都只能靠猜。
+	//
+	// 只取 sequence_no > afterSequenceNo 的部分——afterSequenceNo 传当前
+	// 摘要的 CoveredUntilSequenceNo（没有摘要就传 0），这样已经被摘要吸收
+	// 的历史不会和摘要重复出现在同一次 ctxmgr.Request 里（memory.go 顶部注释）。
+	//
+	// beforeSequenceNo 是排他上界，传 0 表示无上界。send 传的是本轮
+	// 用户消息分配到的 sequence_no：调用方在加载历史之前已经写下了本轮
+	// 的用户行和 assistant 占位行，不挡住它们的话，当前提问会被当成
+	// 历史上的一条再回放一遍（问题被送两遍、空占位行也跟着进 prompt）。
+	RecentMessages(ctx context.Context, q platform.Querier, convID uuid.UUID, afterSequenceNo, beforeSequenceNo int64, limit int) ([]*Message, error)
 
 	// ListMessages 按 sequence_no 正序返回一个会话的全部消息，
 	// 供 GET /conversations/{id}/messages 使用（前端刷新页面重载历史）。
@@ -47,10 +55,22 @@ type Repo interface {
 	// 是为了压缩时保持叙事顺序；有 limit 是为了单次调用的查询成本有上界，
 	// 一轮处理不完的部分,covered_until_sequence_no 只会前进到这批处理到的
 	// 位置，剩下的留给下一轮周期任务，不会永久遗漏（memory.go 的说明）。
+	//
+	// 它不按状态过滤：这一批里可能夹着未定稿的行（本轮正在生成的那条
+	// status='streaming' 占位行，或生成中断时留下的、正文已经冻结的
+	// status='failed' 那条——客户端断开、上游中途报错都会留下它）。
+	// 调用方只能把水位线推进到批次里最后一条已定稿的消息为止——理由见
+	// MaintainSummary 里那段截断的注释。
 	MessagesAfter(ctx context.Context, q platform.Querier, convID uuid.UUID, afterSequenceNo int64, limit int) ([]*Message, error)
 
-	// LatestSequenceNo 返回一个会话当前用到的最大 sequence_no，没有消息
-	// 时返回 0。
+	// LatestSequenceNo 返回一个会话已定稿（status='completed'）的消息里
+	// 最大的 sequence_no，没有定稿消息时返回 0。
+	//
+	// 【为什么不是"所有消息里的最大 sequence_no"】它是"进度水位"：门控
+	// 判断的是"攒够了多少条可以压缩的消息"。生成中的占位行正文还没定稿，
+	// 把它算进来会让摘要任务在一个空行上被触发，甚至让水位线跨过它——
+	// 那条回答之后既不在摘要里也不在 RecentMessages 里（postgres.go 的实现
+	// 注释详细解释了这条链）。
 	//
 	// 【和 NextSequenceNo 的区别】NextSequenceNo 的文档明确要求只能在
 	// WithConversationLock 内调用——它服务的是"分配一个新号"这种需要严格

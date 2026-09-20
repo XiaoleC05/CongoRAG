@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -39,8 +40,36 @@ func NewDocumentProcessingWorker(uc *Usecase) *DocumentProcessingWorker {
 	return &DocumentProcessingWorker{uc: uc}
 }
 
+// Work 只负责一件事：把 River 的重试计数翻译成"这是不是最后一次机会"。
+//
+// 【为什么这个判断在 worker 里】job.Attempt / job.MaxAttempts 是 River 的
+// 概念，业务层不该认识它们；而"失败要不要落终态"正是由它们决定的——
+// 不是最后一次就不落，让下一次投递接着跑（ProcessDocument 的注释里有
+// 完整的理由）。Attempt 从 1 开始计，和 River 自己判断"还会不会重试"
+// 用的是同一个比较。
 func (w *DocumentProcessingWorker) Work(ctx context.Context, job *river.Job[DocumentProcessingArgs]) error {
-	return w.uc.ProcessDocument(ctx, job.Args.DocumentID)
+	return w.uc.ProcessDocument(ctx, job.Args.DocumentID, job.Attempt >= job.MaxAttempts)
+}
+
+// documentProcessingTimeout 是单个文档处理任务的时间上限。
+//
+// 【为什么必须显式覆写】不写这个方法的话 WorkerDefaults.Timeout 返回 0，
+// River 用 JobTimeoutDefault——1 分钟。而这个任务的实际内容是：读整个文件、
+// 切分、再按批调 embedding 接口（retrieval 那边按 256 个分块一批）。上传
+// 上限是 32 MiB（platform.Config.MaxUploadBytes），一份接近上限的纯文本文档
+// 轻松就是几百批 embedding 调用，60 秒必然不够。超时的表现是 job ctx 被取消、
+// 这一次 attempt 失败；能恢复的部分由 ProcessDocument 负责标记，但"每次
+// 都超时"这件事本身会让这类文档永远处理不完。
+//
+// 【为什么是 30 分钟】和 platform.periodicTaskTimeout 取同一个量级——那边是
+// 全表扫描，这边是一份大文档的全量向量化，都是"正常情况几十秒、最坏几分钟"
+// 的量级，30 分钟足够容纳慢的本地 embedding 服务，又不至于让一个真卡住的
+// 任务长时间占住 worker 名额（apps/worker 的 MaxWorkers 是 10）。
+const documentProcessingTimeout = 30 * time.Minute
+
+// Timeout 覆写 WorkerDefaults 的 0 值。理由见 documentProcessingTimeout。
+func (w *DocumentProcessingWorker) Timeout(*river.Job[DocumentProcessingArgs]) time.Duration {
+	return documentProcessingTimeout
 }
 
 var _ Enqueuer = (*riverEnqueuer)(nil)

@@ -29,6 +29,13 @@ func WrapPgErr(err error) error {
 
 	case "23503": // foreign_key_violation
 		return fmt.Errorf("%w: %s", ErrForeignKey, pgErr.ConstraintName)
+
+	case "23502": // not_null_violation
+		// 约束违反同样来自请求数据（比如可选字段省略时绑了个 nil 切片），
+		// 归类成 invalid_argument 才能让客户端看出是自己这一侧的输入问题；
+		// 不映射的话它会落到 classify() 的 default，变成一个连字段名都
+		// 问不出来的通用 500（issue #18）。
+		return fmt.Errorf("%w: null value in column %s", ErrInvalid, pgErr.ColumnName)
 	}
 
 	return err

@@ -110,6 +110,8 @@ func (u *Usecase) MaintainSummary(ctx context.Context, convID uuid.UUID) error {
 	if err != nil {
 		return fmt.Errorf("latest sequence_no of conversation %s: %w", convID, err)
 	}
+	// latest 只数已定稿的消息（postgres.go 里 SQL 的 status = 'completed'
+	// 断言）：还在生成中的占位行不该把这条门控顶过去。
 	if latest-coveredUntil < summaryTriggerMessages {
 		return nil
 	}
@@ -121,9 +123,28 @@ func (u *Usecase) MaintainSummary(ctx context.Context, convID uuid.UUID) error {
 	if err != nil {
 		return fmt.Errorf("load messages after %d of conversation %s: %w", coveredUntil, convID, err)
 	}
-	if len(msgs) == 0 {
+
+	// 截到"最后一条已定稿的消息"为止：批次尾部可能还是生成中的行，
+	// 而水位线一旦跨过它，生成结束后才写进去的正文就既不在摘要里、
+	// 又被 RecentMessages（sequence_no > covered_until）排除——这条已完成
+	// 的回答从此对模型永久不可见，无错误、无日志、无重试。
+	//
+	// 【为什么在这里截断，而不是给 MessagesAfter 加 status 断言】客户端
+	// 断开或上游中途报错时留下的 failed 行是助手已经生成的正文（客户端
+	// 不会再补写完成态），按状态整批过滤会把它从摘要里也删掉，而水位线
+	// 照样越过它——等于换个触发方式制造同一个 bug。截断只丢掉尾部尚未
+	// 定稿的行，夹在中间那些已经冻结的行照常被吸收；被截掉的行留在
+	// 水位线之后，下一次触发时会被正常吸收，不是丢弃。
+	lastCompleted := -1
+	for i, m := range msgs {
+		if m.Status == MsgCompleted {
+			lastCompleted = i
+		}
+	}
+	if lastCompleted < 0 {
 		return nil
 	}
+	msgs = msgs[:lastCompleted+1]
 
 	priorSummary, _, err := u.RetrieveSummary(ctx, convID)
 	if err != nil {
@@ -159,6 +180,19 @@ func (u *Usecase) MaintainSummary(ctx context.Context, convID uuid.UUID) error {
 		return fmt.Errorf("generate updated summary for conversation %s: %w", convID, err)
 	}
 
+	// 空 completion 当作失败，不能落库：summary 列是 text NOT NULL，空串
+	// 满足约束，写进去就是一次"成功的"整体替换——旧摘要被空串覆盖、水位线
+	// 照常前移，被它覆盖的那段历史从此既不在摘要里也不在 RecentMessages
+	// 里，而旧摘要的文本已经找不回来。返回 error 让 maintainAllSummaries
+	// 记下这一轮失败，摘要与水位线都保持原样，下一个 tick 再试（和
+	// ExtractPreferences 里"模型没产出行就不写记忆"是同一个判断，区别只是
+	// 那里的空结果无害、这里的空结果会覆盖存储）。
+	if strings.TrimSpace(resp.Content) == "" {
+		return fmt.Errorf("chat model returned an empty summary for conversation %s: %w", convID, platform.ErrUpstream)
+	}
+
+	// 水位线取自"真正被吸收进摘要的最后一条"——上面的截断保证了它是一条
+	// 已定稿的消息，不是批次返回的最后一行。
 	newCoveredUntil := msgs[len(msgs)-1].SequenceNo
 	if err := u.repo.UpsertSummary(ctx, u.db, &Summary{
 		ConversationID: convID, Summary: resp.Content,
@@ -332,6 +366,13 @@ func (u *Usecase) maintainAllSummaries(ctx context.Context) error {
 				"conversation_id", id, "error", err)
 		}
 	}
+	// 单个会话失败可以容忍,ctx 被取消不行:那说明这一轮是被 job 超时
+	// 截断的,排在后面的会话根本轮不到。返回 ctx.Err() 让 River 把这次
+	// job 记为失败/重试——一直 return nil 的话,被截断的一轮和完整跑完的
+	// 一轮在 river_job 里都是 completed,长期记忆的构建被静默饿死。
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("summary maintenance interrupted (context done): %w", err)
+	}
 	return nil
 }
 
@@ -362,7 +403,9 @@ func (u *Usecase) extractAllPreferences(ctx context.Context) error {
 		if latest < preferenceExtractionMessages {
 			continue
 		}
-		recent, err := u.repo.RecentMessages(ctx, u.db, id, 0, preferenceExtractionMessages)
+		// beforeSequenceNo 传 0：偏好抽取跑在周期任务里，没有"本轮"这个概念，
+		// 上界就是当前最新的一条，不需要排除任何东西。
+		recent, err := u.repo.RecentMessages(ctx, u.db, id, 0, 0, preferenceExtractionMessages)
 		if err != nil {
 			slog.Default().Error("failed to load recent messages for preference extraction",
 				"conversation_id", id, "error", err)
@@ -371,6 +414,12 @@ func (u *Usecase) extractAllPreferences(ctx context.Context) error {
 		if _, err := u.ExtractPreferences(ctx, id, toLLMMessages(recent)); err != nil {
 			slog.Default().Error("failed to extract preferences", "conversation_id", id, "error", err)
 		}
+	}
+	// 和 maintainAllSummaries 同样的理由:ctx 被取消说明这一轮被 job 超时
+	// 截断了,剩下的会话根本没扫到。必须上报失败,否则 River 把截断的一轮
+	// 记成 completed,偏好抽取是否真的扫完了从 job 状态上看不出来。
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("preference extraction interrupted (context done): %w", err)
 	}
 	return nil
 }

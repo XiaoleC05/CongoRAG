@@ -24,17 +24,23 @@
 // 通过之后才暴露"的典型形状。
 //
 // 【现在的修复】t.Cleanup 里不仅删测试自己插入的行，还要把两张表的
-// 列类型改回测试开始前的样子——用 information_schema 在跑之前探测
-// 当时的真实类型，跑完照原样 ALTER 回去。如果探测到跑之前列还没有
-// 维度（全新数据库，从没做过 BYOK），就 ALTER 回不带维度的 halfvec，
+// 列类型改回测试开始前的样子——用 format_type() 在跑之前拍下当时的
+// 真实类型，跑完照原样 ALTER 回去。如果探测到跑之前列还没有维度
+// （全新数据库，从没做过 BYOK），就 ALTER 回不带维度的 halfvec，
 // 和 0001 迁移刚建完时的状态一致。
+//
+// 【恢复语句曾经也是破坏性的】快照只记类型，恢复用的却是和 Bootstrap
+// 同一条 `USING NULL`：类型字符串回到原样，每一行的向量却被清成 NULL，
+// 等于第二次清空。这条测试的断言又只比 format_type()，所以整库向量消失
+// 这件事测试完全看不见（issue #2）。现在快照连"有多少行带向量"一起拍，
+// 跑完必须一行不少；恢复也不再动数据。
 package llm
 
 import (
 	"context"
 	"crypto/rand"
-	"fmt"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"strconv"
 	"testing"
@@ -80,16 +86,80 @@ func columnType(t *testing.T, pool *pgxpool.Pool, table string) string {
 	return formatted
 }
 
-// restoreColumnType 把 embedding 列的类型改回 want（columnType 跑之前
-// 拍下的快照）。用 USING NULL——反正这条测试跑完之后,这张表在测试期间
-// 写进去的任何向量本来就该被清空,不存在"保留数据"这回事。
+// embeddingSnapshot 是"跑任何会改 schema 的东西之前"给一张表拍的照片。
+//
+// 【为什么不能只拍类型】这条测试的全部破坏力都作用在行数据上（USING NULL
+// 把向量置成 NULL），而列类型照样是对的、documents 照样显示 ready——
+// 只比类型字符串的断言对这件事完全无感（issue #2）。所以连"总行数"和
+// "带向量的行数"一起拍。
+type embeddingSnapshot struct {
+	columnType string
+	rows       int // 总行数
+	vectors    int // embedding IS NOT NULL 的行数
+}
+
+func snapshotEmbeddingColumn(t *testing.T, pool *pgxpool.Pool, table string) embeddingSnapshot {
+	t.Helper()
+	s := embeddingSnapshot{columnType: columnType(t, pool, table)}
+	err := pool.QueryRow(context.Background(),
+		fmt.Sprintf(`SELECT count(*), count(*) FILTER (WHERE embedding IS NOT NULL) FROM %s`, table),
+	).Scan(&s.rows, &s.vectors)
+	require.NoError(t, err)
+	return s
+}
+
+// assertEmbeddingsIntact 断言这张表的原有向量一条都没少——跑完 Bootstrap
+// 之后立刻调它，位置在选择插入探针行之前。
+func assertEmbeddingsIntact(t *testing.T, pool *pgxpool.Pool, table string, before embeddingSnapshot) {
+	t.Helper()
+	after := snapshotEmbeddingColumn(t, pool, table)
+
+	// 向量变少必须直接 Fatal：这正是 issue #2 描述的事故（静默清空），
+	// 不能只是一条可以被人忽略的失败断言。
+	if after.vectors < before.vectors {
+		t.Fatalf("%s 的向量从 %d 行掉到 %d 行——这条测试把已有数据清掉了,这正是 issue #2 的事故", table, before.vectors, after.vectors)
+	}
+	// 总行数只比"没变少"：同一个库上可能还有开发者的应用在并发写入。
+	assert.GreaterOrEqual(t, after.rows, before.rows, "%s 的行不该被这条测试删掉", table)
+}
+
+// restoreColumnType 把 embedding 列的类型改回 want（跑之前拍下的快照）。
+//
+// 【不再用 USING NULL】恢复用它等于第二次清空：类型字符串回到原样、
+// 向量还是 NULL，什么都没恢复。
+//
+// 【三道门,缺一条就会重新变成"清理阶段把数据清掉"】
+//  1. 类型没变过 → 什么都不做（跑之前已经是对的,没有要恢复的东西）；
+//  2. 表里已经有非 NULL 向量 → 只打印警告,不动它。类型不恢复只是让人下次
+//     看见"列还停在 halfvec(768)"，而恢复要重写整列——两者代价不对称；
+//  3. 恢复语句用裸列名的 USING（恒等表达式）。维度相同时逐元素拷贝、值
+//     不变；维度不同时 PostgreSQL 报 22000（expected N dimensions, not M），
+//     比静默清空好。注意裸列名会让 PostgreSQL 完全跳过表重写,所以第 2 道
+//     门是这条语句安全的前提,不能省。
 func restoreColumnType(t *testing.T, pool *pgxpool.Pool, table, want string) {
 	t.Helper()
-	_, err := pool.Exec(context.Background(),
-		fmt.Sprintf(`ALTER TABLE %s ALTER COLUMN embedding TYPE %s USING NULL`, table, want))
-	// 不用 require——这是清理阶段,即使恢复失败也不该让测试本身看起来失败
+	ctx := context.Background()
+
+	if columnType(t, pool, table) == want {
+		return
+	}
+
+	var vectors int
+	if err := pool.QueryRow(ctx,
+		fmt.Sprintf(`SELECT count(*) FROM %s WHERE embedding IS NOT NULL`, table),
+	).Scan(&vectors); err != nil {
+		t.Logf("WARNING: 读 %s 的向量行数失败,不恢复列类型: %v — 请手动检查 schema 状态", table, err)
+		return
+	}
+	if vectors > 0 {
+		t.Logf("WARNING: %s 里还有 %d 行非 NULL 向量,不把列类型恢复成 %q（恢复要重写整列）— 请手动检查 schema 状态", table, vectors, want)
+		return
+	}
+
+	// 不用 require——这是清理阶段,恢复失败不该让测试本身看起来失败
 	// （测试的断言部分已经跑完了），但要把这个反常情况打印出来,不能沉默。
-	if err != nil {
+	if _, err := pool.Exec(ctx,
+		fmt.Sprintf(`ALTER TABLE %s ALTER COLUMN embedding TYPE %s USING embedding`, table, want)); err != nil {
 		t.Logf("WARNING: failed to restore %s.embedding to %q: %v — 请手动检查 schema 状态", table, want, err)
 	}
 }
@@ -116,14 +186,14 @@ func TestIntegration_Bootstrap_EndToEnd(t *testing.T) {
 	pool := requireTestDB(t)
 	ctx := context.Background()
 
-	// 跑之前先拍一张"两张表向量列此刻长什么样"的快照,跑完照原样还原——
-	// 这是这条测试唯一能不破坏其它并发使用同一个数据库的东西
-	// （交互式手动测试、别的测试）的办法。见文件顶部注释的事故记录。
-	preTestChunksType := columnType(t, pool, "document_chunks")
-	preTestMemoriesType := columnType(t, pool, "memories")
+	// 跑之前先拍一张"两张表向量列此刻长什么样、里面有多少向量"的快照,
+	// 跑完照原样还原——这是这条测试唯一能不破坏其它并发使用同一个数据库
+	// 的东西（交互式手动测试、别的测试）的办法。见文件顶部注释的事故记录。
+	preTestChunks := snapshotEmbeddingColumn(t, pool, "document_chunks")
+	preTestMemories := snapshotEmbeddingColumn(t, pool, "memories")
 	t.Cleanup(func() {
-		restoreColumnType(t, pool, "document_chunks", preTestChunksType)
-		restoreColumnType(t, pool, "memories", preTestMemoriesType)
+		restoreColumnType(t, pool, "document_chunks", preTestChunks.columnType)
+		restoreColumnType(t, pool, "memories", preTestMemories.columnType)
 	})
 
 	repo := NewPgConfigRepo()
@@ -135,12 +205,40 @@ func TestIntegration_Bootstrap_EndToEnd(t *testing.T) {
 	req := validBootstrapRequest()
 	req.APIKey = "sk-integration-test-real-crypto-path"
 
+	// 修复后的 alterVectorColumns 逐表判据：列类型不是目标类型、且表里已有
+	// 非 NULL 向量 → 这一次 Bootstrap 必须拒绝改列。库里已经有真实向量的
+	// 情况（也就是 README 让开发者指向自己开发库的那种跑法）走下面那条
+	// 分支，不再把整库向量清成 NULL。
+	const wantType = "halfvec(768)"
+	refused := (preTestChunks.columnType != wantType && preTestChunks.vectors > 0) ||
+		(preTestMemories.columnType != wantType && preTestMemories.vectors > 0)
+
 	result, err := uc.Bootstrap(ctx, req)
+
+	if refused {
+		// 这条分支就是 issue #2 的回归测试：修复前这里返回成功、把两张表
+		// 的向量全部置成 NULL，测试却仍然 PASS。
+		require.ErrorIs(t, err, platform.ErrConflict,
+			"库里已有向量时,改列类型必须被拒绝,不能静默清空")
+		assert.Nil(t, result)
+		assertEmbeddingsIntact(t, pool, "document_chunks", preTestChunks)
+		assertEmbeddingsIntact(t, pool, "memories", preTestMemories)
+		// 事务回滚了,列类型也该一动没动。
+		assert.Equal(t, preTestChunks.columnType, columnType(t, pool, "document_chunks"))
+		assert.Equal(t, preTestMemories.columnType, columnType(t, pool, "memories"))
+		return
+	}
+
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		// provider 删除会级联删掉两个 model（ON DELETE CASCADE）。
 		_, _ = pool.Exec(context.Background(), `DELETE FROM llm_providers WHERE id = $1`, result.Provider.ID)
 	})
+
+	// 改列前后原有向量必须一条不少。空库上这是 0 == 0；在已经有向量的库上
+	// 它是唯一能看见"USING NULL 把数据清掉了"的断言。
+	assertEmbeddingsIntact(t, pool, "document_chunks", preTestChunks)
+	assertEmbeddingsIntact(t, pool, "memories", preTestMemories)
 
 	// ── 数据库里的三行确实存在,且能整条链路解密回原始 Key ──
 	gotProvider, err := repo.GetProvider(ctx, pool, result.Provider.ID)

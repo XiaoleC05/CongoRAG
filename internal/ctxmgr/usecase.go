@@ -66,8 +66,8 @@ func (u *Usecase) Build(ctx context.Context, req Request) (*FinalContext, error)
 	}
 
 	// 第 2 步：压缩可压缩区。目标 token 数是"扣掉固定区和删除区之后，
-	// 可压缩区还能占多少"——压缩器按这个目标尽力压，压不到位也没关系，
-	// 第 3 步会接着削减删除区。
+	// 可压缩区还能占多少"——压缩器把这个目标写进提示词尽力压，压不到位
+	// 也没关系，第 3 步会接着削减删除区。
 	if len(compressible) > 0 {
 		remaining := req.Budget.Input - fixedCost - sumCost(chunkItems) - sumCost(memoryItems)
 		if remaining < 0 {
@@ -77,7 +77,15 @@ func (u *Usecase) Build(ctx context.Context, req Request) (*FinalContext, error)
 		if err != nil {
 			return nil, fmt.Errorf("compress context: %w", err)
 		}
-		compressible = compressed
+		// 压缩结果不比被替换的区域小就整条丢掉，保留原区域。提示词里的
+		// 尺寸指令只是"尽量"，模型返回一段更啰嗦的摘要是完全可能的——
+		// 接受它意味着这一步不但没省下 token 还要多占预算，多出来的部分
+		// 只能从尾部 chunk 里挤（被挤掉的 chunk 的引用也跟着从下发给
+		// 客户端的流里消失，而日志里看不出这和正常的预算压力有什么区别）。
+		// 压缩的成本不该高于它替换掉的内容。
+		if sumCost(compressed) < sumCost(compressible) {
+			compressible = compressed
+		}
 	}
 
 	if total() <= req.Budget.Input {
@@ -98,8 +106,11 @@ func (u *Usecase) Build(ctx context.Context, req Request) (*FinalContext, error)
 		return finalize(fixed, compressible, chunkItems, memoryItems, survivingChunks), nil
 	}
 
-	// 第 4 步：真的装不下。
-	return nil, ErrOverflow
+	// 第 4 步：真的装不下。这里带上诊断——走到这一步意味着删除区已经全部
+	// 丢光，剩下的只有固定区加压缩区，裸的 ErrOverflow 分不出"这次请求本身
+	// 就太大"和"压缩没起作用"，而这两件事的处理方式完全不同。
+	return nil, fmt.Errorf("ctxmgr: fixed and compressed context needs %d tokens, input budget is %d: %w",
+		fixedCost+sumCost(compressible), req.Budget.Input, ErrOverflow)
 }
 
 func buildFixedItems(req Request, tok llm.Tokenizer) []Item {
@@ -125,7 +136,7 @@ func formatAgentState(s *AgentState) string {
 func buildCompressibleItems(req Request, tok llm.Tokenizer) []Item {
 	var items []Item
 	// Summary 排在最前——它代表"更早"的上下文，和 RecentMessages
-	// "新 → 旧"的顺序拼在一起，整个可压缩区就是一条从旧到新的时间线。
+	// "旧 → 新"的顺序拼在一起，整个可压缩区就是一条从旧到新的时间线。
 	if req.Summary != "" {
 		items = append(items, Item{
 			Source: domain.SourceSummary, Content: req.Summary,
@@ -134,7 +145,7 @@ func buildCompressibleItems(req Request, tok llm.Tokenizer) []Item {
 	}
 	for _, m := range req.RecentMessages {
 		items = append(items, Item{
-			Source: domain.SourceRecent, Content: m.Content,
+			Source: domain.SourceRecent, Role: m.Role, Content: m.Content,
 			TokenCost: tok.Count(m.Content), Compressible: true,
 		})
 	}

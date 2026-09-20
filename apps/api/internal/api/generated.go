@@ -463,6 +463,9 @@ type ToolCatalogEntry struct {
 // ToolCatalogEntrySideEffectLevel defines model for ToolCatalogEntry.SideEffectLevel.
 type ToolCatalogEntrySideEffectLevel string
 
+// Conflict defines model for Conflict.
+type Conflict = Problem
+
 // InternalError defines model for InternalError.
 type InternalError = Problem
 

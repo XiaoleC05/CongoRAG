@@ -9,6 +9,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -31,6 +32,11 @@ type Deps struct {
 	LLM          *llm.Usecase
 	Conversation *conversation.Usecase
 	Agent        *agent.Usecase
+
+	// MaxUploadBytes 是上传接口允许的最大请求体字节数（platform.Config
+	// 的对应项）。只有 UploadDocument 用它，<=0 表示不限——生产装配里
+	// 永远是一个正数。
+	MaxUploadBytes int64
 }
 
 // 编译期断言：契约里加了端点而这里没实现，编译失败。
@@ -192,9 +198,27 @@ func (s *Server) ListDocuments(c *gin.Context, id openapi_types.UUID) {
 // FormFile 只解析请求体到拿到这一个字段为止，不会把整个 multipart body
 // 缓存进内存——上传大文件时更省内存。这个方法只需要一个字段（file），
 // 不需要 MultipartForm() 那种"拿到全部字段"的能力。
+//
+// 【大小上限必须在 FormFile 之前设】FormFile 内部会调
+// ParseMultipartForm(defaultMaxMemory)，defaultMaxMemory 是 32MB：超出的
+// 部分会被完整读进来、溢写到 os.TempDir，之后才轮到这里有机会拒绝。
+// MaxBytesReader 把上限提前到"读取阶段"，超限的请求体既不进内存也不落盘。
 func (s *Server) UploadDocument(c *gin.Context, kbID openapi_types.UUID) {
+	if s.deps.MaxUploadBytes > 0 {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, s.deps.MaxUploadBytes)
+	}
+
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
+		// 【超限和别的读取失败要分开报】MaxBytesReader 超限返回的是
+		// *http.MaxBytesError，它的文案（"http: request body too large"）是
+		// 标准库内部的说法，对客户端没有意义——换成一句带上限值的。
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			s.fail(c, fmt.Errorf(
+				"upload exceeds the %d byte limit: %w", tooLarge.Limit, platform.ErrInvalid))
+			return
+		}
 		s.fail(c, fmt.Errorf("read multipart field %q: %w", "file", platform.ErrInvalid))
 		return
 	}
@@ -438,14 +462,46 @@ func (s *Server) SendMessage(c *gin.Context, id openapi_types.UUID) {
 	}
 
 	sink := newSSESink(c)
-	// Send 的返回值只用于日志——一旦切到 SSE 模式，错误已经通过
+	// Send 的返回值只用于日志和兜底——一旦切到 SSE 模式，错误已经通过
 	// error 事件传给客户端了（conversation.Usecase.Send 自己保证这一点），
 	// 这里不需要、也不能再对 c 做任何响应相关的操作。
 	if err := s.deps.Conversation.Send(c.Request.Context(), id, req.Text, sink); err != nil {
 		s.deps.Logger.Warn("send message failed",
 			"request_id", platform.RequestIDFrom(c.Request.Context()),
 			"conversation_id", id, "error", err)
+		s.writeFallbackError(sink, err)
 	}
+}
+
+// writeFallbackError 是"失败必须对客户端可见"的最后一道保障。
+//
+// 【为什么必须有它】Send 的 error 事件是先持久化再发送的——emitEvent 要用
+// NextEventID 分配 event_id，分配不到就提前返回。于是"数据库整个不可用"
+// 这一类失败恰好会把那条 error 帧也堵在库里：客户端拿到的是 200 +
+// text/event-stream + 零字节 body，和一个空的成功流完全同形——前端
+// streamChat 正常 resolve、onError 从不触发，用户看到自己发的消息、
+// 没有回答、也没有任何错误提示。同一时刻所有非 SSE 端点都在返回 500
+// Problem，只有聊天这条路径是静默的。
+//
+// 【为什么按"还没发过 error 帧"判断，而不是"一个帧都没发过"】数据库在
+// 流到一半时才坏掉的情况，客户端已经收到若干 token 却再也等不到
+// error/done，连接就那么挂着——补一帧同样是对的。
+func (s *Server) writeFallbackError(sink *sseSink, cause error) {
+	if sink.errorFrameSent {
+		return
+	}
+
+	status, typ, _ := classify(cause)
+	detail := innermostMessage(cause)
+	if status >= http.StatusInternalServerError {
+		// 和 fail 对 5xx 的处理一致：不把内部错误原文（可能带 SQL 片段、
+		// 表名、连接串）漏给客户端。
+		detail = "服务内部错误"
+	}
+
+	// 这一帧不查库也不写库，是唯一能在数据库不可用时送达的通道——
+	// 所以写失败除了让连接自己坏掉，没有别的补救。
+	_ = sink.writeFallbackError(sseErrorData{Type: typ, Detail: detail})
 }
 
 func (s *Server) SubscribeConversationEvents(c *gin.Context, id openapi_types.UUID, params SubscribeConversationEventsParams) {

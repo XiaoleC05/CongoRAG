@@ -11,8 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 var _ FileStore = (*LocalFileStore)(nil)
@@ -20,6 +23,13 @@ var _ FileStore = (*LocalFileStore)(nil)
 // tmpSubdir 是临时文件的落脚目录，正式文件和它是同级但不同目录，
 // 这样 List（对账用）只需要扫 rootDir 顶层，不用过滤掉临时文件。
 const tmpSubdir = "tmp"
+
+// tmpFilePrefix 是临时文件名的前缀，os.CreateTemp 会在这后面接一串随机字符。
+//
+// 【为什么要单独留一个常量给清扫用】清扫只该删自己造的文件——把 tmp/ 里
+// 一切文件都删掉的话，运维往那儿放的东西也会一起没。前缀是这里唯一
+// 能识别"这是上传途中的半成品"的依据（见 SweepTemp）。
+const tmpFilePrefix = "upload-"
 
 // LocalFileStore 把 rootDir 当成所有文档的存储根目录
 // （默认 platform.Config.DocumentsDir，即 ./data/documents）。
@@ -40,7 +50,7 @@ func (fs *LocalFileStore) WriteTemp(ctx context.Context, r io.Reader) (string, i
 		return "", 0, fmt.Errorf("create tmp dir: %w", err)
 	}
 
-	f, err := os.CreateTemp(fs.tmpDir(), "upload-*")
+	f, err := os.CreateTemp(fs.tmpDir(), tmpFilePrefix+"*")
 	if err != nil {
 		return "", 0, fmt.Errorf("create temp file: %w", err)
 	}
@@ -50,8 +60,21 @@ func (fs *LocalFileStore) WriteTemp(ctx context.Context, r io.Reader) (string, i
 
 	n, err := io.Copy(f, r)
 	if err != nil {
-		// 写失败时清理掉这个半成品临时文件，不留垃圾。
-		_ = os.Remove(f.Name())
+		// 【先关句柄再删】Windows 上 os.CreateTemp 打开文件时只带
+		// FILE_SHARE_READ|FILE_SHARE_WRITE（没有 FILE_SHARE_DELETE），
+		// 句柄还开着的时候 os.Remove 会以共享冲突失败——原来的顺序
+		// （删了再 defer 关）在这个平台上等于什么都没删，半成品会永久
+		// 留在 tmp/ 里。Linux/macOS 允许 unlink 已打开的文件，所以那里
+		// 看不出问题。显式 Close 之后那次 defer 的 Close 只是个幂等兜底。
+		closeErr := f.Close()
+		removeErr := os.Remove(f.Name())
+
+		// 删不掉也不能让手上这个"写失败"变成静默：文件会留在
+		// tmp/ 里，最后由挂载对账的 SweepTemp 按 mtime 兜底清掉。
+		if removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			slog.Default().Error("failed to remove half-written temp file",
+				"path", f.Name(), "remove_error", removeErr, "close_error", closeErr)
+		}
 		return "", 0, fmt.Errorf("write temp file: %w", err)
 	}
 
@@ -114,6 +137,39 @@ func (fs *LocalFileStore) Remove(ctx context.Context, storageKey string) error {
 		return nil
 	}
 	return err
+}
+
+func (fs *LocalFileStore) SweepTemp(ctx context.Context, olderThan time.Time) error {
+	entries, err := os.ReadDir(fs.tmpDir())
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// tmp/ 还没被创建过（一次上传都没发生过），没有东西可扫。
+			return nil
+		}
+		return fmt.Errorf("read tmp dir %s: %w", fs.tmpDir(), err)
+	}
+
+	for _, e := range entries {
+		// 只认自己造的那类文件：前缀不匹配的一律不碰（见 tmpFilePrefix 的注释）。
+		if e.IsDir() || !strings.HasPrefix(e.Name(), tmpFilePrefix) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			// 单个文件 stat 不出来（正在被删、权限不够）不该让整轮清扫失败。
+			slog.Default().Warn("failed to stat temp file during sweep",
+				"name", e.Name(), "error", err)
+			continue
+		}
+		if !info.ModTime().Before(olderThan) {
+			continue
+		}
+		if err := os.Remove(filepath.Join(fs.tmpDir(), e.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+			slog.Default().Warn("failed to remove stale temp file",
+				"name", e.Name(), "error", err)
+		}
+	}
+	return nil
 }
 
 func (fs *LocalFileStore) List(ctx context.Context) ([]FileInfo, error) {

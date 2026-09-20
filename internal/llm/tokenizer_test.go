@@ -42,6 +42,31 @@ func TestNewTokenizer_UnsupportedType_Errors(t *testing.T) {
 	}
 }
 
+// ValidTokenizerTypes 是"保存时就拒绝"的依据（validateBootstrapRequest 用它），
+// newTokenizer 是"消费时拒绝"的依据——两者必须恰好是同一个集合。
+// 一旦漂移（例如集合里多了一个 newTokenizer 建不出来的值），坏配置又会
+// 从引导页溜进去，然后每条消息才失败。
+func TestValidTokenizerTypes_MatchesNewTokenizer(t *testing.T) {
+	// 集合里每个值都必须真的能建出 tokenizer。这条要加载 BPE 词表，
+	// 前提和 TestTiktokenTokenizer_MatchesReferenceCounts 一样。
+	for name := range ValidTokenizerTypes {
+		if _, err := newTokenizer(name); err != nil {
+			t.Errorf("ValidTokenizerTypes 收了 %q,但 newTokenizer 拒绝了它: %v", name, err)
+		}
+	}
+
+	// 集合外的值必须被拒，且不在集合里。这些编码名在 tiktoken 里真实存在，
+	// 正是用户会手填进来的那些；newTokenizer 在加载词表之前就返回，不需要网络。
+	for _, name := range []string{"p50k_base", "r50k_base", "gpt2", "o200k", "llama3"} {
+		if _, err := newTokenizer(name); err == nil {
+			t.Errorf("newTokenizer(%q) 应该报错,却成功建出了 tokenizer", name)
+		}
+		if ValidTokenizerTypes[name] {
+			t.Errorf("ValidTokenizerTypes 不该收 %q", name)
+		}
+	}
+}
+
 func TestNewTokenizer_EmptyText_CountsZero(t *testing.T) {
 	tok, err := newTokenizer("cl100k_base")
 	if err != nil {

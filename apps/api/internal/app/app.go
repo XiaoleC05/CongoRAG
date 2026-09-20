@@ -169,11 +169,12 @@ func Run(webFS embed.FS) error {
 	)
 
 	srv := api.NewServer(api.Deps{
-		Logger:       logger,
-		Knowledge:    knowUC,
-		LLM:          llmUC,
-		Conversation: convUC,
-		Agent:        agentUC,
+		Logger:         logger,
+		Knowledge:      knowUC,
+		LLM:            llmUC,
+		Conversation:   convUC,
+		Agent:          agentUC,
+		MaxUploadBytes: cfg.MaxUploadBytes,
 	})
 
 	// 路由不在这里写：RegisterHandlers 由 generated.go 生成，

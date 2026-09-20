@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"path"
 	"strings"
 	"time"
@@ -218,6 +219,22 @@ func (u *Usecase) Delete(ctx context.Context, id uuid.UUID) error {
 // 只是两处都需要一个上限，凑巧选了同一个量级。
 const maxUploadFilenameLen = 255
 
+// statusWriteTimeout 是"用脱离 job 的 ctx 写终态"这一步的超时上限——见
+// markFailed。
+const statusWriteTimeout = 5 * time.Second
+
+// allowedUploadExts 是 v1.0 能摄入的文件类型白名单。
+//
+// 【为什么服务端也要查一遍】前端的选择器写的是 accept=".md,.txt,.markdown"，
+// 但那只是文件选择器的过滤条件，直接 curl -F 就能绕过。白名单不做的话，
+// 一张 png 会被当纯文本切块、拿去 embedding、最后标成 ready——错误发生在
+// 每一步都不报错的路径上，只有检索时的替换字符能看出来。
+var allowedUploadExts = map[string]bool{
+	".md":       true,
+	".markdown": true,
+	".txt":      true,
+}
+
 // Upload 是写路径的完整实现，顺序锁死在这一个方法里，不能被拆开
 // （代码架构设计 §5.4 / 开发文档 §4.7）：
 //
@@ -241,6 +258,12 @@ func (u *Usecase) Upload(ctx context.Context, kbID uuid.UUID, filename string, r
 			"filename is too long (%d characters, max %d): %w",
 			n, maxUploadFilenameLen, platform.ErrInvalid)
 	}
+	// 扩展名按小写比对：.MD 和 .md 是同一类文件。
+	if ext := strings.ToLower(path.Ext(filename)); !allowedUploadExts[ext] {
+		return nil, fmt.Errorf(
+			"unsupported file type %q: only .md, .markdown and .txt are accepted: %w",
+			ext, platform.ErrInvalid)
+	}
 
 	// ① 写临时文件。byteSize 是服务端自己数出来的实际字节数，
 	// 不是客户端上报的（那个不可信）。
@@ -252,8 +275,9 @@ func (u *Usecase) Upload(ctx context.Context, kbID uuid.UUID, filename string, r
 	// 用 defer 保证任何提前 return 的路径都不会漏删半成品临时文件。
 	defer func() { _ = u.files.RemoveTemp(ctx, tmp) }()
 
-	// storage_key 带上原始文件名的扩展名，纯粹是为了方便运维时用肉眼
-	// 辨认磁盘上的文件是什么类型——扩展名不参与任何业务判断。
+	// storage_key 带上原始文件名的扩展名，是为了方便运维用肉眼辨认磁盘上
+	// 的文件是什么类型。扩展名在这里不承担别的职责：能不能摄入在上面的
+	// 白名单里已经判完了，落库用的 storage_key 不是判断依据。
 	storageKey := uuid.New().String() + path.Ext(filename)
 
 	// ② fsync + ③ rename，必须在事务之前（见方法顶部的注释）。
@@ -346,6 +370,16 @@ const orphanReconcileInterval = 10 * time.Minute
 // 数据库记录认领着，剩下的才是真正的孤儿。
 func (u *Usecase) StartReconciler(ctx context.Context) {
 	u.sched.RegisterPeriodic("orphan-files", orphanReconcileInterval, func(ctx context.Context) error {
+		cutoff := time.Now().Add(-orphanGracePeriod)
+
+		// tmp/ 里的半成品一起扫。WriteTemp 写失败时会自己删，但删除本身
+		// 也可能失败（Windows 上句柄没关就是这种情况），那种文件对
+		// List（只扫 rootDir 顶层）是不可见的，没有这一步就只增不减。
+		// 用同一个宽限期：太新的临时文件可能正属于一次还在进行中的上传。
+		if err := u.files.SweepTemp(ctx, cutoff); err != nil {
+			return fmt.Errorf("sweep stale temp files: %w", err)
+		}
+
 		files, err := u.files.List(ctx)
 		if err != nil {
 			return fmt.Errorf("list files for orphan reconciliation: %w", err)
@@ -354,7 +388,6 @@ func (u *Usecase) StartReconciler(ctx context.Context) {
 			return nil
 		}
 
-		cutoff := time.Now().Add(-orphanGracePeriod)
 		candidates := make([]string, 0, len(files))
 		for _, f := range files {
 			if f.ModTime.Before(cutoff) {
@@ -400,10 +433,24 @@ func (u *Usecase) StartReconciler(ctx context.Context) {
 //   - IndexDocument 内部先删后插（见 retrieval.Usecase.IndexDocument），
 //     所以重新跑一遍分块+落库不会留下重复数据
 //
+// 【失败时写不写终态，取决于这是不是最后一次 attempt】isLastAttempt 由
+// worker 按 River 的 job.Attempt/job.MaxAttempts 算好传进来：
+//   - 不是最后一次：只把错误返回给 River，不动 documents.status。文档留在
+//     processing，下一次投递读到"已经跑到这一步"接着往下跑——重试这才真的
+//     能重跑。先写 failed 再交给 River 重试的话，下一次进来读到 failed 会
+//     落进下面的 default 分支报 ErrConflict，重试机制就成了死代码。
+//   - 是最后一次：River 不会再投递，必须落终态，否则文档会永久停在
+//     processing（UI 会一直轮询它，且没有任何任务会把它推走）。
+//
 // 只有当状态是 ready 或 failed 时才拒绝——那两种状态出现在这里说明
 // 有非预期的重复投递或状态被别处并发改动过，值得让它报错浮出来，
 // 而不是悄悄再处理一遍已经完成或已经放弃的文档。
-func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID) error {
+//
+// 【failed 现在确实等于"已放弃"】终态由最后一次 attempt 落下，之后 River
+// 不再投递，而 HTTP 层只有 GET/DELETE、没有重试入口。所以 document.go 的
+// transitions 里 failed->queued（重试）和 ready->processing（重新索引）这两条
+// 边目前没有任何调用点——不是被忽略了，是留给还没做的重试/重建索引入口的。
+func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID, isLastAttempt bool) error {
 	d, err := u.docRepo.ByID(ctx, u.db, docID)
 	if err != nil {
 		return fmt.Errorf("load document %s: %w", docID, err)
@@ -416,6 +463,15 @@ func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID) error {
 		}
 	case StatusProcessing:
 		// 同一个任务被重试，已经跑到这一步了，往下继续。
+	case StatusFailed:
+		// 【终态已达成，这次投递无事可做，返回 nil 而不是报错】
+		// 确定性失败（比如内容不是合法 UTF-8）会直接把文档推进终态 failed，
+		// 而那条分支返回的错误仍然会让 River 按 MaxAttempts 再投 24 次。
+		// 那些投递如果落进下面的 default 分支报 ErrConflict，结果是 24 条
+		// "状态冲突"日志，全都指向一个与真实原因（编码）无关的结论——
+		// 排查时先看到的就是这些噪音。文档已经处理完了（结论是"失败"），
+		// 这里当作成功收尾，让 River 不再重投。
+		return nil
 	default:
 		return fmt.Errorf("document %s has unexpected status %s for processing: %w",
 			docID, d.Status, platform.ErrConflict)
@@ -423,14 +479,29 @@ func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID) error {
 
 	rc, err := u.files.Open(ctx, d.StorageKey)
 	if err != nil {
-		u.markFailed(ctx, docID)
-		return fmt.Errorf("open file %s of document %s: %w", d.StorageKey, docID, err)
+		return u.failProcessing(ctx, docID, isLastAttempt,
+			fmt.Errorf("open file %s of document %s: %w", d.StorageKey, docID, err))
 	}
 	content, err := io.ReadAll(rc)
 	_ = rc.Close()
 	if err != nil {
+		return u.failProcessing(ctx, docID, isLastAttempt,
+			fmt.Errorf("read file %s of document %s: %w", d.StorageKey, docID, err))
+	}
+
+	// 【非 UTF-8 的内容必须在解析前拦住】parseAndChunk 最终会走 []rune，
+	// 非法字节被悄悄换成 U+FFFD：产出一批"合法但毫无意义"的替换字符块，
+	// 拿去 embedding 再入库，文档还标成 ready。同一份文件如果每段都短，
+	// 原始非法字节会直达 chunk 的 INSERT，被 PostgreSQL 以 SQLSTATE 22021
+	// 拒绝——同一种上传两种结局，只取决于段落长度。
+	//
+	// 【这一条不等最后一次 attempt】编码不会因为重试而改变，重试 25 次也是
+	// 同一个结果，所以这里直接落终态，不交给 River 的重试。返回的错误仍然会
+	// 让 River 重投，但那几次投递读回的是终态 failed，走上面那个 case 直接
+	// 返回 nil——不会重跑、也不会刷出 24 条与真实原因无关的"状态冲突"日志。
+	if !utf8.Valid(content) {
 		u.markFailed(ctx, docID)
-		return fmt.Errorf("read file %s of document %s: %w", d.StorageKey, docID, err)
+		return fmt.Errorf("document %s is not valid UTF-8 text: %w", docID, platform.ErrInvalid)
 	}
 
 	chunks := parseAndChunk(content)
@@ -445,16 +516,38 @@ func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID) error {
 		return nil
 	})
 	if err != nil {
-		u.markFailed(ctx, docID)
-		return err
+		return u.failProcessing(ctx, docID, isLastAttempt, err)
 	}
 	return nil
 }
 
-// markFailed 是失败路径的收尾。它自己的错误故意不往上传——调用方
-// （ProcessDocument）已经有一个更有价值的原始错误要返回，markFailed
-// 失败大概率是因为文档已经不在 processing 状态了（比如两次并发重试
-// 都走到了失败分支），那种情况下"标记失败"这件事本身已经不重要。
+// failProcessing 统一处理"这一次 attempt 失败了"的收尾：只有最后一次
+// attempt 才把文档推进终态 failed，其余情况原样把错误交回给 River——
+// 状态留在 processing，下一次投递会接着跑（见 ProcessDocument 的注释）。
+func (u *Usecase) failProcessing(ctx context.Context, docID uuid.UUID, isLastAttempt bool, cause error) error {
+	if isLastAttempt {
+		u.markFailed(ctx, docID)
+	}
+	return cause
+}
+
+// markFailed 把文档从 processing 推进终态 failed。
+//
+// 【ctx 必须活得过这个 job】调用它的时刻往往正是 job 已经失败的同一刻：
+// job 超时时 River 会取消这个 ctx，而 pgx 拿着一个已取消的 ctx 连
+// pgxpool.Acquire 那一步都过不去，UPDATE 一条都不会执行，文档就永远停在
+// processing 里。收尾恰恰是最需要写成功的时候，所以这里摘掉取消信号
+// （WithoutCancel）另起一个带超时的 ctx——脱开而不是彻底无界。
+//
+// 【错误不再丢掉】以前这里是 `_ =`，等于把"文档还卡在 processing"这件事
+// 瞒了下来：没有日志、没有返回值、没有可观察的状态变化。现在至少在
+// 写失败时留一条日志。
 func (u *Usecase) markFailed(ctx context.Context, docID uuid.UUID) {
-	_ = u.docRepo.UpdateStatus(ctx, u.db, docID, StatusProcessing, StatusFailed)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), statusWriteTimeout)
+	defer cancel()
+
+	if err := u.docRepo.UpdateStatus(ctx, u.db, docID, StatusProcessing, StatusFailed); err != nil {
+		slog.Default().Error("failed to mark document as failed",
+			"document_id", docID, "error", err)
+	}
 }

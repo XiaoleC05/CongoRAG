@@ -6,7 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -176,6 +179,92 @@ func TestResolveMasterKey_GeneratesAndPersists(t *testing.T) {
 	second, err := resolveMasterKey(cfg)
 	require.NoError(t, err)
 	assert.Equal(t, first, second, "第二次必须读到同一把密钥，不能每次启动都生成新的")
+}
+
+// ③ 的并发版本：全新安装（没有 data/master.key）时两个进程同时启动——
+// 文档里写明的 `make dev` 和 `make dev-worker` 各占一个终端，或者 api 与
+// worker 两个容器同时起。同一个路径上只能有一把密钥，而且每个调用拿到的
+// 必须是磁盘上那把。
+//
+// 【修复前这条一定失败】原实现是每个调用各 rand.Read 一把、再用
+// O_CREATE|O_TRUNC 覆盖写：8 个调用会返回 8 把不同的密钥，只有最后写入者
+// 那把留在磁盘上，落败方保留一把不落任何介质的密钥——它封的密文（BYOK 的
+// provider API Key）重启后永远解不开，用户只能重填。
+func TestResolveMasterKey_ConcurrentGenerationConvergesToOneKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "master.key")
+	cfg := &Config{MasterKeyPath: path}
+
+	const n = 8
+	keys := make([][]byte, n)
+	errs := make([]error, n)
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start // 尽量让它们真的同时冲进去
+			keys[i], errs[i] = resolveMasterKey(cfg)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	for i := 0; i < n; i++ {
+		require.NoError(t, errs[i], "第 %d 个进程解析主密钥失败", i)
+		require.Len(t, keys[i], masterKeyBytes)
+		assert.Equal(t, keys[0], keys[i],
+			"第 %d 个进程拿到的密钥和第一个不一样——落败方会持有不落磁盘的密钥", i)
+	}
+
+	// 磁盘上那把必须就是所有人拿到的那把（"绝不返回不在磁盘上的密钥"）。
+	onDisk, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, hex.EncodeToString(keys[0]), strings.TrimSpace(string(onDisk)))
+
+	// 临时文件一个都不该留下。
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Equal(t, "master.key", entries[0].Name())
+}
+
+// 落在"文件已创建、内容还没写完"窗口里的读者必须等它写完，而不是把空文件
+// 当成损坏的密钥直接返回错误——修复前这条读法会报
+// must decode to 32 bytes, got 0，进程启动即失败。
+func TestReadPersistedMasterKey_WaitsForInFlightWrite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "master.key")
+	require.NoError(t, os.WriteFile(path, nil, 0o600))
+
+	want := make([]byte, masterKeyBytes)
+	_, err := rand.Read(want)
+	require.NoError(t, err)
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		_ = os.WriteFile(path, []byte(hex.EncodeToString(want)), 0o600)
+	}()
+
+	got, err := readPersistedMasterKey(path)
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
+}
+
+// 但等待要有上限：一个真正空着（或写了一半就崩了）的 master.key 不能把
+// 启动流程挂死，也不能悄悄生成一把新的——必须报出"这个文件不是一把密钥"。
+func TestReadPersistedMasterKey_EmptyFileFailsBounded(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "master.key")
+	require.NoError(t, os.WriteFile(path, nil, 0o600))
+
+	start := time.Now()
+	_, err := readPersistedMasterKey(path)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must decode to 32 bytes, got 0")
+	assert.Less(t, time.Since(start), 5*time.Second, "空文件不能无限等下去")
 }
 
 // 测试 4（清单第四条）：自动生成的 master.key 权限必须是 0600。

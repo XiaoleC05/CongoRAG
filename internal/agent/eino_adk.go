@@ -12,6 +12,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
@@ -75,12 +76,36 @@ func (a *toolAdapter) Info(ctx context.Context) (*schema.ToolInfo, error) {
 	}, nil
 }
 
+// toolError 是"这次工具调用失败了"交回模型时的结果形状——和工具正常的
+// 返回值一样是个 JSON 对象，模型从 error 字段读到原因后可以改参数重试。
+type toolError struct {
+	Error string `json:"error"`
+}
+
 func (a *toolAdapter) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
 	result, err := a.t.Invoke(ctx, json.RawMessage(argsJSON))
-	if err != nil {
+	if err == nil {
+		return string(result), nil
+	}
+
+	// 参数级的失败（除零、非法 UUID、JSON 解析不了）当成一次普通的 tool
+	// result 交回模型，不能作为 Go error 返回：Eino 的 compose ToolsNode
+	// 把 InvokableTool 返回的错误当致命错误——不写 tool message，直接让
+	// 整张 ReAct 图失败。模型永远收不到 tool_result，也就没有机会改参数
+	// 重试，一次 b=0 的除法就能打死整轮 run（issue #15）。
+	//
+	// 只降级 platform.ErrInvalid：检索/查库真的挂掉是基础设施故障，重试
+	// 也没有意义，应该让整轮按上游故障结束；ctx 已取消时同理，这次运行
+	// 正在被拆掉，不该再让模型多跑一轮。
+	if ctx.Err() != nil || !errors.Is(err, platform.ErrInvalid) {
 		return "", err
 	}
-	return string(result), nil
+
+	payload, marshalErr := json.Marshal(toolError{Error: err.Error()})
+	if marshalErr != nil {
+		return "", err
+	}
+	return string(payload), nil
 }
 
 // runAgent 构造一个真实的 ADK ChatModelAgent + Runner,跑一次查询,
@@ -133,9 +158,28 @@ func runAgent(
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: chatAgent, EnableStreaming: true})
 	iter := runner.Query(ctx, input)
 
-	out := make(chan adkEvent)
+	// 带一点缓冲：终结的 done/error 事件不该在接收方刚好慢一拍时卡住
+	// 生产者，取消也被这一层吸收掉。
+	out := make(chan adkEvent, 16)
 	go drainIterator(ctx, iter, out)
 	return out, nil
+}
+
+// sendEvent 往 out 发一个事件，ctx 取消（客户端断开、消费端提前退出）时
+// 返回 false 让调用方收摊。
+//
+// 【为什么每一处发送都必须 select ctx.Done()】out 的接收方是
+// usecase.consumeEvents，它在第一次 emit 失败时就直接返回——客户端断开
+// 时正是如此，此后没有任何人再读 out。无条件 send 会让这个 goroutine
+// 永久阻塞在一次 channel send 上，连带 Eino 的 iterator 一起泄漏，客户端
+// 每中断一次泄漏一套，且没有任何回收路径（issue #35）。
+func sendEvent(ctx context.Context, out chan<- adkEvent, ev adkEvent) bool {
+	select {
+	case out <- ev:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 func drainIterator(ctx context.Context, iter *adk.AsyncIterator[*adk.AgentEvent], out chan<- adkEvent) {
@@ -144,11 +188,11 @@ func drainIterator(ctx context.Context, iter *adk.AsyncIterator[*adk.AgentEvent]
 	for {
 		event, ok := iter.Next()
 		if !ok {
-			out <- adkEvent{kind: adkEventDone}
+			sendEvent(ctx, out, adkEvent{kind: adkEventDone})
 			return
 		}
 		if event.Err != nil {
-			out <- adkEvent{kind: adkEventError, err: event.Err}
+			sendEvent(ctx, out, adkEvent{kind: adkEventError, err: event.Err})
 			return
 		}
 
@@ -159,19 +203,21 @@ func drainIterator(ctx context.Context, iter *adk.AsyncIterator[*adk.AgentEvent]
 
 		switch mv.Role {
 		case schema.Assistant:
-			if err := emitAssistantEvents(mv, out); err != nil {
-				out <- adkEvent{kind: adkEventError, err: err}
+			if err := emitAssistantEvents(ctx, mv, out); err != nil {
+				sendEvent(ctx, out, adkEvent{kind: adkEventError, err: err})
 				return
 			}
 		case schema.Tool:
 			msg, err := mv.GetMessage()
 			if err != nil {
-				out <- adkEvent{kind: adkEventError, err: fmt.Errorf("read tool result message: %w", err)}
+				sendEvent(ctx, out, adkEvent{kind: adkEventError, err: fmt.Errorf("read tool result message: %w", err)})
 				return
 			}
-			out <- adkEvent{
+			if !sendEvent(ctx, out, adkEvent{
 				kind: adkEventToolResult, toolCallID: msg.ToolCallID,
 				toolName: mv.ToolName, toolResult: json.RawMessage(msg.Content),
+			}) {
+				return
 			}
 		}
 	}
@@ -186,13 +232,16 @@ func drainIterator(ctx context.Context, iter *adk.AsyncIterator[*adk.AgentEvent]
 // MessageStream 并 concat——如果直接调用,就拿不到中间的每一块增量,
 // 前端会等到整段话生成完才看到文字,失去流式的意义。这里手动排空、
 // 边收边发 token,收完再自己 concat 一次判断有没有 ToolCalls。
-func emitAssistantEvents(mv *adk.MessageVariant, out chan<- adkEvent) error {
+//
+// 发送被 ctx 取消打断时返回 ctx.Err()：模型流要先关掉（后面的块没人要了），
+// drainIterator 收到这个错误就收摊（详见 sendEvent 的注释）。
+func emitAssistantEvents(ctx context.Context, mv *adk.MessageVariant, out chan<- adkEvent) error {
 	if !mv.IsStreaming {
 		msg := mv.Message
-		if msg.Content != "" {
-			out <- adkEvent{kind: adkEventToken, text: msg.Content}
+		if msg.Content != "" && !sendEvent(ctx, out, adkEvent{kind: adkEventToken, text: msg.Content}) {
+			return ctx.Err()
 		}
-		emitToolCalls(msg.ToolCalls, out)
+		emitToolCalls(ctx, msg.ToolCalls, out)
 		return nil
 	}
 
@@ -207,8 +256,9 @@ func emitAssistantEvents(mv *adk.MessageVariant, out chan<- adkEvent) error {
 			return fmt.Errorf("receive assistant stream: %w", err)
 		}
 		chunks = append(chunks, chunk)
-		if chunk.Content != "" {
-			out <- adkEvent{kind: adkEventToken, text: chunk.Content}
+		if chunk.Content != "" && !sendEvent(ctx, out, adkEvent{kind: adkEventToken, text: chunk.Content}) {
+			mv.MessageStream.Close()
+			return ctx.Err()
 		}
 	}
 	mv.MessageStream.Close()
@@ -217,17 +267,19 @@ func emitAssistantEvents(mv *adk.MessageVariant, out chan<- adkEvent) error {
 	if err != nil {
 		return fmt.Errorf("concat assistant stream chunks: %w", err)
 	}
-	emitToolCalls(full.ToolCalls, out)
+	emitToolCalls(ctx, full.ToolCalls, out)
 	return nil
 }
 
-func emitToolCalls(calls []schema.ToolCall, out chan<- adkEvent) {
+func emitToolCalls(ctx context.Context, calls []schema.ToolCall, out chan<- adkEvent) {
 	for _, tc := range calls {
-		out <- adkEvent{
+		if !sendEvent(ctx, out, adkEvent{
 			kind:       adkEventToolCall,
 			toolCallID: tc.ID,
 			toolName:   tc.Function.Name,
 			toolArgs:   json.RawMessage(tc.Function.Arguments),
+		}) {
+			return
 		}
 	}
 }

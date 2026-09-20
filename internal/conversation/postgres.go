@@ -102,14 +102,32 @@ func (r *PgRepo) NextSequenceNo(ctx context.Context, q platform.Querier, convID 
 	return *max + 1, nil
 }
 
-func (r *PgRepo) RecentMessages(ctx context.Context, q platform.Querier, convID uuid.UUID, afterSequenceNo int64, limit int) ([]*Message, error) {
+func (r *PgRepo) RecentMessages(ctx context.Context, q platform.Querier, convID uuid.UUID, afterSequenceNo, beforeSequenceNo int64, limit int) ([]*Message, error) {
+	// 【为什么是子查询 + 外层 ASC】要同时满足两件事："最近 limit 条"
+	// 和"按旧 → 新返回"。直接 ORDER BY sequence_no ASC LIMIT n 拿到的是
+	// 最旧的 n 条，方向对了内容错了；直接 DESC LIMIT n 内容对了方向错。
+	// 内层按 DESC 取最近 n 条，外层重排成 ASC。
+	//
+	// beforeSequenceNo = 0 表示无上界——sequence_no 从 1 开始分配
+	//（NextSequenceNo 空会话返回 1），0 不可能是一个真实存在的序号。
+	//
+	// 【为什么只挡上界、不加 status <> 'streaming' 谓词】上一轮中断留下的
+	// streaming 行是助手已经生成的真实内容（客户端断开时不会补写完成态），
+	// 按状态过滤会把它从历史里删掉，而 GET /messages 仍然把它展示给用户——
+	// 模型看到的历史会和用户看到的转写不一致。本轮自己的占位行是空内容，
+	// 由序号上界挡住；万一还有别的空行漏下来，itemsToLLMMessages 还会再
+	// 过滤一次。
 	rows, err := q.Query(ctx,
 		`SELECT id, conversation_id, role, content, status, sequence_no, token_usage, created_at
-		 FROM messages
-		 WHERE conversation_id = $1 AND sequence_no > $2
-		 ORDER BY sequence_no DESC
-		 LIMIT $3`,
-		convID, afterSequenceNo, limit)
+		 FROM (
+		     SELECT id, conversation_id, role, content, status, sequence_no, token_usage, created_at
+		     FROM messages
+		     WHERE conversation_id = $1 AND sequence_no > $2 AND ($3 = 0 OR sequence_no < $3)
+		     ORDER BY sequence_no DESC
+		     LIMIT $4
+		 ) AS recent_messages
+		 ORDER BY sequence_no ASC`,
+		convID, afterSequenceNo, beforeSequenceNo, limit)
 	if err != nil {
 		return nil, fmt.Errorf("recent messages of conversation %s: %w", convID, platform.WrapPgErr(err))
 	}
@@ -161,10 +179,19 @@ func (r *PgRepo) MessagesAfter(ctx context.Context, q platform.Querier, convID u
 	return msgs, nil
 }
 
+// LatestSequenceNo 只数已定稿（status = 'completed'）的行。
+//
+// 【为什么排除生成中的占位行】每轮 send 先把助手消息以空内容、
+// status='streaming' 落库占位（usecase.go），这一行此刻的正文还没有定稿。
+// 如果它算进水位，摘要任务就会在一个空占位行上被触发、还可能把
+// covered_until_sequence_no 推过它——生成结束后写进去的正文既不在摘要里，
+// 又被 RecentMessages（sequence_no > covered_until）排除，这条回答对模型
+// 永久不可见。门控的意义是"攒够了多少条真正可以压缩的消息"，不是
+// "序号涨到了多少"。
 func (r *PgRepo) LatestSequenceNo(ctx context.Context, q platform.Querier, convID uuid.UUID) (int64, error) {
 	var max *int64
 	err := q.QueryRow(ctx,
-		`SELECT MAX(sequence_no) FROM messages WHERE conversation_id = $1`, convID,
+		`SELECT MAX(sequence_no) FROM messages WHERE conversation_id = $1 AND status = 'completed'`, convID,
 	).Scan(&max)
 	if err != nil {
 		return 0, fmt.Errorf("latest sequence_no of conversation %s: %w", convID, platform.WrapPgErr(err))

@@ -103,3 +103,33 @@ func TestEnvOr(t *testing.T) {
 
 	assert.Equal(t, "fallback", envOr("CONGORAG_DEFINITELY_NOT_SET", "fallback"))
 }
+
+// 上传上限只有"被读成了 0"这一个危险方向——0 在调用侧的约定是"不限"，
+// 一个手滑打进去的 0 会让整条防线无声消失，而配置解析当时不报任何错。
+// 所以非法值一律退回默认值，测试要盯住的正是这一条。
+func TestLoadConfig_MaxUploadBytes(t *testing.T) {
+	t.Setenv("CONGORAG_DB_URL", "postgres://localhost/congorag")
+
+	for _, tt := range []struct {
+		name string
+		env  string
+		want int64
+	}{
+		{"没设就用默认值", "", defaultMaxUploadBytes},
+		{"显式覆盖", "1048576", 1048576},
+		{"多了空格也算数", "  2048  ", 2048},
+		{"不是数字退回默认值", "32MB", defaultMaxUploadBytes},
+		{"0 退回默认值", "0", defaultMaxUploadBytes},
+		{"负数退回默认值", "-1", defaultMaxUploadBytes},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("CONGORAG_MAX_UPLOAD_BYTES", tt.env)
+
+			cfg, err := LoadConfig()
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, cfg.MaxUploadBytes)
+			assert.Positive(t, cfg.MaxUploadBytes, "上限为 0 等于把限关掉，配置解析必须把它挡回来")
+		})
+	}
+}

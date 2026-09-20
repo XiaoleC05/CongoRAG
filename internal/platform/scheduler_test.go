@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/riverqueue/river"
 	"github.com/stretchr/testify/assert"
@@ -67,6 +68,20 @@ func TestPeriodicTaskWorker_UnknownName_ReturnsError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "never-registered")
+}
+
+// WorkerDefaults.Timeout 返回 0,而 River 把 0 换成 JobTimeoutDefault
+// （1 分钟）。走这个桥的周期任务是"遍历全部会话、每个会话一次 LLM 调用"
+// 的整表扫描（conversation-summary 每 5 分钟、conversation-preferences
+// 每 10 分钟）,1 分钟的上限必然把排在后面的会话整轮截断。所以这个 Worker
+// 必须真的覆写 Timeout——返回 0 就等于没覆写,只能靠运维从"job 记成
+// completed 但日志刷 context deadline exceeded"里反推。
+func TestPeriodicTaskWorker_Timeout_OverridesRiverDefault(t *testing.T) {
+	worker := NewPeriodicTaskWorker(NewRiverScheduler())
+	job := &river.Job[periodicTaskArgs]{Args: periodicTaskArgs{Name: "my-task"}}
+
+	assert.Greater(t, worker.Timeout(job), time.Minute,
+		"不能落回 River 的 1 分钟默认上限")
 }
 
 // 装配顺序错了（SetClient 之前就调用 RegisterPeriodic）必须显眼地炸掉，

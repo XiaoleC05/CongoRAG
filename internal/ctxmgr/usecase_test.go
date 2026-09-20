@@ -320,6 +320,52 @@ func TestBuild_CitationsOnlyIncludeSurvivingChunks(t *testing.T) {
 	assert.Equal(t, "a.md", result.Citations[0].Filename)
 }
 
+// 压缩结果比被替换的区域还大时必须整条丢掉：模型返回一段更啰嗦的摘要
+// （提示词里的尺寸指令只是"尽量"）不能变成"这一步不但没省 token 还多占
+// 预算"——多出来的部分只能从尾部 chunk 里挤，被挤掉的 chunk 的引用也跟着
+// 从下发给客户端的流里消失。
+func TestBuild_CompressorReturnsBiggerSummary_KeepsOriginalRegion(t *testing.T) {
+	// 可压缩区两条消息共 20 token，压缩器却声称结果占 50 token。
+	comp := &fakeCompressor{resultTokens: 50}
+	uc := NewUsecase(comp)
+
+	req := Request{
+		SystemPrompt: "s", UserInput: "u",
+		RecentMessages: []llm.Message{{Content: "历史一"}, {Content: "历史二"}},
+		Chunks:         []domain.Chunk{{ID: uuid.New(), Content: "唯一的分块", Score: 0.9}},
+		Budget:         budgetOf(40, 10), // 固定区 20 + 分块 10 + 可压缩区 20 = 50，超预算
+	}
+
+	result, err := uc.Build(context.Background(), req)
+
+	require.NoError(t, err, "接受一个更大的摘要会把本来放得下的请求挤成 overflow")
+	contents := itemContents(result.Items)
+	assert.Contains(t, contents, "历史一", "压缩结果更大时必须保留原区域")
+	assert.Contains(t, contents, "历史二")
+	assert.NotContains(t, contents, "compressed")
+}
+
+// 走到第 4 步（删除区全丢光还超预算）时错误里要带上诊断数字：这种 overflow
+// 的原因是"固定区 + 压缩后的可压缩区"本身，和"删得不够"是两回事，
+// 裸的 ErrOverflow 分不出来。
+func TestBuild_OverflowErrorCarriesDiagnostics(t *testing.T) {
+	// 固定区 20 + 压缩后的可压缩区 15 = 35，预算 30，而且没有删除区可削。
+	uc := NewUsecase(&fakeCompressor{resultTokens: 15})
+
+	req := Request{
+		SystemPrompt: "s", UserInput: "u",
+		RecentMessages: []llm.Message{{Content: "历史一"}, {Content: "历史二"}},
+		Budget:         budgetOf(30, 10),
+	}
+
+	_, err := uc.Build(context.Background(), req)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrOverflow, "带诊断也不能破坏 errors.Is 的判据")
+	assert.Contains(t, err.Error(), "35", "错误里要能看出压缩完之后还剩多少 token")
+	assert.Contains(t, err.Error(), "30", "错误里要能看出预算是多少")
+}
+
 func TestBuild_TokenCostMatchesSumOfItems(t *testing.T) {
 	uc := NewUsecase(&fakeCompressor{})
 	req := Request{
@@ -336,4 +382,31 @@ func TestBuild_TokenCostMatchesSumOfItems(t *testing.T) {
 		sum += it.TokenCost
 	}
 	assert.Equal(t, sum, result.TokenCost)
+}
+
+// Request.RecentMessages 里的角色必须原样带到 Item.Role 上——这个包是
+// 角色穿过可压缩区的唯一通道，在这里丢掉它，下游（conversation 那个
+// 把 Item 转回线路消息的消费方）就只能自己编一个角色出来。
+func TestBuild_CarriesRecentMessageRoleOntoItem(t *testing.T) {
+	uc := NewUsecase(&fakeCompressor{})
+	req := Request{
+		SystemPrompt: "s", UserInput: "u",
+		RecentMessages: []llm.Message{
+			{Role: domain.RoleUser, Content: "知识库在哪个目录？"},
+			{Role: domain.RoleAssistant, Content: "data/documents"},
+		},
+		Budget: budgetOf(1000, 10),
+	}
+
+	result, err := uc.Build(context.Background(), req)
+
+	require.NoError(t, err)
+	roles := make([]domain.Role, 0, 2)
+	for _, it := range result.Items {
+		if it.Source == domain.SourceRecent {
+			roles = append(roles, it.Role)
+		}
+	}
+	assert.Equal(t, []domain.Role{domain.RoleUser, domain.RoleAssistant}, roles,
+		"Recent 条目的顺序和角色都必须保持调用方传进来的样子")
 }

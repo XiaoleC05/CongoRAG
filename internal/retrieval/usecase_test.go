@@ -3,6 +3,7 @@ package retrieval
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -304,6 +305,91 @@ func TestIndexDocument_EmbedFails(t *testing.T) {
 	err := uc.IndexDocument(context.Background(), nil, uuid.New(), []domain.Chunk{{Content: "a"}})
 
 	require.Error(t, err)
+}
+
+// ────────────────────────────────────────────────────────────────
+// 分批：provider 对单次请求的 input 条数有上限
+// ────────────────────────────────────────────────────────────────
+
+// cappedEmbedder 模拟"单次请求最多收 max 条 input"，超了就报错——
+// OpenAI 的 /v1/embeddings 就是这样（input 数组上限 2048），而 eino 的
+// embedder 是直通，调用方给多少条它一次发多少条。
+//
+// 它同时校验向量与文本的对应关系：向量值取文本长度，所以拼回来之后
+// 只要有一条错位，断言就会看到长度对不上。
+type cappedEmbedder struct {
+	max   int
+	calls []int // 每次请求的条数，用来断言确实分批了
+}
+
+func (e *cappedEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+	if len(texts) > e.max {
+		return nil, errors.New("too many inputs in one embedding request")
+	}
+	e.calls = append(e.calls, len(texts))
+	out := make([][]float32, len(texts))
+	for i, text := range texts {
+		out[i] = []float32{float32(len([]rune(text)))}
+	}
+	return out, nil
+}
+
+func (e *cappedEmbedder) Dim() int { return 1 }
+
+// 【这条是#16的回归测试】以前 IndexDocument 把整篇文档的所有分块塞进一次
+// embedder.Embed，一份切出几千块的文档必然 400：事务回滚、文档标 failed，
+// 重传还是同样的块数、同样失败，用户手上没有任何可调的杠杆。
+func TestIndexDocument_LargeDocument_IsBatched(t *testing.T) {
+	model := embeddingModel(uuid.New(), "embed-1", time.Now())
+	repo := newFakeRepo()
+	// 上限故意设得远小于分块数，确保不分批就一定失败。
+	embedder := &cappedEmbedder{max: embedBatchSize}
+	registry := &fakeRegistry{embedder: embedder}
+	configRepo := &fakeConfigRepo{models: []*llm.Model{model}}
+	uc := NewUsecase(repo, registry, configRepo, nil)
+
+	docID := uuid.New()
+	// 长度逐个递增，向量值 = 文本长度就成了"这条向量属于哪个分块"的指纹。
+	const n = embedBatchSize*2 + 7
+	chunks := make([]domain.Chunk, n)
+	for i := range chunks {
+		chunks[i] = domain.Chunk{Content: strings.Repeat("x", i+1)}
+	}
+
+	err := uc.IndexDocument(context.Background(), nil, docID, chunks)
+
+	require.NoError(t, err, "分块数超过单次请求上限时应该自动分批，而不是把错误抛给上游")
+	require.Len(t, embedder.calls, 3, "3 批：256 + 256 + 7")
+	for i, got := range embedder.calls {
+		assert.LessOrEqual(t, got, embedBatchSize, "第 %d 批超过了单次请求上限", i+1)
+	}
+
+	// 拼回来的向量必须和 chunks 一一对应、顺序不变。
+	require.Len(t, repo.vecs[docID], n)
+	for i, vec := range repo.vecs[docID] {
+		require.Len(t, vec, 1)
+		assert.Equal(t, float32(len([]rune(chunks[i].Content))), vec[0],
+			"第 %d 个分块的向量错位了", i)
+	}
+	assert.Equal(t, chunks, repo.chunks[docID])
+}
+
+// 分批不能改变"上游返回条数不对就报错"这条防线——每一批都要查。
+func TestIndexDocument_BatchedMismatchStillFails(t *testing.T) {
+	model := embeddingModel(uuid.New(), "embed-1", time.Now())
+	repo := newFakeRepo()
+	registry := &fakeRegistry{embedder: &fakeEmbedder{mismatch: true}}
+	configRepo := &fakeConfigRepo{models: []*llm.Model{model}}
+	uc := NewUsecase(repo, registry, configRepo, nil)
+
+	chunks := make([]domain.Chunk, embedBatchSize+1)
+	for i := range chunks {
+		chunks[i] = domain.Chunk{Content: "x"}
+	}
+
+	err := uc.IndexDocument(context.Background(), nil, uuid.New(), chunks)
+
+	assert.ErrorIs(t, err, platform.ErrUpstream)
 }
 
 // embedder 返回的向量数量和送进去的文本数量不一致——必须显式报错，

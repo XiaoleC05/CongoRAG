@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 
@@ -90,15 +91,26 @@ func Recovery(logger *slog.Logger) gin.HandlerFunc {
 	})
 }
 
-// isLoopbackHost 判断 Host 头（形如 "127.0.0.1:3210"）是不是回环地址。
+// isLoopbackHost 判断 Host 头（形如 "127.0.0.1:3210"、"[::1]:3210"、
+// 不带端口的 "::1" / "[::1]"）是不是回环地址。
+//
+// 【为什么不能按最后一个冒号截断】IPv6 字面量内部就带冒号：不带端口时
+// 那个"最后一位冒号"在地址里，"::1" 会被截成 ":"、"[::1]" 会被截成 "["，
+// 于是两个白名单值永远匹配不上，Host: [::1] 的请求被 403 forbidden_host
+// 拒掉（带端口的形式反而能过，所以看起来像偶发）。这里改用
+// net.SplitHostPort 解析端口：解析失败说明整个 host 就是地址本身（不带
+// 端口的 IPv6 正是这种情况），再剥掉方括号交给 net.ParseIP 判定——
+// 这样有端口/无端口、带方括号/不带方括号走的是同一条判据。
 func isLoopbackHost(host string) bool {
 	name := host
-	if i := strings.LastIndex(host, ":"); i >= 0 {
-		name = host[:i]
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		name = h
 	}
-	switch name {
-	case "localhost", "127.0.0.1", "::1", "[::1]":
+	if strings.EqualFold(name, "localhost") {
 		return true
+	}
+	if ip := net.ParseIP(strings.Trim(name, "[]")); ip != nil {
+		return ip.IsLoopback()
 	}
 	return false
 }

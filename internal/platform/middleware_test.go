@@ -42,12 +42,18 @@ func doReq(r *gin.Engine, host, origin string) *httptest.ResponseRecorder {
 func TestOriginCheck_AllowsLoopbackHosts(t *testing.T) {
 	r := newMiddlewareRouter(OriginCheck(&Config{}))
 
+	// IPv6 的四种写法都要列全：带端口的 "[::1]:3210" 能过，掩盖了
+	// "::1" / "[::1]" 被末位冒号截断后永不匹配这件事，所以无端口的形式
+	// 必须单独钉住（Host 不写端口本来就是合法的，scheme 默认端口就是它）。
 	for _, host := range []string{
 		"localhost:3210",
 		"127.0.0.1:3210",
 		"localhost",
 		"127.0.0.1",
 		"[::1]:3210",
+		"[::1]:80",
+		"[::1]",
+		"::1",
 	} {
 		w := doReq(r, host, "")
 		assert.Equal(t, http.StatusOK, w.Code, "Host: %s 该放行", host)
@@ -68,6 +74,8 @@ func TestOriginCheck_RejectsNonLoopbackHosts(t *testing.T) {
 		"localhost.evil.com:3210", // 前缀像 localhost，但不是
 		"127.0.0.1.evil.com:3210", //
 		"notlocalhost:3210",       //
+		"[2001:db8::1]:3210",      // 是 IPv6 但不是回环——不能因为"认 IPv6"就放行
+		"2001:db8::1",             //
 	} {
 		w := doReq(r, host, "")
 		assert.Equal(t, http.StatusForbidden, w.Code, "Host: %s 该拒绝", host)
@@ -86,6 +94,8 @@ func TestOriginCheck_AllowsLoopbackOrigins(t *testing.T) {
 		"http://127.0.0.1:3210", // 内嵌前端
 		"https://localhost:5173",
 		"http://localhost",
+		"http://[::1]",      // 无端口的 IPv6 回环 Origin
+		"http://[::1]:3210", //
 	} {
 		w := doReq(r, "localhost:3210", origin)
 		assert.Equal(t, http.StatusOK, w.Code, "Origin: %s 该放行", origin)

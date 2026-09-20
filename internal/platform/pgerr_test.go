@@ -45,6 +45,19 @@ func TestWrapPgErr_ForeignKeyViolation(t *testing.T) {
 	assert.Contains(t, out.Error(), "documents_knowledge_base_id_fkey")
 }
 
+// 23502（not_null_violation）同样是"请求数据碰了约束"——比如契约里的可选
+// 字段被省略、代码把 nil slice 绑进了 NOT NULL 列（issue #18）。归成
+// invalid_argument 才能让客户端看出是自己这一侧的输入问题，否则它落到
+// classify() 的 default，变成一个问不出字段名的通用 500。
+func TestWrapPgErr_NotNullViolationBecomesInvalidArgument(t *testing.T) {
+	in := &pgconn.PgError{Code: "23502", ColumnName: "tool_names"}
+
+	out := WrapPgErr(in)
+
+	assert.ErrorIs(t, out, ErrInvalid)
+	assert.Contains(t, out.Error(), "tool_names")
+}
+
 // 认不出的 SQLSTATE 必须【原样返回】。
 //
 // 包成某个 sentinel 的话，一个本该是 500 的数据库故障会被映射成 4xx，

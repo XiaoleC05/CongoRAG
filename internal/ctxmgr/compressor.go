@@ -3,6 +3,7 @@ package ctxmgr
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
@@ -39,6 +40,21 @@ const compressPrompt = "请把下面这段对话历史压缩成一段简洁的�
 	"保留关键事实、决定和用户表达过的偏好，去掉寒暄和重复内容。" +
 	"直接输出摘要正文，不要加任何前缀说明。"
 
+// compressBudgetPrompt 把尺寸约束写进提示词。targetTokens 是调用方算出来的
+// "可压缩区还允许占多少 token"（Build 第 2 步的 remaining），模型只能看见
+// 提示词里的话：不给尺寸指令，它返回多长完全看运气——而多出来的长度是从
+// 尾部 chunk 的预算里挤出来的，被挤掉的 chunk 的引用也跟着从下发给客户端
+// 的流里消失。这个约束只是"尽量"：LLM 不是精确的 token 计数器，真正的
+// 兜底在 Build 那边（压缩结果不比原区域小就整条丢掉）。
+func compressBudgetPrompt(targetTokens int) string {
+	if targetTokens <= 0 {
+		// remaining 被夹到 0 时（删除区已经把预算占满）不能写"控制在 0 个
+		// token 以内"——那条指令模型没法遵守，等于什么都没说。
+		return compressPrompt + "这段摘要必须尽可能短。"
+	}
+	return fmt.Sprintf("%s这段摘要控制在 %d 个 token 以内。", compressPrompt, targetTokens)
+}
+
 // Compress 把 items 的内容拼起来发给 chat 模型，请求一段不超过
 // targetTokens 的摘要，包成一个新的 Item 返回。
 //
@@ -49,7 +65,7 @@ const compressPrompt = "请把下面这段对话历史压缩成一段简洁的�
 //
 // 【压缩结果不保证严格不超过 targetTokens】LLM 不是精确的 token 计数器，
 // 只能"尽量压到目标附近"。Build 那边压缩完之后还会重新算一次总量，
-// 压过头或压不够都会在那一步被发现并进入第 3 步（削减删除区），
+// 压过头或压不够都会在那一步被发现（压过头的结果会被整条丢掉），
 // 这里不需要重试到精确为止。
 func (c *LLMCompressor) Compress(ctx context.Context, items []Item, targetTokens int, tok llm.Tokenizer) ([]Item, error) {
 	if len(items) == 0 {
@@ -65,14 +81,9 @@ func (c *LLMCompressor) Compress(ctx context.Context, items []Item, targetTokens
 		return nil, fmt.Errorf("get chat model for compression: %w", err)
 	}
 
-	var combined string
-	for _, it := range items {
-		combined += string(it.Source) + ": " + it.Content + "\n"
-	}
-
 	resp, err := chatModel.Generate(ctx, []llm.Message{
-		{Role: domain.RoleSystem, Content: compressPrompt},
-		{Role: domain.RoleUser, Content: combined},
+		{Role: domain.RoleSystem, Content: compressBudgetPrompt(targetTokens)},
+		{Role: domain.RoleUser, Content: formatCompressibleItems(items)},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("generate compressed summary: %w", err)
@@ -85,4 +96,23 @@ func (c *LLMCompressor) Compress(ctx context.Context, items []Item, targetTokens
 		TokenCost:    tok.Count(summary),
 		Compressible: true,
 	}}, nil
+}
+
+// formatCompressibleItems 把待压缩的条目拼成一段带说话人标签的文本。
+//
+// 【Recent 条目必须用真角色做标签，不能用 Source】可压缩区里混着两个
+// 说话人：user 和 assistant。如果两类都用 Source（"recent:"）标，
+// 模型看到的是两段无主的文本，压出来的摘要会把助手自己的话记成
+// "用户说……"——这个错误归属会写进持久化的 summary，跨摘要边界
+// 一路带下去。Role 为空时退回 Source，保证标签永远不是空字符串。
+func formatCompressibleItems(items []Item) string {
+	var b strings.Builder
+	for _, it := range items {
+		label := string(it.Source)
+		if it.Source == domain.SourceRecent && it.Role != "" {
+			label = string(it.Role)
+		}
+		b.WriteString(label + ": " + it.Content + "\n")
+	}
+	return b.String()
 }

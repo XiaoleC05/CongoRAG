@@ -106,6 +106,23 @@ func NewPeriodicTaskWorker(sched *riverScheduler) *PeriodicTaskWorker {
 	return &PeriodicTaskWorker{sched: sched}
 }
 
+// periodicTaskTimeout 是走这个桥的周期任务的执行上限。
+//
+// 【为什么必须显式声明,不能继承默认值】PeriodicTaskWorker 内嵌
+// WorkerDefaults,而 WorkerDefaults.Timeout 返回 0;River 看到 0 就换成
+// JobTimeoutDefault（1 分钟）。可经由这个桥注册的任务恰恰都是"遍历全部
+// 会话、每个会话再发起一次 LLM 调用"的整表扫描（conversation-summary
+// 每 5 分钟、conversation-preferences 每 10 分钟），一轮超过 1 分钟是
+// 常态;超时后 job ctx 被取消,排在后面的会话这一轮全部失败。给一个
+// "一轮肯定干得完"的上限,而不是沿用那个为单条任务设计的默认值。
+const periodicTaskTimeout = 30 * time.Minute
+
+// Timeout 覆写 WorkerDefaults 的 0 值——0 会让 River 拿 1 分钟的默认上限
+// 截断整表扫描（见 periodicTaskTimeout 的注释）。
+func (w *PeriodicTaskWorker) Timeout(*river.Job[periodicTaskArgs]) time.Duration {
+	return periodicTaskTimeout
+}
+
 func (w *PeriodicTaskWorker) Work(ctx context.Context, job *river.Job[periodicTaskArgs]) error {
 	fn, ok := w.sched.lookup(job.Args.Name)
 	if !ok {

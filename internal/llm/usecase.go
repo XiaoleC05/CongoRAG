@@ -104,7 +104,7 @@ func (u *Usecase) Bootstrap(ctx context.Context, req BootstrapRequest) (*Bootstr
 			Capabilities:    req.ChatModel.Capabilities,
 			ContextWindow:   req.ChatModel.ContextWindow,
 			MaxOutputTokens: req.ChatModel.MaxOutputTokens,
-			TokenizerType:   req.ChatModel.TokenizerType,
+			TokenizerType:   strings.TrimSpace(req.ChatModel.TokenizerType),
 			CreatedAt:       now,
 		},
 		EmbeddingModel: &Model{
@@ -134,7 +134,7 @@ func (u *Usecase) Bootstrap(ctx context.Context, req BootstrapRequest) (*Bootstr
 		if err := u.repo.UpsertModel(ctx, q, result.EmbeddingModel); err != nil {
 			return fmt.Errorf("insert embedding model: %w", err)
 		}
-		if err := alterVectorColumns(ctx, q, dim); err != nil {
+		if err := alterVectorColumns(ctx, q, dim, req.EmbeddingModelID); err != nil {
 			return fmt.Errorf("alter vector columns to halfvec(%d): %w", dim, err)
 		}
 		return nil
@@ -169,6 +169,14 @@ func validateBootstrapRequest(req BootstrapRequest) error {
 	}
 	if strings.TrimSpace(req.ChatModel.TokenizerType) == "" {
 		return fmt.Errorf("chat model tokenizer type must not be empty: %w", platform.ErrInvalid)
+	}
+	// 只校验非空不够：任意字符串都会落库、引导页照样 201，而聊天路径上
+	// 唯一的消费者 newTokenizer 只认 ValidTokenizerTypes 里那两个值——
+	// 坏值会在之后每一条消息上爆发，还被归因到用户的消息。保存时挡住它。
+	if !ValidTokenizerTypes[strings.TrimSpace(req.ChatModel.TokenizerType)] {
+		return fmt.Errorf(
+			"chat model tokenizer type %q is not supported, must be one of cl100k_base/o200k_base: %w",
+			req.ChatModel.TokenizerType, platform.ErrInvalid)
 	}
 	if strings.TrimSpace(req.EmbeddingModelID) == "" {
 		return fmt.Errorf("embedding model id must not be empty: %w", platform.ErrInvalid)

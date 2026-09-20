@@ -3,6 +3,7 @@ package conversation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -64,7 +65,7 @@ func TestMaintainSummary_BelowThreshold_NoOp(t *testing.T) {
 	d.repo.conversations[convID] = &Conversation{ID: convID}
 	for i := int64(1); i <= summaryTriggerMessages-1; i++ {
 		d.repo.messages[convID] = append(d.repo.messages[convID],
-			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser, Content: "msg", SequenceNo: i})
+			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser, Content: "msg", Status: MsgCompleted, SequenceNo: i})
 	}
 
 	err := d.uc.MaintainSummary(context.Background(), convID)
@@ -84,7 +85,7 @@ func TestMaintainSummary_AboveThreshold_GeneratesAndAdvancesWatermark(t *testing
 	d.repo.conversations[convID] = &Conversation{ID: convID}
 	for i := int64(1); i <= summaryTriggerMessages; i++ {
 		d.repo.messages[convID] = append(d.repo.messages[convID],
-			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser, Content: "msg", SequenceNo: i})
+			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser, Content: "msg", Status: MsgCompleted, SequenceNo: i})
 	}
 
 	err := d.uc.MaintainSummary(context.Background(), convID)
@@ -104,7 +105,7 @@ func TestMaintainSummary_IncludesPriorSummaryInPrompt(t *testing.T) {
 	d.repo.summaries[convID] = &Summary{ConversationID: convID, Summary: "旧摘要内容", CoveredUntilSequenceNo: 5}
 	for i := int64(6); i <= 5+summaryTriggerMessages; i++ {
 		d.repo.messages[convID] = append(d.repo.messages[convID],
-			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser, Content: "新消息", SequenceNo: i})
+			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser, Content: "新消息", Status: MsgCompleted, SequenceNo: i})
 	}
 
 	err := d.uc.MaintainSummary(context.Background(), convID)
@@ -127,13 +128,107 @@ func TestMaintainSummary_ChatModelFails_ErrorPropagates(t *testing.T) {
 	d.repo.conversations[convID] = &Conversation{ID: convID}
 	for i := int64(1); i <= summaryTriggerMessages; i++ {
 		d.repo.messages[convID] = append(d.repo.messages[convID],
-			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser, Content: "msg", SequenceNo: i})
+			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser, Content: "msg", Status: MsgCompleted, SequenceNo: i})
 	}
 
 	err := d.uc.MaintainSummary(context.Background(), convID)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "upstream boom")
+}
+
+// 最新一条还是生成中的占位行（空内容、status='streaming'）时,这一轮
+// 不该摘要任何东西：门控数的是已定稿的消息,占位行不该把它顶过去。
+// 修复前 latest 会把占位行算进去、批次也把它当普通消息压掉,水位线因此
+// 跨过它——生成结束后写进去的正文永远进不了后续 prompt。
+func TestMaintainSummary_NewestRowStillStreaming_NoOp(t *testing.T) {
+	d := newTestUsecase()
+	convID := uuid.New()
+	d.repo.conversations[convID] = &Conversation{ID: convID}
+	for i := int64(1); i <= summaryTriggerMessages-1; i++ {
+		d.repo.messages[convID] = append(d.repo.messages[convID],
+			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser, Content: "msg", Status: MsgCompleted, SequenceNo: i})
+	}
+	d.repo.messages[convID] = append(d.repo.messages[convID],
+		&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleAssistant,
+			Content: "", Status: MsgStreaming, SequenceNo: summaryTriggerMessages})
+
+	err := d.uc.MaintainSummary(context.Background(), convID)
+
+	require.NoError(t, err)
+	_, err = d.repo.GetSummary(context.Background(), nil, convID)
+	assert.ErrorIs(t, err, platform.ErrNotFound, "生成中的占位行不该触发摘要")
+	assert.Empty(t, d.registry.chatModel.generateCalls, "没到门槛不该调用模型")
+}
+
+// 批次里夹着一条 streaming 行（客户端断开时留下的、正文已经冻结的那条）时,
+// 水位线只能推进到它前面那条定稿消息：跨过去就等于把这条行从摘要和
+// RecentMessages 里同时排除掉。
+func TestMaintainSummary_StreamingRowInsideBatch_WatermarkStopsBeforeIt(t *testing.T) {
+	d := newTestUsecase()
+	convID := uuid.New()
+	d.repo.conversations[convID] = &Conversation{ID: convID}
+	for i := int64(1); i <= summaryTriggerMessages-1; i++ {
+		d.repo.messages[convID] = append(d.repo.messages[convID],
+			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser, Content: "已定稿的历史", Status: MsgCompleted, SequenceNo: i})
+	}
+	// 第 20 条是一次被中断的生成：正文停在半截，status 永远停在 streaming
+	// （客户端断开时不会有人补写完成态）。
+	orphan := &Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleAssistant,
+		Content: "半截答案", Status: MsgStreaming, SequenceNo: summaryTriggerMessages}
+	d.repo.messages[convID] = append(d.repo.messages[convID], orphan)
+	for i := int64(summaryTriggerMessages + 1); i <= summaryTriggerMessages*2-1; i++ {
+		d.repo.messages[convID] = append(d.repo.messages[convID],
+			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser, Content: "更晚的历史", Status: MsgCompleted, SequenceNo: i})
+	}
+
+	err := d.uc.MaintainSummary(context.Background(), convID)
+	require.NoError(t, err)
+
+	s, err := d.repo.GetSummary(context.Background(), nil, convID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(summaryTriggerMessages-1), s.CoveredUntilSequenceNo,
+		"水位线只能推进到批次里最后一条已定稿的消息")
+
+	// 被截掉的那条留在水位线之后,下一轮还会被 RecentMessages 取到——
+	// 这才是"这一轮没吸收"和"永久从 prompt 里消失"的区别。
+	recent, err := d.repo.RecentMessages(context.Background(), nil, convID, s.CoveredUntilSequenceNo, 0, 100)
+	require.NoError(t, err)
+	var sawOrphan bool
+	for _, m := range recent {
+		if m.SequenceNo == summaryTriggerMessages {
+			sawOrphan = true
+			assert.Equal(t, "半截答案", m.Content)
+		}
+	}
+	assert.True(t, sawOrphan, "水位线之后的 streaming 行必须还能被取回")
+}
+
+// 模型返回空（或纯空白）completion 时必须当作失败：不能写库、更不能推进
+// 水位线——summary 列是 text NOT NULL,空串写得进去,写进去就是旧摘要被
+// 覆盖 + 那段历史从 prompt 里消失的双重损失,而且不可恢复。
+func TestMaintainSummary_EmptyCompletion_KeepsPriorSummaryAndWatermark(t *testing.T) {
+	for _, content := range []string{"", "  \n\t "} {
+		t.Run(fmt.Sprintf("content=%q", content), func(t *testing.T) {
+			d := newTestUsecase()
+			d.registry.chatModel.generateResp = &llm.Message{Content: content}
+			convID := uuid.New()
+			d.repo.conversations[convID] = &Conversation{ID: convID}
+			d.repo.summaries[convID] = &Summary{ConversationID: convID, Summary: "旧摘要内容", CoveredUntilSequenceNo: 5}
+			for i := int64(6); i <= 5+summaryTriggerMessages; i++ {
+				d.repo.messages[convID] = append(d.repo.messages[convID],
+					&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser, Content: "新消息", Status: MsgCompleted, SequenceNo: i})
+			}
+
+			err := d.uc.MaintainSummary(context.Background(), convID)
+
+			require.Error(t, err, "空 completion 必须让这一轮失败,由下一个 tick 重试")
+			s, getErr := d.repo.GetSummary(context.Background(), nil, convID)
+			require.NoError(t, getErr)
+			assert.Equal(t, "旧摘要内容", s.Summary, "旧摘要不能被空串覆盖")
+			assert.Equal(t, int64(5), s.CoveredUntilSequenceNo, "水位线不能推进")
+		})
+	}
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -202,4 +297,62 @@ func TestExtractPreferences_EmptyInput_SkipsLLMCall(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, got)
 	assert.Empty(t, d.registry.chatModel.generateCalls, "没有输入消息时不该调用模型")
+}
+
+// ════════════════════════════════════════════════════════════════
+// 整轮扫描被 job 超时截断时必须上报失败
+// ════════════════════════════════════════════════════════════════
+
+// seedSummarizableConversations 造 n 个越过摘要门槛的会话。
+func seedSummarizableConversations(d *testDeps, n int) {
+	for i := 0; i < n; i++ {
+		convID := uuid.New()
+		d.repo.conversations[convID] = &Conversation{ID: convID}
+		for seq := int64(1); seq <= summaryTriggerMessages; seq++ {
+			d.repo.messages[convID] = append(d.repo.messages[convID],
+				&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser,
+					Content: "msg", Status: MsgCompleted, SequenceNo: seq})
+		}
+	}
+}
+
+// 单个会话失败可以吞掉,ctx 被取消不行——那说明 River 的 job 超时把这一轮
+// 截断了,排在后面的会话根本没被扫到。这里让第一个会话的模型调用正好触发
+// 取消,扫描返回 nil 的话 River 会把被截断的一轮记成 completed(@issue #20)。
+func TestMaintainAllSummaries_CancelledMidSweep_ReportsFailure(t *testing.T) {
+	d := newMemoryTestUsecase()
+	seedSummarizableConversations(d, 2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.registry.chatModel.generateHook = cancel
+
+	err := d.uc.maintainAllSummaries(ctx)
+
+	require.Error(t, err, "被截断的一轮不能返回 nil")
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// extractAllPreferences 是同一个形状的第二条扫描路径(每 10 分钟一轮,
+// 复扫所有累计超过 40 条消息的会话),同样不能把截断当成功。
+func TestExtractAllPreferences_CancelledMidSweep_ReportsFailure(t *testing.T) {
+	d := newMemoryTestUsecase()
+	for i := 0; i < 2; i++ {
+		convID := uuid.New()
+		d.repo.conversations[convID] = &Conversation{ID: convID}
+		for seq := int64(1); seq <= preferenceExtractionMessages; seq++ {
+			d.repo.messages[convID] = append(d.repo.messages[convID],
+				&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser,
+					Content: "msg", Status: MsgCompleted, SequenceNo: seq})
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.registry.chatModel.generateHook = cancel
+
+	err := d.uc.extractAllPreferences(ctx)
+
+	require.Error(t, err, "被截断的一轮不能返回 nil")
+	assert.ErrorIs(t, err, context.Canceled)
 }

@@ -3,6 +3,7 @@ package platform
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -51,6 +52,16 @@ type Config struct {
 	// 不会因为容器重建就消失、逼着所有密文一起报废。
 	MasterKeyPath string
 
+	// MaxUploadBytes 是单次上传允许的最大请求体字节数（含 multipart 的
+	// 边界与各个 part 的头部，比文件本身略小一点）。
+	//
+	// 【为什么必须有这个上限】net/http 的 FormFile 内部走
+	// ParseMultipartForm(32<<20)：请求体超过 32MB 的部分会被完整读进来、
+	// 溢写到 os.TempDir，然后才轮得到业务代码去拒绝它；worker 侧还会把
+	// 落盘后的整个文件 io.ReadAll 进内存。没有上限时，一个几 GB 的请求体
+	// 在任何拒绝点存在之前就已经被吃完了。
+	MaxUploadBytes int64
+
 	// TiktokenCacheDir 是 tiktoken BPE 词表的本地缓存目录。
 	//
 	// weaviate/tiktoken-go 首次加载某个 encoding 时要从
@@ -78,6 +89,10 @@ const (
 	defaultLogLevel         = "info"
 	defaultMasterKeyPath    = "./data/master.key"
 	defaultTiktokenCacheDir = "./data/tiktoken-cache"
+
+	// 32 MiB。够放下本项目面向的 md/txt 文档（一份 3MB 的中文文本已经能切
+	// 出几千个分块），又小到不会把 worker 的内存和用户的 embedding 额度吃掉。
+	defaultMaxUploadBytes = 32 << 20
 )
 
 // LoadConfig 从环境变量读配置，缺失的用默认值补。
@@ -93,6 +108,7 @@ func LoadConfig() (*Config, error) {
 		MasterKey:        os.Getenv("CONGORAG_MASTER_KEY"),
 		MasterKeyPath:    envOr("CONGORAG_MASTER_KEY_PATH", defaultMasterKeyPath),
 		TiktokenCacheDir: envOr("CONGORAG_TIKTOKEN_CACHE_DIR", defaultTiktokenCacheDir),
+		MaxUploadBytes:   envBytes("CONGORAG_MAX_UPLOAD_BYTES", defaultMaxUploadBytes),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -107,4 +123,22 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// envBytes 读一个正整数（字节数），空值、解析失败和非正数都退回默认值。
+//
+// 【为什么不用 envOr + 就地 ParseInt】配错一个环境变量不该让服务起不来，
+// 但也不能让它静默地把上限关掉：0 在调用侧的约定是"不限"（见
+// api.Deps.MaxUploadBytes），一个手滑打进去的 0 会让防线无声消失——而那正是
+// 这个配置项存在的意义。所以空值之外的非法值一律退回默认值，宁可保住限。
+func envBytes(key string, fallback int64) int64 {
+	v := strings.TrimSpace(os.Getenv(key))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
 }

@@ -1,12 +1,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -145,6 +147,8 @@ func (noopFileStore) RemoveTemp(ctx context.Context, tmpPath string) error   { r
 func (noopFileStore) Remove(ctx context.Context, storageKey string) error    { return nil }
 func (noopFileStore) List(ctx context.Context) ([]knowledge.FileInfo, error) { return nil, nil }
 
+func (noopFileStore) SweepTemp(ctx context.Context, olderThan time.Time) error { return nil }
+
 type noopEnqueuer struct{}
 
 func (noopEnqueuer) EnqueueProcessing(ctx context.Context, q platform.Querier, documentID uuid.UUID) error {
@@ -180,6 +184,15 @@ func (passthroughTxManager) InTx(ctx context.Context, fn func(q platform.Querier
 // newTestRouter 挂上由契约生成的路由，但【不挂中间件】——
 // 这里测的是 handler 行为，中间件由别的测试覆盖。
 func newTestRouter(repo knowledge.KBRepo) *gin.Engine {
+	return newTestRouterWithUploadLimit(repo, 0)
+}
+
+// newTestRouterWithUploadLimit 和 newTestRouter 是同一套接线，只是把
+// 上传大小上限设成指定的值。上限本来来自 platform.Config（由装配根填进
+// Deps），测试里给一个小值比真的构造 32MB 请求体快得多。
+//
+// 传 0 表示不限——和 Deps.MaxUploadBytes 的约定一致。
+func newTestRouterWithUploadLimit(repo knowledge.KBRepo, maxUploadBytes int64) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	srv := NewServer(Deps{
@@ -188,12 +201,36 @@ func newTestRouter(repo knowledge.KBRepo) *gin.Engine {
 			repo, noopDocRepo{}, noopFileStore{}, noopEnqueuer{}, noopChunkIndexer{},
 			noopFileCleaner{}, noopScheduler{}, passthroughTxManager{}, nil,
 		),
+		MaxUploadBytes: maxUploadBytes,
 	})
 	// 【和生产一样的 options】app.go 里传的是 RegisterHandlersWithOptions +
 	// BindErrorHandler。测试里用 RegisterHandlers 的话，参数绑定失败会走
 	// oapi-codegen 的默认分支（{"msg":...}），测的不是真实接线。
 	RegisterHandlersWithOptions(r, srv, GinServerOptions{ErrorHandler: BindErrorHandler})
 	return r
+}
+
+// multipartUpload 拼一个只含一个 file 字段的 multipart 请求体，
+// 返回 body 和 Content-Type。
+func multipartUpload(t *testing.T, filename string, content []byte) (*bytes.Buffer, string) {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	fw, err := w.CreateFormFile("file", filename)
+	require.NoError(t, err)
+	_, err = fw.Write(content)
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+	return &buf, w.FormDataContentType()
+}
+
+// uploadDocument 发一次上传请求，返回状态码和响应体。
+func uploadDocument(r *gin.Engine, kbID string, body *bytes.Buffer, contentType string) (int, string) {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/knowledge-bases/"+kbID+"/documents", body)
+	req.Header.Set("Content-Type", contentType)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w.Code, w.Body.String()
 }
 
 // do 发一个请求，返回状态码和响应体。
@@ -581,4 +618,52 @@ func TestInnermostMessage(t *testing.T) {
 			assert.Equal(t, tt.want, innermostMessage(tt.in))
 		})
 	}
+}
+
+// ────────────────────────────────────────────────────────────────
+// 上传大小上限
+// ────────────────────────────────────────────────────────────────
+
+// 【这条是#31的回归测试】上限必须在 FormFile 之前生效：FormFile 内部走
+// ParseMultipartForm(32<<20)，超出的部分会被完整读进来、溢写到 os.TempDir，
+// 之后才轮得到业务代码拒绝。没有 MaxBytesReader 时这条请求会一路走到
+// 业务层（返回 202），几 GB 的请求体在任何拒绝点存在之前就已经被吃完了。
+func TestUploadDocument_OversizeRejected(t *testing.T) {
+	const limit = 1024
+	r := newTestRouterWithUploadLimit(&fakeKBRepo{}, limit)
+	body, contentType := multipartUpload(t, "big.txt", bytes.Repeat([]byte("x"), limit*4))
+
+	code, respBody := uploadDocument(r, uuid.NewString(), body, contentType)
+
+	require.Equal(t, http.StatusBadRequest, code)
+	assert.Contains(t, respBody, "invalid_argument")
+
+	var p Problem
+	require.NoError(t, json.Unmarshal([]byte(respBody), &p))
+	assert.Equal(t, "invalid_argument", p.Type)
+	require.NotNil(t, p.Detail)
+	assert.Contains(t, *p.Detail, "1024", "报错要带上真实的上限值，方便用户知道该切多小")
+}
+
+// 上限之内的上传照常受理——上面那条测试的 400 必须是"太大"造成的，
+// 不是这个路由本来就坏。
+func TestUploadDocument_WithinLimitAccepted(t *testing.T) {
+	r := newTestRouterWithUploadLimit(&fakeKBRepo{}, 4096)
+	body, contentType := multipartUpload(t, "notes.txt", []byte("一小段内容"))
+
+	code, respBody := uploadDocument(r, uuid.NewString(), body, contentType)
+
+	require.Equal(t, http.StatusAccepted, code, respBody)
+	assert.Contains(t, respBody, "notes.txt")
+}
+
+// 上限为 0 表示不限（测试里的默认接线就是这样），此时超大请求体不会被
+// 这个中间层拦——生产装配填的一定是正的配置值，见 platform.Config。
+func TestUploadDocument_ZeroLimitMeansUnlimited(t *testing.T) {
+	r := newTestRouterWithUploadLimit(&fakeKBRepo{}, 0)
+	body, contentType := multipartUpload(t, "big.txt", bytes.Repeat([]byte("x"), 8192))
+
+	code, _ := uploadDocument(r, uuid.NewString(), body, contentType)
+
+	assert.Equal(t, http.StatusAccepted, code)
 }

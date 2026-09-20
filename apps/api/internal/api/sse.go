@@ -10,6 +10,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -20,10 +21,28 @@ import (
 
 var _ conversation.EventSink = (*sseSink)(nil)
 
+// eventErrorName 是 docs/sse-protocol.md 里那个终态错误事件的名字。
+// conversation 包发它时用的就是这个字符串字面量（emitEvent 的 eventType
+// 参数），这里需要它来判断"客户端到底有没有收到过失败通知"。
+const eventErrorName = "error"
+
+// sseErrorData 是 error 事件的 data 字段，形状必须和 conversation 包
+// emitEvent 里那个 errorPayload 一致（docs/sse-protocol.md「事件类型」：
+// data: {"type": string, "detail": string}）。那边没有导出这个类型，
+// 这里照协议再声明一份——规范来源是那份文档，不是对方的代码。
+type sseErrorData struct {
+	Type   string `json:"type"`
+	Detail string `json:"detail"`
+}
+
 // sseSink 包着一个 *gin.Context，把 conversation.Event 写成 SSE 帧。
 type sseSink struct {
 	c    *gin.Context
 	done <-chan struct{}
+
+	// errorFrameSent 记录 error 帧是不是已经成功写出去过——SendMessage 在
+	// Send 返回错误时靠它决定要不要补一条兜底帧（见 writeFallbackError）。
+	errorFrameSent bool
 }
 
 // newSSESink 把响应头设成 SSE 要求的样子，返回一个可以直接传给
@@ -55,7 +74,34 @@ func (s *sseSink) Emit(ev conversation.Event) error {
 	if err != nil {
 		return fmt.Errorf("write sse frame: %w", err)
 	}
+	// 只在写成功之后才记：写失败说明这一帧没能出去（连接已经坏了），
+	// 补写兜底帧也是白写；反过来漏记会让调用方把同一条错误发两遍。
+	if ev.Type == eventErrorName {
+		s.errorFrameSent = true
+	}
 	return nil
+}
+
+// writeFallbackError 绕过持久化，直接往连接上写一条 error 帧。
+//
+// 【为什么不能用 Emit】这一帧在 conversation_events 里没有对应的行，
+// 编不出真实 event_id。SSE 规范里**不带 id 字段**的帧不会更新客户端的
+// lastEventId，续传游标因此停在最后一个真实事件上；写 `id: 0` 反而会把
+// 游标退回到起点，下次续传要把整个会话重放一遍。
+func (s *sseSink) writeFallbackError(data sseErrorData) error {
+	body, err := json.Marshal(struct {
+		Type string       `json:"type"`
+		Data sseErrorData `json:"data"`
+	}{Type: eventErrorName, Data: data})
+	if err != nil {
+		// 两个字符串的序列化不会失败；真失败也没有别的办法把话说出去。
+		return fmt.Errorf("marshal fallback error frame: %w", err)
+	}
+
+	if _, err := fmt.Fprintf(s.c.Writer, "event: %s\ndata: %s\n\n", eventErrorName, body); err != nil {
+		return fmt.Errorf("write fallback error frame: %w", err)
+	}
+	return s.Flush()
 }
 
 func (s *sseSink) Flush() error {

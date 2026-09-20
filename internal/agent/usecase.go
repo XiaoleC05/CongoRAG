@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -21,6 +22,24 @@ const (
 	maxDescriptionLen = 2000
 	maxInstructionLen = 4000
 )
+
+// finalizeTimeout 是"脱离请求生命周期"的收尾写入的上限——Run 的终结状态、
+// 客户端断开那一刻补写的 Step/checkpoint。和 knowledge.statusWriteTimeout
+// 同一个理由：这些写入必须活过请求，但也不能无界地活。
+const finalizeTimeout = 5 * time.Second
+
+// detachedWriteCtx 从请求 ctx 派生一个有界的、不受取消影响的写入 ctx。
+//
+// 【为什么不能用请求 ctx】SSE 端点的 ctx 就是 net/http 的请求 ctx
+// （apps/api/internal/api/server.go 把它一路传进来），客户端断开时它
+// 立刻被取消；pgx 拿着一个已取消的 ctx 连 pgxpool.Acquire 都过不去，
+// UPDATE/INSERT 一条都不会执行。收尾恰恰是最需要写成功的时候——失败
+// 状态写不下去，run 行就永久停在 'running'（issue #14）；Step 写不下去，
+// 轨迹就断在断开的那一刻。摘掉取消信号（WithoutCancel）保留请求值，
+// 另加超时——脱开而不是彻底无界，和 knowledge.markFailed 同一个写法。
+func detachedWriteCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), finalizeTimeout)
+}
 
 // Usecase 是 Agent 的业务层。
 //
@@ -64,6 +83,15 @@ func (u *Usecase) CreateAgent(ctx context.Context, name, description, instructio
 		if _, err := u.tools.Get(name); err != nil {
 			return nil, fmt.Errorf("tool %q is not registered: %w", name, platform.ErrInvalid)
 		}
+	}
+
+	// nil slice 必须归一成空数组：contracts/openapi.yaml 里 toolNames 是
+	// 可选项，客户端发 {"name":"x"} 时它是 nil，而 pgx 把 nil slice 编码
+	// 成 SQL NULL——agents.tool_names 是 NOT NULL（列 DEFAULT 只在 INSERT
+	// 语句里省略该列时才生效，这里显式绑定了 $5），INSERT 会被 23502
+	// 顶回来变成 500（issue #18）。归一化放在业务层，所有调用方都覆盖。
+	if toolNames == nil {
+		toolNames = []string{}
 	}
 
 	now := time.Now()
@@ -141,8 +169,13 @@ func (u *Usecase) Start(ctx context.Context, agentID uuid.UUID, input string, si
 	run, err := u.start(ctx, agentID, input, sink, eventID)
 	if err != nil {
 		*eventID++
+		// type 走全项目共享的那套枚举（platform.SSEErrorType）：空输入是
+		// invalid_argument、agent 不存在是 not_found、上游模型失败是
+		// upstream_llm_error。以前这里硬编码 internal_error，把客户端
+		// 自己能纠正的错误说成服务端故障，前端也只能显示"服务内部错误"
+		// （issue #34）。
 		_ = u.emitEvent(sink, *eventID, "error", map[string]string{
-			"type": "internal_error", "detail": err.Error(),
+			"type": platform.SSEErrorType(err), "detail": err.Error(),
 		})
 	}
 	return run, err
@@ -182,21 +215,42 @@ func (u *Usecase) start(ctx context.Context, agentID uuid.UUID, input string, si
 		return nil, fmt.Errorf("insert run: %w", err)
 	}
 
-	events, err := runAgent(ctx, u.registry, chatModelID, ag, tools, input)
+	// runCtx 是这次运行自己的生命周期。consumeEvents 一旦返回——正常结束、
+	// 出错、或者客户端断开——它就必须结束：drainIterator 的每一次发送都
+	// select 这个 ctx，只有取消能让生产者从"没有接收者的通道"上退出来
+	// （issue #35 的 goroutine/iterator 泄漏）。取消后 ADK 那边的模型请求
+	// 也会被一起拆掉。
+	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+
+	events, err := runAgent(runCtx, u.registry, chatModelID, ag, tools, input)
 	if err != nil {
-		u.failRun(ctx, run.ID)
+		if ferr := u.failRun(ctx, run.ID); ferr != nil {
+			return run, errors.Join(fmt.Errorf("start agent run: %w", err), ferr)
+		}
 		return run, fmt.Errorf("start agent run: %w", err)
 	}
 
 	output, runErr := u.consumeEvents(ctx, run.ID, events, sink, eventID)
 	run.Output = output
+	// 消费端已经退出，通知生产者收摊。
+	cancelRun()
 
 	if runErr != nil {
-		u.failRun(ctx, run.ID)
+		// failRun 的错误不能丢：以前这里是 `_ =`，失败状态写不进去这件事
+		// 完全不可见（issue #14）。并进返回值里，server.go 会记成日志。
+		if ferr := u.failRun(ctx, run.ID); ferr != nil {
+			return run, errors.Join(runErr, ferr)
+		}
 		return run, runErr
 	}
 
-	if err := u.repo.UpdateRunStatus(ctx, u.db, run.ID, RunRunning, RunCompleted); err != nil {
+	// 成功终态同样用脱离请求的 ctx：done 事件发出之后客户端立刻断开是
+	// 常事（关标签页），跟着请求 ctx 走的话这一条 CAS 会失败——而且这条
+	// 路径不会走 failRun，run 行会直接停在 'running'（issue #14）。
+	wctx, cancelWrite := detachedWriteCtx(ctx)
+	defer cancelWrite()
+	if err := u.repo.UpdateRunStatus(wctx, u.db, run.ID, RunRunning, RunCompleted); err != nil {
 		return run, fmt.Errorf("mark run %s completed: %w", run.ID, err)
 	}
 	run.Status = RunCompleted
@@ -231,13 +285,49 @@ func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, events <-c
 	var llmStepStarted time.Time
 	var llmStepOpen bool
 
+	// roundStepClosed 表示"这一轮模型生成的 Step 已经记过账了"。
+	//
+	// 【为什么需要它】模型一次可以并行请求多个工具，eino_adk 的 emitToolCalls
+	// 会为每一个调用各发一个 adkEventToolCall。tool_call 分支每个事件都
+	// open + close 一次的话，一次并行调用就会写出两条 llm 行——轨迹页上
+	// "模型跑了几轮"和每轮的 LatencyMS 都跟着错（issue #33：一条 llm 行
+	// 对应一轮生成，不是一次工具调用）。
+	//
+	// 复位点在 tool_result：工具结果交回模型就是下一轮生成的开始。
+	var roundStepClosed bool
+
+	// openLLMStep 在"这一轮的第一个助手事件"上开一条模型轮次记录。
+	//
+	// 【为什么 token 和 tool_call 都要开】模型不发正文、直接请求调用工具
+	// 是 ReAct 的常态；只在 token 上开 step 会让这种轮次一行都不落，
+	// 轨迹里看起来"模型什么都没做"就把工具跑了一遍，schema 里
+	// type=llm 的定义（migrations/0005_agents.up.sql:66）明确包含
+	// "工具调用请求"这一种输出（issue #33）。
+	openLLMStep := func() {
+		if !llmStepOpen {
+			llmStepStarted = time.Now()
+			llmStepOpen = true
+		}
+	}
+
+	// insertStep 落一行 Step。写库用脱离请求生命周期的 ctx（见
+	// detachedWriteCtx）：客户端一断开请求 ctx 就被取消，用它 INSERT 会
+	// 一条都写不下去，轨迹恰好断在最需要留痕的那一刻（issue #14）。
+	insertStep := func(s *Step) {
+		wctx, cancel := detachedWriteCtx(ctx)
+		defer cancel()
+		_ = u.repo.InsertStep(wctx, u.db, s)
+	}
+
 	// checkpoint 落一次 Step 边界的快照——CheckpointStore.Save 的唯一
 	// 调用点（见 port.go 的注释：这一轮只有 Save 真正被使用,Load 留给
 	// M4-C 的 Resume)。state_snapshot 这一轮传 nil：AgentState 的具体
 	// 结构是 M4-C 恢复逻辑要用的东西,现在没有真实调用点会读它,不提前
 	// 猜一个序列化格式。
 	checkpoint := func() {
-		_ = u.cp.Save(ctx, u.db, runID, seq, output.String(), nil)
+		wctx, cancel := detachedWriteCtx(ctx)
+		defer cancel()
+		_ = u.cp.Save(wctx, u.db, runID, seq, output.String(), nil)
 	}
 
 	closeLLMStep := func(status StepStatus, errMsg string) {
@@ -245,7 +335,7 @@ func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, events <-c
 			return
 		}
 		seq++
-		_ = u.repo.InsertStep(ctx, u.db, &Step{
+		insertStep(&Step{
 			ID: uuid.New(), RunID: runID, Seq: seq, Type: StepTypeLLM, Status: status,
 			LatencyMS: int(time.Since(llmStepStarted).Milliseconds()), Error: errMsg, CreatedAt: time.Now(),
 		})
@@ -256,10 +346,10 @@ func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, events <-c
 	for event := range events {
 		switch event.kind {
 		case adkEventToken:
-			if !llmStepOpen {
-				llmStepStarted = time.Now()
-				llmStepOpen = true
-			}
+			openLLMStep()
+			// 有正文说明这是新一轮生成（上一条 llm 行已经在 tool_call 或
+			// done 上收掉了）。
+			roundStepClosed = false
 			output.WriteString(event.text)
 			*eventID++
 			if err := u.emitEvent(sink, *eventID, "token", map[string]string{"text": event.text}); err != nil {
@@ -267,7 +357,18 @@ func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, events <-c
 			}
 
 		case adkEventToolCall:
-			closeLLMStep(StepCompleted, "")
+			// 这一轮请求调用工具——它同样是模型这一轮的输出，所以这一轮也要
+			// 有 llm 行：模型不发正文、直接调工具时（ReAct 的常态）靠的就是
+			// 这里开的那一条（issue #33）。
+			//
+			// 【同一轮只记一次】一次并行调用会连着来 N 个 tool_call 事件，
+			// 每个都 open+close 就会写出 N 条 llm 行，把"模型跑了几轮"和
+			// 每轮延迟都算错。roundStepClosed 保证这轮只记一次。
+			if !roundStepClosed {
+				openLLMStep()
+				closeLLMStep(StepCompleted, "")
+				roundStepClosed = true
+			}
 			seq++
 			pending[event.toolCallID] = &pendingCall{seq: seq, toolName: event.toolName, toolArgs: event.toolArgs, startedAt: time.Now()}
 			*eventID++
@@ -291,7 +392,7 @@ func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, events <-c
 				seq++
 				stepSeq = seq
 			}
-			_ = u.repo.InsertStep(ctx, u.db, &Step{
+			insertStep(&Step{
 				ID: uuid.New(), RunID: runID, Seq: stepSeq, Type: StepTypeTool, Status: StepCompleted,
 				ToolName: event.toolName, ToolArgs: toolArgs, ToolResult: event.toolResult,
 				LatencyMS: latencyMS, CreatedAt: time.Now(),
@@ -303,10 +404,23 @@ func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, events <-c
 			}); err != nil {
 				return output.String(), err
 			}
+			// 工具结果交回模型，下一轮生成从这里开始——这一轮再出现
+			// tool_call 就该是一条新的 llm 行了。
+			roundStepClosed = false
 
 		case adkEventError:
+			// 错误可能在任何助手事件之前就到达（模型第一轮就挂了），这时
+			// 还没有开着的轮次——先开一条再标失败，让"在这里断的"这件事
+			// 在轨迹里看得见，而不是整个 run 一行 Step 都没有。
+			openLLMStep()
 			closeLLMStep(StepFailed, event.err.Error())
-			return output.String(), fmt.Errorf("agent run failed: %w", event.err)
+			// 【不能一律当成上游故障】这一条错误来自整张 ReAct 图，不只有
+			// provider：工具自己失败（knowledge_search 查不到那一行 →
+			// ErrNotFound）、请求 ctx 被取消，都会走到这里。一律 Join
+			// ErrUpstream 的话 type 是 upstream_llm_error，前端照文案提示
+			// 用户"检查 API Key 和配额"——排查方向从第一句话起就是错的
+			// （issue #34）。已经带 sentinel 的原样放行，剩下的才归到上游。
+			return output.String(), agentEventError(event.err)
 
 		case adkEventDone:
 			closeLLMStep(StepCompleted, "")
@@ -320,8 +434,60 @@ func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, events <-c
 	return output.String(), fmt.Errorf("agent event stream closed without a done event")
 }
 
-func (u *Usecase) failRun(ctx context.Context, runID uuid.UUID) {
-	_ = u.repo.UpdateRunStatus(ctx, u.db, runID, RunRunning, RunFailed)
+// agentEventError 给 ADK 事件流上的错误归类。
+//
+// 【先说清楚什么不是问题，免得改错方向】事件流上的错误来自整张 ReAct 图，
+// 不只有 provider。但"一律包一层 ErrUpstream"并不会把工具的错误类型吃掉：
+// errors.Is 对 errors.Join 出来的错误是看每个成员的，而
+// platform.SSEErrorType 的判断顺序是 ErrInvalid → ErrNotFound → ErrUpstream，
+// 所以带 ErrNotFound 的工具错误本来就分类成 not_found（这一条有测试钉着，
+// 见 usecase_test.go 的 TestConsumeEvents_ErrorEvent_TypeMapping）。
+//
+// 【真正的缺口只有一个：请求 ctx 被取消】context.Canceled 不在
+// SSEErrorType 认的那三个 sentinel 里，被 Join 进 ErrUpstream 之后
+// 整个错误就变成 upstream_llm_error——客户端断开导致的收尾，会在日志和
+// type 上被说成"上游模型服务出错"。这里把已有 sentinel（含 ctx 的两个）
+// 原样放行，剩下真正没归类的才按上游故障包一层。
+func agentEventError(err error) error {
+	for _, sentinel := range []error{
+		platform.ErrInvalid,
+		platform.ErrNotFound,
+		platform.ErrConflict,
+		platform.ErrUpstream,
+		context.Canceled,
+		context.DeadlineExceeded,
+	} {
+		if errors.Is(err, sentinel) {
+			return err
+		}
+	}
+	return fmt.Errorf("agent run failed: %w", errors.Join(platform.ErrUpstream, err))
+}
+
+// failRun 把 Run 从 running 推进终态。
+//
+// 【ctx 只用来判断"客户端还在不在"，写库另用一个脱离请求的 ctx】调用它的
+// 时刻正是这次运行失败/被中断的同一刻，而 SSE 端点的请求 ctx 在客户端断开
+// 时已被取消——照样拿它做 CAS 的话 pgx 连连接都拿不到，UPDATE 一条都不会
+// 执行，run 行永久停在 'running'（issue #14）。返回错误而不是丢弃：写失败
+// 这件事至少要被调用方带出去记成日志。
+//
+// 【断开记成 interrupted 而不是 failed】ctx 已取消说明是客户端中途走了，
+// 不是服务端故障。RunInterrupted 这一态 model.go 早就定义了，一直没有写入
+// 者（contracts/openapi.yaml 的 AgentRunStatus 也认它），历史列表里能一眼
+// 看出这次运行是被打断的。
+func (u *Usecase) failRun(ctx context.Context, runID uuid.UUID) error {
+	to := RunFailed
+	if ctx.Err() != nil {
+		to = RunInterrupted
+	}
+
+	wctx, cancel := detachedWriteCtx(ctx)
+	defer cancel()
+	if err := u.repo.UpdateRunStatus(wctx, u.db, runID, RunRunning, to); err != nil {
+		return fmt.Errorf("mark run %s %s: %w", runID, to, err)
+	}
+	return nil
 }
 
 func (u *Usecase) emitEvent(sink conversation.EventSink, id int64, eventType string, payload any) error {

@@ -21,6 +21,17 @@ import (
 // defaultTopK 是 Search 在调用方没指定 TopK 时用的默认值。
 const defaultTopK = 5
 
+// embedBatchSize 是一次 embedding 请求里最多送多少条文本。
+//
+// 【为什么必须分批】OpenAI 的 /v1/embeddings 对 input 数组有条数上限
+// （2048），而 eino 的 embedder 是直通——调用方给多少条它就一次发多少条，
+// 整条链上没有别人会替你切。一份切出几千个分块的文档因此会稳定地 400：
+// 事务回滚、文档标 failed，重传还是同样的块数、同样失败。
+//
+// 取 256 而不是贴着 2048：一批的 token 总量也远低于单条 8192 的上限，
+// 同时请求数不至于多到把本地 CPU embedding 服务打满。
+const embedBatchSize = 256
+
 // Usecase 同时实现 knowledge.ChunkIndexer（IndexDocument/DeleteByDocument）
 // 和 conversation.ChunkSearcher（Search）——这就是代码架构设计 §1.2
 // 规则 B 说的"一个实现自动满足多个消费者的 port，不需要写适配器"。
@@ -129,20 +140,29 @@ func (u *Usecase) IndexDocument(ctx context.Context, q platform.Querier, docID u
 		return fmt.Errorf("get embedder for model %s: %w", model.ID, err)
 	}
 
-	texts := make([]string, len(chunks))
-	for i, c := range chunks {
-		texts[i] = c.Content
-	}
+	// 按 embedBatchSize 分批送，再按原顺序拼回一整份——分批只决定
+	// "一次请求几条"，不能让向量和 chunks 的下标对应关系错位。
+	vecs := make([][]float32, 0, len(chunks))
+	for start := 0; start < len(chunks); start += embedBatchSize {
+		end := min(start+embedBatchSize, len(chunks))
 
-	vecs, err := embedder.Embed(ctx, texts)
-	if err != nil {
-		return fmt.Errorf("embed %d chunks of document %s: %w", len(chunks), docID, err)
-	}
-	if len(vecs) != len(chunks) {
+		batchTexts := make([]string, 0, end-start)
+		for _, c := range chunks[start:end] {
+			batchTexts = append(batchTexts, c.Content)
+		}
+
+		batchVecs, err := embedder.Embed(ctx, batchTexts)
+		if err != nil {
+			return fmt.Errorf("embed chunks %d-%d of %d in document %s: %w",
+				start+1, end, len(chunks), docID, err)
+		}
 		// 上游返回的向量数量和送进去的文本数量不一致——这不该发生，
 		// 但发生的时候必须显式报错，不能假装对齐、悄悄错配某一段的向量。
-		return fmt.Errorf("embedder returned %d vectors for %d chunks: %w",
-			len(vecs), len(chunks), platform.ErrUpstream)
+		if len(batchVecs) != end-start {
+			return fmt.Errorf("embedder returned %d vectors for %d chunks: %w",
+				len(batchVecs), end-start, platform.ErrUpstream)
+		}
+		vecs = append(vecs, batchVecs...)
 	}
 
 	if err := u.repo.InsertChunks(ctx, q, docID, chunks, vecs, model.ModelID); err != nil {

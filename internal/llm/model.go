@@ -31,7 +31,14 @@ const (
 //
 // 全部由用户在引导页手工勾选,不是探测出来的——OpenAI 兼容 API 不保证
 // 能自动查询"这个模型支不支持 tool calling"(技术方案 §五)。
-// ToolCalling 决定 Agent 功能是否对这个模型可用（M4-A 才用到这一位)。
+//
+// 【这一组目前是展示位,没有任何生产路径读它】存进 llm_models.capabilities、
+// 由 GET /providers 原样回显,仅此而已:agent.Usecase.start 按 id 解析 chat
+// 模型后无条件绑定工具,不看 ToolCalling;Registry.Capabilities 至今没有
+// 生产调用方。所以 ToolCalling 既不会拦住也不会放开一次 Agent 运行——
+// 引导页里它默认未勾选(OnboardingPage.tsx),拿它做门控会把所有没动过
+// 复选框的用户的 Agent 一起禁掉。真要做门控,M4-B 得先把"用户没声明"
+// 和"用户声明不支持"这两种状态分开。
 type Capabilities struct {
 	Chat        bool
 	Streaming   bool

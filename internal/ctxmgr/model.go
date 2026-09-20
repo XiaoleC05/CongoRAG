@@ -47,8 +47,10 @@ type Request struct {
 	UserInput    string
 	AgentState   *AgentState
 
-	// RecentMessages 已经按"新 → 旧"排好（调用方查的时候排的），
-	// 压缩时从旧的那一端开始丢。
+	// RecentMessages 已经按"旧 → 新"排好（调用方查的时候排的），
+	// 压缩时从旧的那一端开始丢。每条消息的 Role 必须是真的说话人——
+	// 这个包原样把它带到 Item.Role，再由调用方转回线路消息，
+	// 中途没有任何一层有资格替它猜一个角色。
 	RecentMessages []llm.Message
 	// Summary 是会话摘要，"刚才聊了什么"。
 	Summary string
@@ -62,8 +64,20 @@ type Request struct {
 
 // Item 是拼进最终上下文的一个条目。
 type Item struct {
-	Source    domain.Source
-	Content   string
+	Source  domain.Source
+	Content string
+	// Role 是这条条目在对话里的说话人。只有 SourceRecent 有真实取值
+	// （从 Request.RecentMessages 的 llm.Message.Role 带过来），其余来源
+	// 留空。它必须存在：FinalContext 的唯一消费方要把每条 Recent 条目
+	// 转回一条线路消息，没有这个字段它只能自己编一个角色，而编出来的
+	// 角色会把助手的回答说成是用户说的。
+	//
+	// 【角色原样穿过这一层，包括 tool】不在这里过滤或替换任何角色。
+	// tool 角色的消息现在不会出现在 messages 表里（Agent 的执行轨迹
+	// 存在 agent_steps，不写 messages），真要重放时 Item 还得带上
+	// ToolCalls/ToolCallID，那是 M4-A 接 Agent 时才需要决定的事——
+	// 现在的契约是"生产者填什么就带什么"，不是"这个包挑一个安全的角色"。
+	Role      domain.Role
 	TokenCost int
 	// Relevance 只在同一个 Source 内部可比——RAG 的相似度分和 Memory 的
 	// 检索分是两个不同的量纲，不能跨 Source 比大小。

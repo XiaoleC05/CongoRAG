@@ -42,21 +42,33 @@ func (t tiktokenTokenizer) Count(text string) int {
 	return len(t.enc.Encode(text, nil, nil))
 }
 
+// ValidTokenizerTypes 是 newTokenizer 唯一接受的 tokenizer_type 集合。
+//
+// 【为什么要导出、为什么要在这里就挡住】引导页表单上 tokenizerType 是一个
+// 自由文本输入框，不是选择框：o200k（少写 _base）、p50k_base / r50k_base
+// （tiktoken 里真实存在的另外两个编码名）都会被用户填进来。如果只有
+// newTokenizer 这一个校验点，非法值会先被 Bootstrap 落进 llm_models、
+// 引导页返回 201 成功，之后每一条消息才在聊天路径上失败——错误还被归因到
+// 用户刚发的那条消息上，用户没有任何线索怀疑是存下来的配置。
+// 所以校验点有两个：保存时的 validateBootstrapRequest 和消费时的
+// newTokenizer，两处共用这一个集合定义，不会再出现"表单、契约、校验
+// 各写一份"的漂移。
+var ValidTokenizerTypes = map[string]bool{
+	"cl100k_base": true,
+	"o200k_base":  true,
+}
+
 // newTokenizer 按 llm_models.tokenizer_type 建 Tokenizer 实例。
 //
-// 【只认这两个值】引导页表单目前只提供 cl100k_base/o200k_base 两个选项
-// （开发文档 §6.2 的示例截图）。遇到别的字符串直接报错，而不是回退到
-// 近似估算——静默用错编码表比明确拒绝更危险，预算阶梯的正确性完全
-// 建立在这个数字准的前提上。
+// 遇到集合外的字符串直接报错，而不是回退到近似估算——静默用错编码表比
+// 明确拒绝更危险，预算阶梯的正确性完全建立在这个数字准的前提上。
 func newTokenizer(tokenizerType string) (Tokenizer, error) {
-	switch tokenizerType {
-	case "cl100k_base", "o200k_base":
-		enc, err := getTiktokenEncoding(tokenizerType)
-		if err != nil {
-			return nil, err
-		}
-		return tiktokenTokenizer{enc: enc}, nil
-	default:
+	if !ValidTokenizerTypes[tokenizerType] {
 		return nil, fmt.Errorf("unsupported tokenizer_type %q: %w", tokenizerType, platform.ErrInvalid)
 	}
+	enc, err := getTiktokenEncoding(tokenizerType)
+	if err != nil {
+		return nil, err
+	}
+	return tiktokenTokenizer{enc: enc}, nil
 }

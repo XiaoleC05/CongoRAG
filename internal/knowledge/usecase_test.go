@@ -126,6 +126,13 @@ func (f *fakeDocRepo) UpdateStatus(ctx context.Context, q platform.Querier, id u
 	if f.failOn == "UpdateStatus" {
 		return f.err
 	}
+	// 【为什么这里要看 ctx】真实的 PgDocRepo 走 q.Exec(ctx, ...)，ctx 已经
+	// 取消时 pgx 连连接都拿不到，UPDATE 一条也不会执行。这条行为是
+	// "job 超时之后还能不能把文档标成 failed"这个问题的关键，假实现必须
+	// 复刻它，否则返回成功会让测试看不见那个缺陷。
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !from.CanTransition(to) {
 		return errors.New("illegal transition in fake")
 	}
@@ -216,6 +223,10 @@ type fakeFileStore struct {
 	failWriteTemp bool
 	failCommit    bool
 	failOpen      bool
+	failSweep     bool
+
+	// sweptCutoff 记录 SweepTemp 收到的宽限期。零值表示从没被调用过。
+	sweptCutoff time.Time
 
 	nextTmpSeq int
 }
@@ -300,6 +311,17 @@ func (f *fakeFileStore) setModTime(storageKey string, t time.Time) {
 	f.files[storageKey] = info
 }
 
+// SweepTemp 只记下"带着哪个 cutoff 被调用过"：tmp/ 里哪些文件该删是
+// LocalFileStore 的职责，真实的删除行为由 filestore_test.go 在真实
+// 文件系统上验证，这里只验证对账流程确实触达了清扫这一步。
+func (f *fakeFileStore) SweepTemp(ctx context.Context, olderThan time.Time) error {
+	f.sweptCutoff = olderThan
+	if f.failSweep {
+		return errors.New("fake sweep failure")
+	}
+	return nil
+}
+
 var _ Enqueuer = (*fakeEnqueuer)(nil)
 
 type fakeEnqueuer struct {
@@ -320,6 +342,10 @@ var _ ChunkIndexer = (*fakeChunkIndexer)(nil)
 type fakeChunkIndexer struct {
 	indexed map[uuid.UUID][]domain.Chunk
 	fail    bool
+
+	// cancelJob 在 IndexDocument 被调用的那一刻执行一次，用来模拟
+	// "job 的截止时间正好在这步到点"——River 取消 job ctx 的时刻。
+	cancelJob func()
 }
 
 func newFakeChunkIndexer() *fakeChunkIndexer {
@@ -327,6 +353,9 @@ func newFakeChunkIndexer() *fakeChunkIndexer {
 }
 
 func (f *fakeChunkIndexer) IndexDocument(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk) error {
+	if f.cancelJob != nil {
+		f.cancelJob()
+	}
 	if f.fail {
 		return errors.New("fake index failure")
 	}
@@ -765,6 +794,36 @@ func TestUpload_FilenameTooLong(t *testing.T) {
 	assert.ErrorIs(t, err, platform.ErrInvalid)
 }
 
+// 【这条是#23的回归测试】前端选择器上的 accept=".md,.txt,.markdown" 只是
+// 文件对话框的过滤条件，curl -F 能送任何东西进来。服务端不查的话，一张
+// png 会被当纯文本切块、拿去 embedding、最后标成 ready——每一步都不报错。
+func TestUpload_UnsupportedExtensionRejected(t *testing.T) {
+	for _, filename := range []string{"photo.png", "notes-gbk.doc", "data.csv", "无扩展名"} {
+		t.Run(filename, func(t *testing.T) {
+			d := newFullTestUsecase()
+
+			_, err := d.uc.Upload(context.Background(), uuid.New(), filename, strings.NewReader("x"))
+
+			assert.ErrorIs(t, err, platform.ErrInvalid)
+			assert.Empty(t, d.files.calls, "白名单不过时不该碰文件系统")
+			assert.Empty(t, d.docRepo.docs)
+		})
+	}
+}
+
+// 白名单按小写比对：.MD 和 .md 是同一类文件，大小写不该改变结论。
+func TestUpload_ExtensionIsCaseInsensitive(t *testing.T) {
+	for _, filename := range []string{"笔记.MD", "笔记.Markdown", "笔记.TXT", "笔记.md"} {
+		t.Run(filename, func(t *testing.T) {
+			d := newFullTestUsecase()
+
+			_, err := d.uc.Upload(context.Background(), uuid.New(), filename, strings.NewReader("内容"))
+
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func TestUpload_WriteTempFails_NothingElseHappens(t *testing.T) {
 	d := newFullTestUsecase()
 	d.files.failWriteTemp = true
@@ -846,6 +905,9 @@ func TestDelete_NoDocuments_SchedulesEmptyCleanup(t *testing.T) {
 
 // ════════════════════════════════════════════════════════════════
 // ProcessDocument —— worker 侧的状态机 + 重试安全性
+//
+// 第三个参数 isLastAttempt 由 worker 按 River 的 job.Attempt/MaxAttempts
+// 算好传进来（见 river.go 的 Work），所以这里用 true/false 直接覆盖两个分支。
 // ════════════════════════════════════════════════════════════════
 
 func TestProcessDocument_Success(t *testing.T) {
@@ -856,7 +918,7 @@ func TestProcessDocument_Success(t *testing.T) {
 	}
 	d.files.contents["doc-1.txt"] = []byte("一些内容\n\n另一段内容")
 
-	err := d.uc.ProcessDocument(context.Background(), docID)
+	err := d.uc.ProcessDocument(context.Background(), docID, true)
 
 	require.NoError(t, err)
 	assert.Equal(t, StatusReady, d.docRepo.docs[0].Status)
@@ -876,42 +938,49 @@ func TestProcessDocument_RetryFromProcessing_Succeeds(t *testing.T) {
 	}
 	d.files.contents["doc-1.txt"] = []byte("内容")
 
-	err := d.uc.ProcessDocument(context.Background(), docID)
+	err := d.uc.ProcessDocument(context.Background(), docID, false)
 
 	require.NoError(t, err)
 	assert.Equal(t, StatusReady, d.docRepo.docs[0].Status)
 }
 
 func TestProcessDocument_UnexpectedStatus_Rejected(t *testing.T) {
-	for _, status := range []Status{StatusReady, StatusFailed} {
+	for _, status := range []Status{StatusReady} {
 		t.Run(string(status), func(t *testing.T) {
 			d := newFullTestUsecase()
 			docID := uuid.New()
 			d.docRepo.docs = []*Document{{ID: docID, Status: status}}
 
-			err := d.uc.ProcessDocument(context.Background(), docID)
+			err := d.uc.ProcessDocument(context.Background(), docID, true)
 
 			assert.ErrorIs(t, err, platform.ErrConflict)
 		})
 	}
 }
 
-func TestProcessDocument_OpenFails_MarksFailed(t *testing.T) {
+// 【failed 是终态，重投必须无事收尾】确定性失败会把文档直接推进 failed 并把
+// 错误交给 River，而 River 仍会按 MaxAttempts 重投。那些投递读回的是终态，
+// 既不该重跑、也不该报 ErrConflict——否则每次上传非 UTF-8 文件都会刷出
+// 24 条指向"状态冲突"的日志，把真正的原因（编码）埋掉。
+func TestProcessDocument_AlreadyFailed_IsNoOp(t *testing.T) {
 	d := newFullTestUsecase()
 	docID := uuid.New()
-	d.docRepo.docs = []*Document{
-		{ID: docID, StorageKey: "missing.txt", Status: StatusQueued},
-	}
-	d.files.failOpen = true
+	d.docRepo.docs = []*Document{{ID: docID, StorageKey: "doc-1.txt", Status: StatusFailed}}
+	d.files.contents["doc-1.txt"] = []byte("内容")
 
-	err := d.uc.ProcessDocument(context.Background(), docID)
+	err := d.uc.ProcessDocument(context.Background(), docID, false)
 
-	require.Error(t, err)
-	assert.Equal(t, StatusFailed, d.docRepo.docs[0].Status,
-		"打开文件失败必须把文档标记为 failed，不能让它卡在 processing 里")
+	require.NoError(t, err, "终态文档的重投应当无事收尾，而不是报 conflict")
+	assert.Equal(t, StatusFailed, d.docRepo.docs[0].Status, "状态不该被这次投递改动")
+	assert.NotContains(t, d.indexer.indexed, docID, "重投不该再跑一遍 indexing")
 }
 
-func TestProcessDocument_IndexFails_MarksFailed(t *testing.T) {
+// 【这条是#8的回归测试】一次可恢复的失败（上游 embedding 429、DB 抖动）
+// 不能让文档变成终态 failed：River 还会再投递，重试进来的那一次读到的
+// 必须还是一个能继续往下跑的状态。以前失败分支先把文档 CAS 成 failed
+// 再把错误交给 River，于是第 2 次 attempt 直接落进 default 分支报
+// ErrConflict——重试机制 25 次全撞在这里，等于死代码。
+func TestProcessDocument_TransientFailure_LeavesDocumentRetryable(t *testing.T) {
 	d := newFullTestUsecase()
 	docID := uuid.New()
 	d.docRepo.docs = []*Document{
@@ -920,10 +989,93 @@ func TestProcessDocument_IndexFails_MarksFailed(t *testing.T) {
 	d.files.contents["doc-1.txt"] = []byte("内容")
 	d.indexer.fail = true
 
-	err := d.uc.ProcessDocument(context.Background(), docID)
+	err := d.uc.ProcessDocument(context.Background(), docID, false)
 
 	require.Error(t, err)
-	assert.Equal(t, StatusFailed, d.docRepo.docs[0].Status)
+	assert.Equal(t, StatusProcessing, d.docRepo.docs[0].Status,
+		"不是最后一次 attempt 就不该写终态，否则重试会撞在状态校验上")
+
+	// 第二次 attempt：故障消失，同一份文档必须能真的重跑成功。
+	d.indexer.fail = false
+	err = d.uc.ProcessDocument(context.Background(), docID, false)
+
+	require.NoError(t, err, "带着上次失败的状态重试必须能跑完，而不是报 conflict")
+	assert.Equal(t, StatusReady, d.docRepo.docs[0].Status)
+}
+
+// 最后一次 attempt：River 不会再投递，必须落终态，否则文档永久停在
+// processing（UI 会一直轮询它，没有任何任务会把它推走）。
+func TestProcessDocument_LastAttemptFailure_MarksFailed(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		prepare    func(d *testDeps)
+		storageKey string
+	}{
+		{"打开文件失败", func(d *testDeps) { d.files.failOpen = true }, "missing.txt"},
+		{"索引失败", func(d *testDeps) { d.indexer.fail = true }, "doc-1.txt"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := newFullTestUsecase()
+			docID := uuid.New()
+			d.docRepo.docs = []*Document{{ID: docID, StorageKey: tc.storageKey, Status: StatusQueued}}
+			d.files.contents[tc.storageKey] = []byte("内容")
+			tc.prepare(d)
+
+			err := d.uc.ProcessDocument(context.Background(), docID, true)
+
+			require.Error(t, err)
+			assert.Equal(t, StatusFailed, d.docRepo.docs[0].Status,
+				"最后一次 attempt 失败必须把文档标记为 failed，不能让它卡在 processing 里")
+		})
+	}
+}
+
+// 【这条是#3的回归测试】job 超时是最需要把文档推进 failed 的时刻，也正是
+// River 取消 job ctx 的时刻：pgx 拿着已取消的 ctx 连连接都拿不到，
+// UPDATE 一条都不会执行——文档就永远停在 processing，而且没有任何出口。
+// 修法是收尾用自己的、脱开取消信号的 ctx（fakeDocRepo.UpdateStatus 复刻了
+// pgx 对已取消 ctx 的行为，所以这条测试在修之前是红的）。
+func TestProcessDocument_CancelledJobCtx_StillMarksFailed(t *testing.T) {
+	d := newFullTestUsecase()
+	docID := uuid.New()
+	d.docRepo.docs = []*Document{
+		{ID: docID, StorageKey: "doc-1.txt", Status: StatusQueued},
+	}
+	d.files.contents["doc-1.txt"] = []byte("内容")
+	d.indexer.fail = true
+
+	// job ctx 在 embedding 那一步到点被 River 取消——不是在方法一开始就
+	// 取消，那时 queued->processing 的 CAS 还没跑（真实的取消也发生在
+	// job 已经跑起来之后）。
+	jobCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d.indexer.cancelJob = cancel
+
+	err := d.uc.ProcessDocument(jobCtx, docID, true)
+
+	require.Error(t, err)
+	assert.Equal(t, StatusFailed, d.docRepo.docs[0].Status,
+		"job ctx 已取消时收尾写状态也必须成功，否则文档永久卡在 processing")
+}
+
+// 【这条是#23的回归测试】非 UTF-8 的内容（GBK 文本、二进制文件）以前会走
+// 两条静默路径：段落够长时被 []rune 换成 U+FFFD 的块照样入库、标 ready；
+// 段落够短时原始非法字节直达 INSERT 被 PostgreSQL 以 22021 拒绝。
+// 两种结局都不该发生——在解析前就该拒绝，并且落到终态。
+func TestProcessDocument_NonUTF8Content_MarksFailed(t *testing.T) {
+	d := newFullTestUsecase()
+	docID := uuid.New()
+	d.docRepo.docs = []*Document{
+		{ID: docID, StorageKey: "doc-1.txt", Status: StatusQueued},
+	}
+	// GBK 编码的「中文」两个字节，不是合法的 UTF-8 序列。
+	d.files.contents["doc-1.txt"] = []byte{0xD6, 0xD0, 0xCE, 0xC4}
+
+	err := d.uc.ProcessDocument(context.Background(), docID, false)
+
+	assert.ErrorIs(t, err, platform.ErrInvalid, "编码问题应该报 invalid，而不是留给 PostgreSQL 报 22021")
+	assert.Equal(t, StatusFailed, d.docRepo.docs[0].Status, "编码不会因为重试而改变，直接落终态")
+	assert.Empty(t, d.indexer.indexed, "非法内容不该走到 embedding/入库那一步")
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -972,4 +1124,38 @@ func TestStartReconciler_NoFiles_NoOp(t *testing.T) {
 	reconcile := d.sched.registered["orphan-files"]
 
 	assert.NoError(t, reconcile(context.Background()))
+	// 没有正式文件不代表没有事做：tmp/ 里的半成品是同一次对账要扫的东西
+	// （List 看不见 tmp/，不在这里扫就没有第二个人管它）。
+	assert.NotZero(t, d.files.sweptCutoff, "对账必须顺带扫一遍 tmp/ 里的陈旧临时文件")
+}
+
+// 清扫用的宽限期必须和对账用的是同一个：太新的临时文件可能正属于一次
+// 还在进行中的上传，按"宽限期内不动"处理才安全。
+func TestStartReconciler_SweepsTempWithSameGracePeriod(t *testing.T) {
+	d := newFullTestUsecase()
+	d.uc.StartReconciler(context.Background())
+	reconcile := d.sched.registered["orphan-files"]
+
+	before := time.Now().Add(-orphanGracePeriod)
+	require.NoError(t, reconcile(context.Background()))
+	after := time.Now().Add(-orphanGracePeriod)
+
+	assert.WithinRange(t, d.files.sweptCutoff, before.Add(-time.Second), after.Add(time.Second))
+}
+
+// 【#3 的另一半：文档处理必须有自己的超时，不能吃 River 的 1 分钟默认值】
+// WorkerDefaults.Timeout 返回 0，River 看到 0 就换成 JobTimeoutDefault。
+// 而一次文档处理要读整个文件、切分、再按批调 embedding 接口（上传上限
+// 32 MiB，见 platform.Config.MaxUploadBytes），1 分钟必然不够——超时的表现
+// 是 job ctx 被取消、这次 attempt 失败，一份合法的大文档因此永远处理不完。
+//
+// 这条断言钉的是"别把覆写删掉"：删掉之后类型仍然编译、测试也不会红，
+// 只有真的上传一份大文档才看得出来。
+func TestDocumentProcessingWorker_HasOwnTimeout(t *testing.T) {
+	w := NewDocumentProcessingWorker(nil)
+
+	got := w.Timeout(nil)
+
+	assert.Positive(t, got, "返回 0 等于没覆写，River 会拿 1 分钟默认值截断处理")
+	assert.Greater(t, got, time.Minute, "必须放过 River 的默认上限，否则覆写没有意义")
 }

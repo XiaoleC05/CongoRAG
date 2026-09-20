@@ -125,6 +125,16 @@ type FileStore interface {
 
 	// List 列出所有正式文件（不含 tmp/ 目录），供孤儿对账使用。
 	List(ctx context.Context) ([]FileInfo, error)
+
+	// SweepTemp 删掉 tmp/ 目录里 mtime 早于 olderThan 的临时文件，返回
+	// 删除过程中遇到的错误（单个文件删不掉只记日志，不让整轮清扫失败）。
+	//
+	// 【为什么需要一个专门的清扫口】WriteTemp 失败时会自己删掉半成品，
+	// 但删除本身也可能失败（句柄还没关、被杀毒软件占着），那条路径返回的
+	// 路径是空串，调用方拿不到文件名、也就没法补一刀。而 tmp/ 对
+	// FileStore.List 是不可见的（它只扫 rootDir 顶层），孤儿对账因此看不见
+	// 这些文件——没有这个口子的话它们只增不减，谁也观察不到。
+	SweepTemp(ctx context.Context, olderThan time.Time) error
 }
 
 // FileInfo 是 List 返回的一条文件信息。
