@@ -12,7 +12,19 @@
 # 而这个目录在 Windows 上默认不在 PATH 里。这里自己拼出来。
 # $(subst \,/, ...) 把 Windows 的反斜杠转成正斜杠（\, 是转义的逗号分隔符）。
 GOPATH_BIN := $(subst \,/,$(shell go env GOPATH))/bin
-export PATH := $(GOPATH_BIN);$(PATH)
+
+# 【PATH 的分隔符随平台变，不能写死】Windows 用 `;`，POSIX 用 `:`。
+# 写死 `;` 的话在 Linux 上第一个条目会变成 "<gopath>/bin;/usr/local/bin"——
+# 一个不存在的目录，后面所有条目也跟着错位，make 里调 migrate/oapi-codegen
+# 就是 "command not found"（CI 因此绕开了 make，见 .github/workflows/ci.yml）。
+# $(OS) 是 make 在 Windows 上自己设的，cmd.exe 和 bash 里都是 Windows_NT，
+# 所以在 Windows 上拿到的分隔符和以前完全一样。
+ifeq ($(OS),Windows_NT)
+PATH_SEP := ;
+else
+PATH_SEP := :
+endif
+export PATH := $(GOPATH_BIN)$(PATH_SEP)$(PATH)
 
 COMPOSE := docker compose -f deployments/docker/docker-compose.yml
 PG_CONTAINER := congorag-postgres
@@ -26,7 +38,7 @@ export CONGORAG_DB_URL := $(DB_URL)
         migrate-up migrate-down migrate-version migrate-create \
         river-migrate-up river-migrate-down \
         generate generate-go generate-ts \
-        dev dev-web dev-worker build build-web build-go \
+        dev dev-web dev-worker build build-web build-web-assets build-web-placeholder build-go \
         test lint tidy fmt vet check
 
 help:
@@ -132,8 +144,36 @@ dev-worker:
 # 先跑 go build 的话那个目录里只有占位文件，或者干脆不存在——编译失败。
 build: build-web build-go
 
-build-web:
+# build-web 拆成两步，顺序不能反：先跑 vite，再把占位文件补回来。
+#
+# 【为什么必须补】vite 的 emptyOutDir 会清空 outDir，而 outDir 就是 go:embed
+# 要读的 apps/api/web/（web/vite.config.ts）。那个目录里唯一被 git 跟踪的
+# 文件是 .gitkeep，而 vite 的 skip 列表只跳过字面量 .git，所以每次构建都会
+# 把它删掉——删掉之后 git 里那个路径就不存在了，新 clone 里
+# `go:embed all:web` 会因为 "no matching files found" 编译失败
+#（.github/workflows/ci.yml 的 go job 就是拦这个的）。
+#
+# 【为什么拆成两个 target 而不是写在同一条 recipe 里】make 在跑第一条命令
+# 之前就把整段 recipe 展开完，所以 $(file ...) 写成 vite 后面的一行没用——
+# 它在 vite 启动前就已经执行、写出来的文件随即被 emptyOutDir 擦掉（实测）。
+#
+# 【为什么用 $(file ...) 而不是 touch / echo】这个 Makefile 要同时跑在
+# cmd.exe 和 bash 里，而两者没有一个共同的"创建空文件"命令。$(file ...)
+# 是 make 自己的函数，不经过 shell——正好符合文件头那条规则。内容是什么
+# 无所谓（make 会补一个换行），这个文件的作用只是让目录在 git 里活下来。
+build-web: build-web-assets build-web-placeholder
+
+# 【这两条依赖声明不是多余的】上面那行把两个 target 并列为 build-web 的前提，
+# 单纯的并列不保证先后——串行 make 恰好按从左到右跑，所以 `make build-web` 是
+# 对的；但 `make -j` 下 build-web-placeholder 可能先跑，占位文件刚写出来就被
+# vite 的 emptyOutDir 擦掉，#28 那个缺陷就静默回来了。这里把顺序写成真正的依赖。
+build-web-placeholder: build-web-assets
+
+build-web-assets:
 	pnpm --filter web build
+
+build-web-placeholder:
+	$(file >apps/api/web/.gitkeep,)
 
 build-go:
 	go build ./...
@@ -143,6 +183,7 @@ vet:
 
 test:
 	go test ./...
+	pnpm --filter web test
 
 # 前端静态检查。src/components/ui/ 和 src/hooks/use-mobile.ts 在
 # .oxlintrc.json 的 ignorePatterns 里——那是 shadcn 生成的代码，改了会被覆盖。

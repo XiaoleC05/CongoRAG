@@ -7,8 +7,9 @@
 
 ## 为什么不用浏览器原生 `EventSource`
 
-`EventSource` 只支持 `GET` 请求、不能带自定义请求头（发消息需要
-`Idempotency-Key`）、断线重连的策略也不可控。改用 `fetch` +
+`EventSource` 只支持 `GET` 请求、不能带自定义请求头（要发请求头的场景——
+认证、以及幂等重放用的 `Idempotency-Key`——都用不了）、断线重连的策略
+也不可控。改用 `fetch` +
 `ReadableStream` 自己解析——代价是断线重连、`Last-Event-ID` 这些
 `EventSource` 免费给的东西，全部要自己写（见"断线续传"一节）。
 
@@ -31,6 +32,14 @@ data: {}
 - `event`：事件类型，见下一节
 - `data`：一行 JSON，`event` 决定它的形状
 - 心跳：服务端每 15 秒发一条注释行 `: heartbeat\n\n`（以 `:` 开头的行是 SSE 规范里的注释，客户端应当忽略，只用来防止连接被中间设备当成空闲连接掐断）
+
+**唯一的例外：`id` 可以缺席。** 有一条 error 帧是由"事件根本没能落库"这个
+故障本身触发的——那正是分配 `event_id` 的那一步失败了（见
+`apps/api/internal/api/sse.go` 的写失败兜底分支）。它照 `event:` / `data:`
+两行发出去，没有 `id`。**客户端必须容忍这一点，而且不能因为收到它就推进
+续传游标**：这一帧不代表任何一条已持久化的事件，拿它当游标会让断线续传
+从头跳过一批还没收到的事件。判据很简单——`id` 缺席的帧不参与发号，只用于
+把失败告诉用户。
 
 **一帧可能跨两次 `read()`**——TCP 不保证一次 `read` 刚好读到一个完整帧的边界。
 解析器必须维护一个缓冲区，按 `\n\n` 切出完整帧，切不出来的部分留到下一次
@@ -100,13 +109,26 @@ RETURNING next_event_id;
 `fetch` 什么都不会替你做。重连循环、记录 `lastEventId`、拼进请求 URL，
 三件事都是前端自己的代码要做的（见 `web/src/lib/streamChat.ts`）。
 
-## 幂等与断线的闭环
+## 幂等与断线的闭环（M4-B 计划，当前未实现）
 
-`POST /conversations/{id}/messages` 带 `Idempotency-Key` 请求头。
-命中重复键（同一个 `(endpoint, idempotency_key)` 组合）时，服务端
-**不重新执行**一遍生成，而是返回已创建的资源标识（这里是那条 assistant
-消息所在会话的信息），客户端据此调 `GET .../events?after_event_id=0`
-重新订阅，走上面那条续传路径接着看到剩下的内容。
+**下面写的是设计意图，v1.0 的代码里没有实现，不要按它写客户端。**
+服务端不读 `Idempotency-Key` 请求头（`contracts/openapi.yaml` 也没声明它），
+也没有任何语句往 `idempotency_keys` 表（`migrations/0003_conversations.up.sql`
+建的）里写。所以带同一个键重发一次请求**不会**重放：`Send` 照常分配一个新的
+`sequence_no`，会话里多出一轮用户消息 + 一份 assistant 回答，模型调用和
+BYOK 的 key 各多扣一次。
+
+计划中的语义：`POST /conversations/{id}/messages` 带 `Idempotency-Key` 请求头，
+命中重复键（同一个 `(endpoint, idempotency_key)` 组合）时服务端**不重新执行**
+一遍生成，而是返回已创建的资源标识（这里是那条 assistant 消息所在会话的信息），
+客户端据此调 `GET .../events?after_event_id=0` 重新订阅，走上面那条续传路径
+接着看到剩下的内容。
+
+落地时的位置：在 messages handler 里读这个头，把
+`(endpoint, idempotency_key, resource_id)` 和 sequence 分配放进**同一个事务**
+插入；`internal/platform/pgerr.go` 已经把 `idempotency_keys` 的唯一约束违规
+（23505）翻译成 `platform.ErrIdempotentHit`，但目前没有语句能撞上那条约束，
+所以它是条死路径。
 
 ## 服务端实现要点
 

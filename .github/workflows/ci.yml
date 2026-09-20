@@ -102,12 +102,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # 【这里直接调两个生成器，不写 `make generate`】
-      # Makefile 的 `export PATH := $(GOPATH_BIN);$(PATH)` 是给 cmd.exe 写的——
-      # 那里 `;` 是 PATH 分隔符。在 Linux 的 /bin/sh 下 `:` 才是分隔符，
-      # 于是第一段变成 "<gopath>/bin;<原来的第一段>" 这个不存在的目录，
-      # GOPATH/bin 和原来的第一段一起不可达，`oapi-codegen: not found`。
-      # 这是 Makefile 的 Windows 专属写法，不是这个 job 的问题——
-      # 改动 Makefile 会碰到用户本机已经跑通的东西，所以这里绕开它。
+      # 两个命令与 Makefile 的 generate-go / generate-ts 逐字一致。
+      #
+      # 【为什么不用 make】Makefile 现在按平台选 PATH 分隔符（见它的 PATH_SEP），
+      # 在 Linux 上已经能跑；这里仍然直接调工具，是因为这个 job 要的东西很明确、
+      # 就两条命令，套一层 make 只会让失败信息隔一层（`make` 报的是 make 自己的
+      # 退出状态，而生成器的报错在它上面几十行）。真要改成 `make generate`
+      # 也是对的，前提是 Makefile 的 PATH_SEP 分支没被改回去。
       - name: Generate Go types from contract
         run: oapi-codegen -config oapi-codegen.yaml contracts/openapi.yaml
 
@@ -150,6 +151,13 @@ jobs:
 
       - name: Lint
         run: pnpm --filter web lint
+
+      # 【测试也要跑】lint 和 build 都不执行断言：oxlint 只看规则，tsc 只看类型，
+      # 两者对"发送失败时消息会不会从界面消失"这类行为一无所知。之前这个 job
+      # 只有 lint + build，于是 web/src 下那几个 vitest 用例在 CI 上从来没跑过——
+      # 等于前端这块 diff 完全没有自动化门禁。
+      - name: Test
+        run: pnpm --filter web test
 
       # tsc -b && vite build。类型错误在这里暴露——vite 本身不做类型检查。
       - name: Build web

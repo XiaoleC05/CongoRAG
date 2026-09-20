@@ -93,6 +93,7 @@ make dev-worker
 | `CONGORAG_MASTER_KEY` | 空 | 主密钥的十六进制串；空则去密钥文件里读 |
 | `CONGORAG_MASTER_KEY_PATH` | `./data/master.key` | 主密钥文件路径 |
 | `CONGORAG_TIKTOKEN_CACHE_DIR` | `./data/tiktoken-cache` | tiktoken 词表缓存目录 |
+| `CONGORAG_MAX_UPLOAD_BYTES` | `33554432`（32 MiB） | 单次上传的请求体上限。写 0 或负数会被当成没设、退回默认值 |
 
 主密钥有三个来源，按顺序解析：环境变量非空则直接用；否则读 `master.key` 文件；
 文件不存在就随机生成一个写入该路径（权限 `0600`），首次启动后固定下来。
