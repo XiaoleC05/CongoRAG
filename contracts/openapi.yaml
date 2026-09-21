@@ -2,7 +2,14 @@ openapi: 3.0.4
 
 info:
   title: ConGoRAG API
-  version: 0.1.0
+  # 契约版本跟产品版本走，由发布脚本在发布前断言它与 tag 一致（ADR-002）。
+  #
+  # 【兼容性承诺的边界是路径里的 /api/v1，不是这个号】它标记的是"这份契约
+  # 属于哪一个产品版本"，不是稳定性保证——读者不要把它当兼容性承诺读。
+  #
+  # 【必须加引号】不加的话 YAML 会把 2.0 解析成浮点数，而 info.version 的
+  # 类型是 string——校验会报 "Incorrect type. Expected string"。
+  version: "2.0"
   description: |
     依靠上下文提供 RAG 服务的全栈开源工具
 

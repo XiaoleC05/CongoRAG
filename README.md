@@ -76,7 +76,11 @@ make dev-worker
 - **流式问答**：SSE 逐 token 下发，citation 随流推送，按 `after_event_id` 断线续传
 - **上下文管理**：按 token 预算组装上下文，超预算的历史交给模型压缩
 - **Agent**：工具注册表（计算器、知识库检索、会话检索），运行轨迹逐步落库
-- **BYOK**：provider / model 配置存数据库，API Key 用 AES-GCM 加密后落盘
+- **BYOK**：provider / model 配置存数据库，API Key 用 AES-GCM 加密后落盘；
+  换 embedding 模型时可确认「清空并重建」，不必手工清库
+- **重新索引**：单份文档或整个知识库都能重跑（换模型之后、或某一份处理失败时）
+- **用量计量**：每次模型调用记一行 token 用量，`GET /api/v1/usage` 按模型聚合
+- **优雅退出**：Ctrl-C 会先拒新请求、排空在途 SSE、给 worker 的在途任务留收尾时间
 - **单体交付**：前端产物 `go:embed` 进 Go 二进制，一个进程同时提供 API 和界面
 
 ## 配置
@@ -121,8 +125,10 @@ flowchart LR
 `retrieval`、`ctxmgr`、`conversation`、`agent`。包之间的依赖方向在编译期由 Go 的
 import 规则保证，两个进程各自的装配根在 `apps/*/internal/app/app.go`。
 
-设计取舍写在 ADR 里：[`docs/adr/001-modular-monolith.md`](docs/adr/001-modular-monolith.md)。
-流式协议的字节格式规范在 [`docs/sse-protocol.md`](docs/sse-protocol.md)。
+设计取舍写在 [`docs/adr/`](docs/adr/) 里（模块化单体、契约版本、两套迁移系统、
+为什么用 halfvec、为什么客户端不用 EventSource）。流式协议的字节格式规范在
+[`docs/sse-protocol.md`](docs/sse-protocol.md)，平台相关行为怎么测在
+[`docs/testing.md`](docs/testing.md)，发布流程在 [`docs/releasing.md`](docs/releasing.md)。
 
 ## 目录结构
 
@@ -147,7 +153,7 @@ CongoRAG/
 ├── packages/api-client/        TS 类型生成物（schema.d.ts）
 ├── migrations/                 业务表迁移（golang-migrate）
 ├── deployments/docker/         开发期依赖服务的 compose
-├── docs/                       ADR 与流式协议
+├── docs/                       ADR、流式协议、测试与发布约定
 ├── evals/                      检索质量的测量脚本
 ├── web/                        React SPA 源码，规范见 web/README.md
 └── Makefile                    所有开发命令的入口
@@ -169,8 +175,8 @@ CongoRAG/
 
 改前端要开两个终端：一个 `make dev`，一个 `make dev-web`，浏览器开 `:5173`。
 `:3210` 提供的是 `go:embed` 进去的**构建产物**——改了 `web/src/` 不重新
-`make build-web` 的话，`:3210` 上什么都不会变，而且不报错。Vite 会把 `/api`
-和 `/healthz` 代理到 `:3210`，所以开发期浏览器只看到一个源。
+`make build-web` 的话，`:3210` 上什么都不会变，而且不报错。Vite 会把 `/api`、
+`/healthz` 和 `/readyz` 代理到 `:3210`，所以开发期浏览器只看到一个源。
 
 契约是唯一真相：改接口先改 `contracts/openapi.yaml`，再 `make generate`，
 Go 结构体和 TS 类型一起变。产物要提交进 git，CI 会跑 `make generate` 加
@@ -217,22 +223,35 @@ CI 里有四个 job：Go 编译与单元测试（带 `-race`）、契约生成�
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/healthz` | 健康检查 |
+| GET | `/healthz` | 存活检查（不碰数据库） |
+| GET | `/readyz` | 就绪检查（探数据库，不可用时 503） |
 | GET / POST | `/api/v1/knowledge-bases` | 知识库列表 / 新建 |
 | GET / PATCH / DELETE | `/api/v1/knowledge-bases/{id}` | 详情 / 改名 / 删除 |
-| GET / POST | `/api/v1/knowledge-bases/{id}/documents` | 文档列表 / 上传 |
+| GET / POST | `/api/v1/knowledge-bases/{id}/documents` | 文档列表（分页）/ 上传 |
+| POST | `/api/v1/knowledge-bases/{id}/reindex` | 重新索引整个知识库 |
 | GET / DELETE | `/api/v1/documents/{id}` | 文档详情 / 删除 |
+| POST | `/api/v1/documents/{id}/reindex` | 重新索引单份文档 |
 | POST | `/api/v1/conversations` | 新建会话 |
 | GET / POST | `/api/v1/conversations/{id}/messages` | 消息列表 / 发消息 |
 | GET | `/api/v1/conversations/{id}/events` | SSE 事件流（断线可续传） |
 | GET / POST | `/api/v1/providers` | 模型服务配置 |
+| GET | `/api/v1/usage` | 按模型聚合的 token 用量 |
 | GET | `/api/v1/tools` | 工具目录 |
 | GET / POST | `/api/v1/agents` | Agent 列表 / 新建 |
 | GET | `/api/v1/agents/{id}` | Agent 详情 |
-| GET / POST | `/api/v1/agents/{id}/runs` | 运行列表 / 发起运行 |
+| GET / POST | `/api/v1/agents/{id}/runs` | 运行列表（分页）/ 发起运行 |
 | GET | `/api/v1/runs/{runId}/steps` | 运行轨迹 |
 
 错误响应是 `application/problem+json`，形状见契约里的 `Problem` 定义。
+
+三个会无界增长的列表端点（会话消息、知识库下的文档、Agent 运行历史）用
+keyset 游标分页：请求带 `limit` / `cursor`，响应是 `{items, nextCursor}`。
+`nextCursor` 为 `null` 表示到底了。**游标是不透明的**——不要解析它，
+格式随时可能变（见契约里 `Cursor` 参数的描述）。
+
+契约的 `info.version` 跟产品版本走（当前 `2.0` ↔ tag `v2.0` ↔ 里程碑 `v2.0`），
+由发布脚本在发布前断言两者一致，见 [ADR-002](docs/adr/002-contract-versioning.md)。
+它不表示兼容性承诺——**兼容边界是路径里的 `/api/v1`**。
 
 ## 贡献
 
