@@ -24,6 +24,15 @@ type Querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+// Pinger 是"能证明自己还活着"的东西。
+//
+// 和 Querier 同一个理由：api 的就绪探针只需要这一个方法，签名里出现
+// *pgxpool.Pool 就把数据库驱动泄漏进了 HTTP 边界——apps/api/internal/api
+// 至今没有 import 过任何驱动，Deps 是它唯一的入口，这一条要保住。
+type Pinger interface {
+	Ping(ctx context.Context) error
+}
+
 // TxManager 让 usecase 圈定原子边界。
 //
 // 用法：
@@ -45,6 +54,7 @@ type TxManager interface {
 var (
 	_ Querier = (*pgxpool.Pool)(nil)
 	_ Querier = (pgx.Tx)(nil)
+	_ Pinger  = (*pgxpool.Pool)(nil)
 )
 
 type txManager struct {

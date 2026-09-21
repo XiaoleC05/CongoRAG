@@ -13,7 +13,11 @@ import (
 //
 // 要和 web/vite.config.ts 的 proxy 列表保持一致——开发期由 Vite 转发这两类前缀，
 // 交付期由这里排除。两边不一致的话，开发期和交付期对同一个请求的行为会不同。
-var apiPrefixes = []string{"/api/", "/healthz"}
+// 【为什么要把 /readyz 也排进来】它自己那条路由是注册过的，NoRoute 碰不到；
+// 但 /readyz/（带尾斜杠）没注册，而 app.go 把 RedirectTrailingSlash 关掉了，
+// 于是它会落到 NoRoute——不排的话 isAPIPath 判否，SPA 分支会回 200 + index.html，
+// 和"端点拼错了"应有的 404 Problem 不一致。
+var apiPrefixes = []string{"/api/", "/healthz", "/readyz"}
 
 func isAPIPath(p string) bool {
 	for _, prefix := range apiPrefixes {

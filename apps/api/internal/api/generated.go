@@ -500,6 +500,9 @@ type InvalidArgument = Problem
 // NotFound defines model for NotFound.
 type NotFound = Problem
 
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = Problem
+
 // SubscribeConversationEventsParams defines parameters for SubscribeConversationEvents.
 type SubscribeConversationEventsParams struct {
 	// AfterEventId 只返回这个 id 之后的事件；省略或传 0 表示从头开始
@@ -637,6 +640,9 @@ type ServerInterface interface {
 	// Healthz 存活探针
 	// (GET /healthz)
 	Healthz(c *gin.Context)
+	// Readyz 就绪探针（探测数据库）
+	// (GET /readyz)
+	Readyz(c *gin.Context)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1200,6 +1206,19 @@ func (siw *ServerInterfaceWrapper) Healthz(c *gin.Context) {
 	siw.Handler.Healthz(c)
 }
 
+// Readyz operation middleware
+func (siw *ServerInterfaceWrapper) Readyz(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.Readyz(c)
+}
+
 // GinServerOptions provides options for the Gin server.
 type GinServerOptions struct {
 	BaseURL      string
@@ -1228,6 +1247,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	}
 
 	router.GET(options.BaseURL+"/healthz", wrapper.Healthz)
+	router.GET(options.BaseURL+"/readyz", wrapper.Readyz)
 	router.GET(options.BaseURL+"/api/v1/knowledge-bases", wrapper.ListKnowledgeBases)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases", wrapper.CreateKnowledgeBase)
 	router.DELETE(options.BaseURL+"/api/v1/knowledge-bases/:id", wrapper.DeleteKnowledgeBase)

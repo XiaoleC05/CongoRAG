@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/readyz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 就绪探针（探测数据库） */
+        get: operations["readyz"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/knowledge-bases": {
         parameters: {
             query?: never;
@@ -633,6 +650,15 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description 依赖不可用 */
+        ServiceUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
     };
     parameters: never;
     requestBodies: never;
@@ -662,6 +688,30 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    readyz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 依赖可用，可以接收流量 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @example ok */
+                        status: string;
+                    };
+                };
+            };
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listKnowledgeBases: {

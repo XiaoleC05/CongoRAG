@@ -114,6 +114,17 @@ func Run() error {
 	chunkRepo := retrieval.NewPgRepo()
 	files := knowledge.NewLocalFileStore(cfg.DocumentsDir)
 
+	// 【worker 刻意不预热 tiktoken 词表（issue #44）】
+	//
+	// 它从不 tokenize：文档处理是按**字符**切块的
+	// （internal/knowledge/pipeline.go 的 maxChunkChars），摘要与偏好维护
+	// 按消息条数判断门槛（internal/conversation/memory.go 的两个常量），
+	// 而唯一会算 token 的 Send 路径只在 apps/api 进程里跑。
+	//
+	// 【什么时候要回来看这一行】worker 开始数 token 的那天——比如按 token
+	// 切块，或者记账（#47）改成由 worker 写 token_usage。那时这里要补上和
+	// apps/api 一样的 llm.WarmupTokenizers 调用，否则 worker 会在运行期
+	// 撞上"词表还没下载"这个启动期问题。
 	registry := llm.NewRegistry(llmRepo, box, pool, cfg.TiktokenCacheDir)
 	retrievalUC := retrieval.NewUsecase(chunkRepo, registry, llmRepo, pool)
 

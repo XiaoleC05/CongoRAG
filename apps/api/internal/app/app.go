@@ -119,6 +119,25 @@ func Run(webFS embed.FS) error {
 	// 装配根这里只认识 llm.Registry 这个接口，不知道 Eino 存在。
 	registry := llm.NewRegistry(llmRepo, box, pool, cfg.TiktokenCacheDir)
 
+	// 【启动时就把 tiktoken 词表准备好，不要等第一次聊天（issue #44）】
+	//
+	// 词表首次使用要联网下载，而 conversation.Send 是唯一会用到它的地方。
+	// 不预热的话，"全新安装 + 离线/受限网络"下的表现是：app 正常启动、
+	// 引导页正常保存、文档正常上传，直到用户敲下第一句话才失败——而且错误
+	// 来自 tiktoken 而不是他配的模型，排查方向从一开始就是错的。
+	//
+	// 【失败就退出，不做降级】没有词表时聊天 100% 不可用，一个"起来了但
+	// 每条消息都报错"的进程比一个明确拒绝启动的进程难查得多。这与上面
+	// Ping 数据库的做法是同一条原则：配错了就在启动时说，别等第一个请求。
+	// 错误信息里带着缓存目录、下载地址和手工放置的办法，离线用户照着放
+	// 文件再启动即可（词表缓存在 data/ 下，只需成功下载一次）。
+	//
+	// 必须在 NewRegistry 之后：是它设置 TIKTOKEN_CACHE_DIR 的。
+	if err := llm.WarmupTokenizers(cfg.TiktokenCacheDir); err != nil {
+		return fmt.Errorf("warm up tokenizer: %w", err)
+	}
+	logger.Info("tiktoken vocabularies ready", "dir", cfg.TiktokenCacheDir)
+
 	// retrieval.Usecase 在这个进程里只是为了满足 knowledge.Usecase 的
 	// ChunkIndexer 依赖——真正调用 IndexDocument 的是 apps/worker 的
 	// ProcessDocument，api 进程从不触发它。两边各自装一份是
@@ -196,6 +215,9 @@ func Run(webFS embed.FS) error {
 		Conversation:   convUC,
 		Agent:          agentUC,
 		MaxUploadBytes: cfg.MaxUploadBytes,
+		// pool 是 *pgxpool.Pool，结构性地满足 platform.Pinger；/readyz 用它
+		// 探数据库（上面那个 Ping 只在启动时跑一次，数据库中途挂掉它看不出来）。
+		DB: pool,
 	})
 
 	// 路由不在这里写：RegisterHandlers 由 generated.go 生成，

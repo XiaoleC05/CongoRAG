@@ -39,6 +39,33 @@ paths:
                     type: string
                     example: ok
 
+  # ── 就绪检查 ────────────────────────────────────────────────
+  #
+  # 【为什么和 /healthz 分成两个端点】两个问题、两个消费者、两个结论：
+  # 存活探针回答"要不要重启我"，就绪探针回答"要不要给我发流量"。合成一个
+  # 会让编排器在数据库抖动时反复重启实例——那是把一次网络抖动升级成一次
+  # 停机（见 internal/api/server.go 里 Healthz 的注释）。
+  #
+  # 响应体的形状和 /healthz 保持一致，一个 curl / 一个解析器通吃。
+  /readyz:
+    get:
+      operationId: readyz
+      summary: 就绪探针（探测数据库）
+      responses:
+        '200':
+          description: 依赖可用，可以接收流量
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
   # ── 知识库：列表 + 新建 ─────────────────────────────────────
   /api/v1/knowledge-bases:
 
@@ -1186,6 +1213,18 @@ components:
 
     InternalError:
       description: 服务内部错误
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    # 503：实例自身活着，但它依赖的东西现在用不了，不该给它发流量。
+    #
+    # 【为什么和 InternalError 分开】调用方对这两件事的处理完全不同：
+    # 500 是"这个请求我们写错了"，503 是"过一会儿再来"。编排器也要据这个
+    # 区别决定是重启实例还是把它摘出负载均衡。
+    ServiceUnavailable:
+      description: 依赖不可用
       content:
         application/problem+json:
           schema:

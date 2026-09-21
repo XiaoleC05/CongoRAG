@@ -8,12 +8,14 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -38,6 +40,13 @@ type Deps struct {
 	// 的对应项）。只有 UploadDocument 用它，<=0 表示不限——生产装配里
 	// 永远是一个正数。
 	MaxUploadBytes int64
+
+	// DB 是就绪探针要探测的那个依赖，只有 Readyz 用它。
+	//
+	// 类型是 platform.Pinger 而不是 *pgxpool.Pool：这个包至今没有 import
+	// 过任何数据库驱动，Deps 是它唯一能拿到池的口子，这里一写具体类型，
+	// 驱动就顺着 Deps 进了 HTTP 边界。
+	DB platform.Pinger
 }
 
 // 编译期断言：契约里加了端点而这里没实现，编译失败。
@@ -89,6 +98,50 @@ func toAPIKBList(kbs []*knowledge.KB) []KnowledgeBase {
 // 数据库连不上时服务本身是活的；是否该给它发流量由 readiness 探针判断。
 // 两者混在一起会导致数据库抖动时实例被反复重启。
 func (s *Server) Healthz(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// readinessProbeTimeout 是 /readyz 探测数据库的上限。
+//
+// 【必须有这个超时】pgxpool.Ping 内部是 Acquire（可能要新建连接）+ 一次
+// 往返，两者都只认 ctx；连接串里没写 connect_timeout 时 pgx 不设
+// ConnectTimeout，一个被防火墙丢包的数据库会让 Ping 一直挂着。探针要回答
+// 的是"现在能不能发流量"，不是"等到有答案"。
+const readinessProbeTimeout = 2 * time.Second
+
+// Readyz 是就绪探针：进程活着之外，还要求数据库能用。
+//
+// 【探测什么、不探测什么】只探这个进程服务每一个请求都离不开的东西，
+// 也就是连接池。不探：
+//   - schema_migrations 的版本：它不在请求路径上（运行时没有代码读它），
+//     一次没跑完或 dirty 的迁移是运维要处理的事，不是"这个实例不能干活"。
+//     接进来等于把一个部署期状态变成永远好不了的 503。
+//   - River 的队列表：api 侧只是 insert-only，缺表只影响上传这一条路径，
+//     而 /readyz 是一刀切的门禁——判它不 ready 会把浏览、聊天一起下线。
+//   - 任何出网的调用（模型/embedding 服务）：它们是每请求的，而且已经以
+//     upstream_llm_error(502) 的形式失败；用探针每几秒去敲一次第三方，
+//     等于把对方的抖动变成"你本地应用挂了"。
+//
+// 【失败为什么不走 s.fail】fail 的 5xx 分支会把 detail 换成"服务内部错误"
+// ——那恰恰是就绪探针最需要说清楚的信息（是数据库，不是别的），换掉之后
+// 运维只能去翻日志；而且它按 Error 级别记日志，一个几秒一次的探针会把日志
+// 淹掉。这里直接 writeProblem，和 spa.go 的 NoRoute 404 是同一类
+// "不是请求失败，而是状态报告"。
+func (s *Server) Readyz(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), readinessProbeTimeout)
+	defer cancel()
+
+	if err := s.deps.DB.Ping(ctx); err != nil {
+		s.deps.Logger.Warn("readiness probe failed",
+			"request_id", platform.RequestIDFrom(c.Request.Context()),
+			"error", err,
+		)
+		typ, title, detail := "unavailable", "服务暂不可用", "数据库连接不可用"
+		writeProblem(c, http.StatusServiceUnavailable, Problem{
+			Type: typ, Status: http.StatusServiceUnavailable, Title: &title, Detail: &detail,
+		})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 

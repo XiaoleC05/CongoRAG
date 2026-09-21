@@ -9,11 +9,16 @@ import (
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
 
-// tiktoken.GetEncoding 首次调用要下载/解析几百 KB 的 BPE 词表；即使命中
-// 本地缓存文件，反序列化整张表也不是免费的。conversation.Send 每次请求
-// 都要问一遍 Registry.Tokenizer，所以在进程内缓存*编码实例*——这和
-// eino.go 的 resolve() 每次都重新查 Provider/Key 不矛盾：Key 会变，但
-// "cl100k_base 编码表长什么样" 在进程生命周期内不会变。
+// tiktoken.GetEncoding 首次调用要解析几百 KB 的 BPE 词表（词表从哪来、
+// 离线怎么办见 vocab.go）；即使命中本地缓存文件，反序列化整张表也不是免费的。
+// conversation.Send 每次请求都要问一遍 Registry.Tokenizer，所以在进程内缓存
+// *编码实例*——这和 eino.go 的 resolve() 每次都重新查 Provider/Key 不矛盾：
+// Key 会变，但"cl100k_base 编码表长什么样" 在进程生命周期内不会变。
+//
+// 【这把锁会覆盖整次解析，包括可能的下载】启动时的预热是单线程的，所以
+// 无害；但如果将来有人在服务运行期间触发一次新的编码加载，那 30 秒的下载
+// 会把每一个聊天请求挡在这把锁上（Send 每次都走这里）。要加运行期预热的话，
+// 先解决这件事。
 var (
 	tiktokenMu    sync.Mutex
 	tiktokenCache = map[string]*tiktoken.Tiktoken{}
