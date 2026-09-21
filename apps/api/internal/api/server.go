@@ -715,6 +715,42 @@ func (s *Server) SubscribeConversationEvents(c *gin.Context, id openapi_types.UU
 }
 
 // ────────────────────────────────────────────────────────────────
+// Token 用量（issue #47）
+// ────────────────────────────────────────────────────────────────
+
+// GetUsageSummary 按模型聚合 token 用量。
+//
+// 【没有分页】聚合结果的条数 = 配过的模型数（个位数量级），不是调用次数。
+//
+// 【合计在 handler 里算】SQL 已经按模型分好组了，再为两个总数跑一次查询
+// 不划算；这里的行数是个位数，累加一次比多一次往返便宜。
+func (s *Server) GetUsageSummary(c *gin.Context, params GetUsageSummaryParams) {
+	rows, err := s.deps.LLM.UsageSummary(c.Request.Context(), params.Since, params.Until)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	// 【必须是空切片不是 nil】契约里 byModel 是数组，nil 会序列化成 null，
+	// 前端拿到 null 去做 .map() 直接崩（和 toAPIKBList 那条同一个约定）。
+	out := UsageSummary{ByModel: make([]UsageByModel, 0, len(rows))}
+	for _, r := range rows {
+		out.TotalPromptTokens += r.PromptTokens
+		out.TotalCompletionTokens += r.CompletionTokens
+		out.ByModel = append(out.ByModel, UsageByModel{
+			ProviderId:       r.ProviderID,
+			ModelId:          r.ModelID,
+			ModelName:        r.ModelName,
+			Kind:             UsageByModelKind(r.Kind),
+			Calls:            r.Calls,
+			PromptTokens:     r.PromptTokens,
+			CompletionTokens: r.CompletionTokens,
+		})
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// ────────────────────────────────────────────────────────────────
 // Agent（M4-A）
 // ────────────────────────────────────────────────────────────────
 

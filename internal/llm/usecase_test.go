@@ -161,6 +161,9 @@ func (f *fakeRegistry) ActiveModel(ctx context.Context, kind Kind) (*Model, erro
 	return nil, errors.New("fakeRegistry.ActiveModel: not implemented, this test should not reach here")
 }
 
+// RecordUsage 记账（issue #47）。这些测试不关心用量，空实现即可。
+func (f *fakeRegistry) RecordUsage(ctx context.Context, modelID string, kind Kind, u Usage) {}
+
 func (f *fakeRegistry) Capabilities(ctx context.Context, modelID string) (Capabilities, error) {
 	return Capabilities{}, errors.New("fakeRegistry.Capabilities: not implemented, this test should not reach here")
 }
@@ -289,7 +292,7 @@ func (f *fakeTxManager) InTx(ctx context.Context, fn func(q platform.Querier) er
 // 根本到不了入队。要验证重建的用例直接给返回的 uc 赋一个假的 reindexer
 // （同包，字段可写）——比给这个构造器再加一个参数要少改十几处调用点。
 func newTestUsecase(repo *fakeConfigRepo, box *fakeSecretBox, reg *fakeRegistry, q *fakeQuerier) *Usecase {
-	return NewUsecase(repo, box, reg, &fakeTxManager{q: q}, q, nil)
+	return NewUsecase(repo, box, reg, &fakeTxManager{q: q}, q, nil, nil)
 }
 
 func validBootstrapRequest() BootstrapRequest {

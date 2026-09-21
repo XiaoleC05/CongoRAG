@@ -125,7 +125,10 @@ func Run() error {
 	// 切块，或者记账（#47）改成由 worker 写 token_usage。那时这里要补上和
 	// apps/api 一样的 llm.WarmupTokenizers 调用，否则 worker 会在运行期
 	// 撞上"词表还没下载"这个启动期问题。
-	registry := llm.NewRegistry(llmRepo, box, pool, cfg.TiktokenCacheDir)
+	// usageRepo 是 token 用量记账（issue #47）。worker 侧也要记：文档索引的
+	// embedding、摘要压缩、偏好抽取都在这个进程里——只在 api 侧接会让这些
+	// 调用完全不计。
+	registry := llm.NewRegistry(llmRepo, box, pool, cfg.TiktokenCacheDir, llm.NewPgUsageRepo())
 	retrievalUC := retrieval.NewUsecase(chunkRepo, registry, llmRepo, pool)
 
 	// ── 两阶段装配：Enqueuer / FileCleaner / Scheduler 先占位 ──

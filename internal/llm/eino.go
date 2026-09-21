@@ -8,6 +8,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 
@@ -15,6 +16,8 @@ import (
 
 	einoembedding "github.com/cloudwego/eino-ext/components/embedding/openai"
 	einochatmodel "github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/cloudwego/eino/callbacks"
+	"github.com/cloudwego/eino/components"
 	"github.com/cloudwego/eino/components/embedding"
 	"github.com/cloudwego/eino/schema"
 
@@ -33,6 +36,9 @@ type registry struct {
 	repo ConfigRepo
 	box  platform.SecretBox
 	db   platform.Querier
+	// usageRepo 是 token 用量记账（issue #47）。允许为 nil——测试里不关心
+	// 记账时不必造一个；适配器会跳过记账，对话照常跑。
+	usageRepo UsageRepo
 }
 
 // NewRegistry 装配一个 Registry。
@@ -42,9 +48,49 @@ type registry struct {
 // getTiktokenEncoding 最终调用它），这是那个库自己文档化的配置方式，
 // 不是本项目发明的约定——这里只是把它接到 platform.Config 上，
 // 不让缓存目录散落在系统临时目录里（原因见 config.go 里的注释）。
-func NewRegistry(repo ConfigRepo, box platform.SecretBox, db platform.Querier, tiktokenCacheDir string) Registry {
+func NewRegistry(repo ConfigRepo, box platform.SecretBox, db platform.Querier, tiktokenCacheDir string, usageRepo UsageRepo) Registry {
 	os.Setenv("TIKTOKEN_CACHE_DIR", tiktokenCacheDir)
-	return &registry{repo: repo, box: box, db: db}
+	return &registry{repo: repo, box: box, db: db, usageRepo: usageRepo}
+}
+
+// RecordUsage 记一次模型调用的用量（issue #47）。
+//
+// 【为什么入口在这里】12 个 LLM 调用点里有 11 个通过 Registry 拿到模型句柄，
+// 而它们的用量由适配器内部自动记（见下面 einoChatModel / einoEmbedder）。
+// 唯一例外是 Agent 的 ADK 循环——它自己构造 Eino 原生模型、刻意不经过适配器
+// （见 agent/eino_adk.go 的文件头注释），所以那条路径由调用方把用量报回来。
+//
+// 【为什么接收的是 modelID 字符串】调用方（agent.Usecase）手里只有从
+// ActiveModelID 拿到的那个字符串。解析成行是这里的事。
+func (r *registry) RecordUsage(ctx context.Context, modelID string, kind Kind, u Usage) {
+	rec, err := r.recorderFor(ctx, modelID, kind)
+	if err != nil {
+		// 解析失败说明这个 modelID 已经不存在了（配置被换掉）。记账丢掉即可，
+		// 不上抛——调用方是 Agent 的运行循环，不该为一个观测失败而中断。
+		slog.Default().Warn("cannot resolve model for usage record",
+			"model_id", modelID, "kind", kind, "error", err)
+		return
+	}
+	rec.record(ctx, u.PromptTokens, u.CompletionTokens)
+}
+
+// recorderFor 解析出一个可用的记账句柄；usageRepo 缺失时返回不可用的那个。
+func (r *registry) recorderFor(ctx context.Context, modelID string, kind Kind) (usageRecorder, error) {
+	if r.usageRepo == nil {
+		return usageRecorder{}, nil
+	}
+	id, err := uuid.Parse(modelID)
+	if err != nil {
+		return usageRecorder{}, fmt.Errorf("model id %q is not a valid uuid: %w", modelID, platform.ErrInvalid)
+	}
+	m, err := r.repo.GetModel(ctx, r.db, id)
+	if err != nil {
+		return usageRecorder{}, fmt.Errorf("get model %s: %w", modelID, err)
+	}
+	return usageRecorder{
+		repo: r.usageRepo, db: r.db,
+		providerID: m.ProviderID, modelID: m.ID, kind: kind,
+	}, nil
 }
 
 // resolve 把 modelID 解析成"这个模型属于哪个 provider,该用哪个明文 Key"。
@@ -100,7 +146,14 @@ func (r *registry) Chat(ctx context.Context, modelID string) (ChatModel, error) 
 		// 都该引向同一个排查方向：检查 Base URL / Key / 模型名。
 		return nil, fmt.Errorf("%w: init chat model %s: %v", platform.ErrUpstream, modelID, err)
 	}
-	return &einoChatModel{inner: cm}, nil
+	// 记账句柄在构造时就解析好（provider/model 的 uuid 这里已经有了），
+	// 调用时不必再查一遍。usageRepo 为 nil 时它是一个不可用的零值，
+	// 适配器会跳过记账。
+	rec, recErr := r.recorderFor(ctx, m.ID.String(), KindChat)
+	if recErr != nil {
+		rec = usageRecorder{}
+	}
+	return &einoChatModel{inner: cm, rec: rec}, nil
 }
 
 // ResolveChatEndpoint 见 port.go 的注释：只返回裸字符串,不返回 Eino 类型。
@@ -132,7 +185,11 @@ func (r *registry) Embedder(ctx context.Context, modelID string) (Embedder, erro
 	if err != nil {
 		return nil, fmt.Errorf("%w: init embedder %s: %v", platform.ErrUpstream, modelID, err)
 	}
-	return &einoEmbedder{inner: emb}, nil
+	rec, recErr := r.recorderFor(ctx, m.ID.String(), KindEmbedding)
+	if recErr != nil {
+		rec = usageRecorder{}
+	}
+	return &einoEmbedder{inner: emb, rec: rec}, nil
 }
 
 // ProbeEmbeddingDimension 直接用表单上的原始字段发一次真实请求,
@@ -214,6 +271,7 @@ func (r *registry) Tokenizer(ctx context.Context, modelID string) (Tokenizer, er
 
 type einoChatModel struct {
 	inner *einochatmodel.ChatModel
+	rec   usageRecorder
 }
 
 func (c *einoChatModel) Generate(ctx context.Context, msgs []Message, opts ...CallOption) (*Message, error) {
@@ -226,6 +284,11 @@ func (c *einoChatModel) Generate(ctx context.Context, msgs []Message, opts ...Ca
 	if err != nil {
 		return nil, fmt.Errorf("%w: generate: %v", platform.ErrUpstream, err)
 	}
+	// 【非流式的 usage 在 ResponseMeta 上】fromEinoMessage 只复制正文，
+	// ResponseMeta 被丢掉，所以要在转换之前读。
+	//
+	// 摘要压缩、偏好抽取、预算压缩走的都是这条路（它们调 Generate）。
+	c.rec.recordFromMeta(ctx, out.ResponseMeta)
 	return fromEinoMessage(out), nil
 }
 
@@ -236,11 +299,45 @@ func (c *einoChatModel) Stream(ctx context.Context, msgs []Message, opts ...Call
 	if err != nil {
 		return nil, fmt.Errorf("%w: stream: %v", platform.ErrUpstream, err)
 	}
-	return &einoStream{inner: sr}, nil
+	return &einoStream{inner: sr, rec: c.rec, ctx: ctx}, nil
 }
 
 type einoStream struct {
 	inner *schema.StreamReader[*schema.Message]
+	rec   usageRecorder
+
+	// ctx 只用来取记账需要的东西（调用方注入的 message_id）。
+	//
+	// 【为什么把 ctx 存在结构体上】llm.Stream 接口的 Recv/Close 没有 ctx
+	// 参数，而记账发生在 Recv 里。它不参与生命周期控制——记录时用的是
+	// context.WithoutCancel（见 usageRecorder.record），所以这个 ctx 被取消
+	// 不影响记账，也不会因为被存下来而泄漏什么东西。
+	ctx context.Context
+
+	// reported 保证一次调用只记一行：正常是 Recv 看到 usage 那一次，
+	// 兜底是读到 EOF 时补一行 token=0 的。
+	reported sync.Once
+}
+
+// recordOnce 记一行用量，且一次调用只记一行。
+//
+// 【msg 为 nil 是"上游根本没回 usage"那一档】它记一行 token 为 0 的。
+// 行数代表调用次数，是可观测事实——少一行比 token 记 0 更难发现。
+//
+// 【为什么每个块都要过一遍】上游的 usage 可能挂在最后一个正文块上，也可能
+// 单独发一个"只有 ResponseMeta、Content 为空"的块。两种都要认，reported
+// 保证只落一行。
+func (s *einoStream) recordOnce(msg *schema.Message) {
+	if msg != nil && (msg.ResponseMeta == nil || msg.ResponseMeta.Usage == nil) {
+		return
+	}
+	s.reported.Do(func() {
+		if msg == nil {
+			s.rec.record(s.ctx, 0, 0)
+			return
+		}
+		s.rec.record(s.ctx, msg.ResponseMeta.Usage.PromptTokens, msg.ResponseMeta.Usage.CompletionTokens)
+	})
 }
 
 func (s *einoStream) Recv() (*Message, error) {
@@ -248,8 +345,16 @@ func (s *einoStream) Recv() (*Message, error) {
 	if err != nil {
 		// io.EOF 原样传递——llm.Stream 接口的约定和 Eino 一致,
 		// 调用方（M2 的 conversation.Send）靠它判断流结束,不靠额外的信号。
+		//
+		// 【EOF 时也要兜底记一行】正常路径下 usage 随最后一个块到达、上面
+		// 那次 recordStreamUsage 已经记过了（reported 会挡住重复）。这里
+		// 覆盖的是另一种结尾：上游根本没回 usage。行数代表调用次数，是
+		// 可观测事实——少一行比 token 记 0 更难发现。
+		s.recordOnce(nil)
 		return nil, err
 	}
+	// 【在转换之前读】fromEinoMessage 只复制正文，ResponseMeta 会被丢掉。
+	s.recordOnce(msg)
 	return fromEinoMessage(msg), nil
 }
 
@@ -270,15 +375,43 @@ func (s *einoStream) Close() error {
 // 这个转换只在这一处发生,业务层往下传的向量全部是 float32。
 type einoEmbedder struct {
 	inner embedding.Embedder
+	rec   usageRecorder
 
 	mu  sync.Mutex
 	dim int
 }
 
 func (e *einoEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+	// 【embedding 的用量只能从回调里拿】eino 的 embedding.Embedder 接口只返回
+	// [][]float64，用量不在这条返回值上——上游把它放在
+	// embedding.CallbackOutput.TokenUsage 里通过 callbacks.OnEnd 发出来。
+	// InitCallbacks 是公开包里唯一能在 standalone 调用上挂 handler 的入口
+	// （不要用已废弃的全局 InitCallbackHandlers）。
+	//
+	// 【拿不到也要记一行】有些上游（本地 ollama、部分中转）不回 usage。这时
+	// 记一行 token 为 0 的：行数代表调用次数，是可观测事实，少一行比 token
+	// 记 0 更难发现——文档索引一份大文档是几十次调用，少记了看不出来。
+	var captured *embedding.TokenUsage
+	ctx = callbacks.InitCallbacks(ctx,
+		&callbacks.RunInfo{Name: "congorag-embedder", Component: components.ComponentOfEmbedding},
+		callbacks.NewHandlerBuilder().OnEndFn(
+			func(ctx context.Context, _ *callbacks.RunInfo, out callbacks.CallbackOutput) context.Context {
+				if o, ok := out.(*embedding.CallbackOutput); ok && o.TokenUsage != nil {
+					captured = o.TokenUsage
+				}
+				return ctx
+			}).Build(),
+	)
+
 	vecs, err := e.inner.EmbedStrings(ctx, texts)
 	if err != nil {
 		return nil, fmt.Errorf("%w: embed: %v", platform.ErrUpstream, err)
+	}
+
+	if captured != nil {
+		e.rec.record(ctx, captured.PromptTokens, captured.CompletionTokens)
+	} else {
+		e.rec.record(ctx, 0, 0)
 	}
 
 	out := make([][]float32, len(vecs))

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cloudwego/eino/schema"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,6 +32,9 @@ import (
 type fakeLLMRegistry struct {
 	model    *llm.Model
 	modelErr error
+	// usages 收集 RecordUsage 的调用——ADK 路径的用量记账只能由调用方上报
+	// （见 eino_adk.go 的文件头注释），所以这条路径的断言落在它身上。
+	usages []llm.Usage
 }
 
 func (f *fakeLLMRegistry) ActiveModel(ctx context.Context, kind llm.Kind) (*llm.Model, error) {
@@ -44,6 +49,10 @@ func (f *fakeLLMRegistry) ActiveModelID(ctx context.Context, kind llm.Kind) (str
 		return "", f.modelErr
 	}
 	return f.model.ID.String(), nil
+}
+
+func (f *fakeLLMRegistry) RecordUsage(ctx context.Context, modelID string, kind llm.Kind, u llm.Usage) {
+	f.usages = append(f.usages, u)
 }
 
 func (f *fakeLLMRegistry) Chat(ctx context.Context, modelID string) (llm.ChatModel, error) {
@@ -191,4 +200,54 @@ func TestCreateAgent_NoActiveModel_IsNotFound(t *testing.T) {
 	_, err := u.CreateAgent(context.Background(), "计算助手", "", "", []string{"calculator"})
 
 	require.ErrorIs(t, err, platform.ErrNotFound)
+}
+
+// ════════════════════════════════════════════════════════════════
+// Agent 路径的 token 记账（issue #47）
+// ════════════════════════════════════════════════════════════════
+
+// ADK 循环自己构造 Eino 原生模型、绕开 llm 包的适配器，所以它的用量必须
+// 由调用方上报——而 Agent 恰恰是最贵的一条路径（一次运行最多 20 轮模型调用）。
+//
+// 【这一条钉的是"事件真的被转成了记账"】光有 adkEventUsage 这个事件类型
+// 不够：consumeEvents 的 switch 里漏一个 case，用量就静默地全丢了，
+// 而且不会有任何报错。
+func TestConsumeEvents_UsageEventIsRecorded(t *testing.T) {
+	repo := newFakeRepo()
+	reg := &fakeLLMRegistry{model: newChatModel("test-model", true)}
+	u := &Usecase{repo: repo, cp: &fakeCheckpointStore{}, tools: NewToolRegistry(), registry: reg}
+	sink := newFakeSink()
+
+	events := make(chan adkEvent, 10)
+	events <- adkEvent{kind: adkEventToken, text: "答案"}
+	events <- adkEvent{kind: adkEventUsage, usage: &schema.TokenUsage{PromptTokens: 88, CompletionTokens: 12}}
+	events <- adkEvent{kind: adkEventDone}
+	close(events)
+
+	var eventID int64
+	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+
+	require.NoError(t, err)
+	require.Len(t, reg.usages, 1, "每一轮的 usage 都要记一次")
+	assert.Equal(t, 88, reg.usages[0].PromptTokens)
+	assert.Equal(t, 12, reg.usages[0].CompletionTokens)
+}
+
+// 一轮没有 usage（上游没回）时不该凭空造一条。
+func TestConsumeEvents_NoUsageEventRecordsNothing(t *testing.T) {
+	repo := newFakeRepo()
+	reg := &fakeLLMRegistry{model: newChatModel("test-model", true)}
+	u := &Usecase{repo: repo, cp: &fakeCheckpointStore{}, tools: NewToolRegistry(), registry: reg}
+	sink := newFakeSink()
+
+	events := make(chan adkEvent, 10)
+	events <- adkEvent{kind: adkEventToken, text: "答案"}
+	events <- adkEvent{kind: adkEventDone}
+	close(events)
+
+	var eventID int64
+	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+
+	require.NoError(t, err)
+	assert.Empty(t, reg.usages)
 }

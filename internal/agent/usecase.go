@@ -307,7 +307,7 @@ func (u *Usecase) start(ctx context.Context, agentID uuid.UUID, input string, si
 		return run, fmt.Errorf("start agent run: %w", err)
 	}
 
-	output, runErr := u.consumeEvents(ctx, run.ID, events, sink, eventID)
+	output, runErr := u.consumeEvents(ctx, run.ID, chatModel.ID.String(), events, sink, eventID)
 	run.Output = output
 	// 消费端已经退出，通知生产者收摊。
 	cancelRun()
@@ -353,7 +353,7 @@ type pendingCall struct {
 // 跨进程重启也要保持单调的机制。用指针而不是返回值传出最终计数,
 // 是因为 Start 的最外层 error 事件（这个函数从没跑过、或者跑到中途
 // 失败退出之后）也要接着这个计数继续分配,不能各自从零起跳。
-func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, events <-chan adkEvent, sink conversation.EventSink, eventID *int64) (string, error) {
+func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, chatModelID string, events <-chan adkEvent, sink conversation.EventSink, eventID *int64) (string, error) {
 	var output strings.Builder
 	seq := 0
 	pending := map[string]*pendingCall{}
@@ -483,6 +483,19 @@ func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, events <-c
 			// 工具结果交回模型，下一轮生成从这里开始——这一轮再出现
 			// tool_call 就该是一条新的 llm 行了。
 			roundStepClosed = false
+
+		case adkEventUsage:
+			// 【ADK 路径的记账要自己上报（issue #47）】它绕开 llm 包的适配器
+			// 构造 Eino 原生模型（见 eino_adk.go 的文件头注释），所以那边
+			// 自动记账覆盖不到它——而 Agent 恰恰是最贵的一条路径（一次运行
+			// 最多 20 轮模型调用）。绕开封装的代价就是要自己把观测数据报出来。
+			//
+			// 记账失败不上抛（RecordUsage 内部只记日志）：它是观测，
+			// 不该让一次运行因为记不上账而失败。
+			u.registry.RecordUsage(ctx, chatModelID, llm.KindChat, llm.Usage{
+				PromptTokens:     event.usage.PromptTokens,
+				CompletionTokens: event.usage.CompletionTokens,
+			})
 
 		case adkEventError:
 			// 错误可能在任何助手事件之前就到达（模型第一轮就挂了），这时

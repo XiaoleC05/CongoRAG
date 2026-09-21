@@ -52,6 +52,10 @@ func (r *fakeRegistry) ActiveModel(ctx context.Context, kind llm.Kind) (*llm.Mod
 	return nil, errors.New("fakeRegistry.ActiveModel: 这个测试不该走到这里")
 }
 
+// RecordUsage 记账（issue #47）。这些测试不关心用量，空实现即可。
+func (r *fakeRegistry) RecordUsage(ctx context.Context, modelID string, kind llm.Kind, u llm.Usage) {
+}
+
 func (r *fakeRegistry) Embedder(ctx context.Context, modelID string) (llm.Embedder, error) {
 	return nil, errors.New("fakeRegistry.Embedder: 这个测试不该走到这里")
 }

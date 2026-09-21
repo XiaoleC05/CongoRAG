@@ -27,6 +27,30 @@ const (
 	KindEmbedding Kind = "embedding"
 )
 
+// Usage 是一次模型调用的 token 用量（issue #47）。
+//
+// 【一行 = 一次调用，不是一次请求】一次带 RAG 的聊天会包含检索的 embedding、
+// 长期记忆的 embedding、可能的预算压缩、以及主生成——记成一行就只能看到
+// 一个总数，"哪一步贵"永远查不出来。索引建在 provider_id 上也说明原始设计
+// 就是这么想的（聚合行的话按 provider 聚合只需要写入时累加，不需要索引）。
+//
+// 【不存单价】价格会变，写进去的快照一旦上游调价就是一条无法重算的历史；
+// 而且这个产品是 BYOK——同一个模型名在不同中转商的价格可以差几倍，本地
+// ollama 上成本是 0，服务端根本无从知道。要算钱就在读的时候按当前价格算。
+type Usage struct {
+	ProviderID uuid.UUID
+	ModelID    uuid.UUID
+	// MessageID 只有聊天主路径填（那一条 assistant 消息）；说明不了归属的
+	// 调用（摘要压缩、记忆抽取、文档索引）留 nil——迁移注释里写明了它可空
+	// 的理由就是"不是每一次计量都对应一条消息"。
+	MessageID        *uuid.UUID
+	Kind             Kind
+	PromptTokens     int
+	CompletionTokens int
+	CreatedAt        time.Time
+}
+
+
 // Capabilities 记录一个模型声明支持的能力。
 //
 // 全部由用户在引导页手工勾选,不是探测出来的——OpenAI 兼容 API 不保证

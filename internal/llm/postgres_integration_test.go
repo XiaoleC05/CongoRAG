@@ -203,7 +203,7 @@ func TestIntegration_Bootstrap_EndToEnd(t *testing.T) {
 	// 第六个参数是重新索引端口（issue #39）。这里传 nil：这个用例只验证
 	// "拒绝"，而拒绝路径根本走不到入队那一步；真要触发重建的用例见文件
 	// 末尾的 TestBootstrap_AllowEmbeddingReset。
-	uc := NewUsecase(repo, box, reg, txm, pool, nil)
+	uc := NewUsecase(repo, box, reg, txm, pool, nil, nil)
 
 	req := validBootstrapRequest()
 	req.APIKey = "sk-integration-test-real-crypto-path"

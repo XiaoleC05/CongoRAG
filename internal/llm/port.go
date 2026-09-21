@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -176,6 +177,46 @@ type Registry interface {
 	// 【故意不走 modelID 那一套】此刻这个模型还没有 llm_models 行——
 	// 探测本身就是"决定要不要建这一行"的前提,不能反过来要求先有行才能探测。
 	ProbeEmbeddingDimension(ctx context.Context, baseURL, apiKey, modelID string) (int, error)
+
+	// RecordUsage 记一次模型调用的 token 用量（issue #47）。
+	//
+	// 【为什么业务代码也能调它】绝大多数调用点由适配器内部自动覆盖（见
+	// eino.go 的 chat / embedding 适配器），但 Agent 的 ADK 循环自己构造
+	// Eino 原生模型、刻意不经过适配器（见 agent/eino_adk.go 的文件头注释），
+	// 那条路径只能由调用方把用量报回来。
+	//
+	// 记账失败不上抛、只记日志——它是观测，不是业务正确性的一部分。
+	RecordUsage(ctx context.Context, modelID string, kind Kind, u Usage)
+}
+
+// UsageRepo 是 token 用量表的读写。
+//
+// 【为什么和 ConfigRepo 分开】它服务的是"记录与统计"，不是"接入配置"；
+// 两张表虽然都在 llm 包手里（token_usage 的两个外键恰好指向 llm_providers
+// 与 llm_models），但读写时机完全不同——配置是用户改的，用量是每次调用
+// 自动写的。分开之后测试可以只替身其中一个。
+type UsageRepo interface {
+	// InsertUsage 落一行用量。provider_id / model_id 是 NOT NULL 外键，
+	// 所以调用方必须先解析出真实存在的模型行。
+	InsertUsage(ctx context.Context, q platform.Querier, u *Usage) error
+
+	// UsageSummary 按模型聚合，since/until 是左闭右开区间（nil 表示不限）。
+	//
+	// 【为什么没有 created_at 索引】行数 = LLM 调用次数，本地单机一年的量级
+	// 是几千到几万行，一次顺序扫 + 哈希聚合在毫秒级。等到十万行再加
+	// `CREATE INDEX token_usage_created_at_idx ON token_usage (created_at DESC)`。
+	UsageSummary(ctx context.Context, q platform.Querier, since, until *time.Time) ([]*UsageByModel, error)
+}
+
+// UsageByModel 是读端点的一行：某个模型累计用了多少。
+type UsageByModel struct {
+	ProviderID       uuid.UUID
+	ModelID          uuid.UUID
+	ModelName        string // llm_models.model_id —— 用户在引导页里敲的那个名字
+	Kind             Kind
+	Calls            int64
+	PromptTokens     int64
+	CompletionTokens int64
 }
 
 // DocumentReindexer 把"把所有文档重新排队处理"这件事，从 knowledge 包带进

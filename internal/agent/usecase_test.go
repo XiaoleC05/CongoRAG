@@ -180,7 +180,7 @@ func TestConsumeEvents_TokensAccumulateIntoOutput(t *testing.T) {
 	close(events)
 
 	var eventID int64
-	output, err := u.consumeEvents(context.Background(), uuid.New(), events, sink, &eventID)
+	output, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
 
 	require.NoError(t, err)
 	assert.Equal(t, "3 个 128 的和是 384，乘以 2 是 768。", output)
@@ -199,7 +199,7 @@ func TestConsumeEvents_TokensOnly_ProducesOneLLMStep(t *testing.T) {
 	close(events)
 
 	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), events, sink, &eventID)
+	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
 	require.NoError(t, err)
 
 	require.Len(t, repo.steps, 1)
@@ -223,7 +223,7 @@ func TestConsumeEvents_ToolCallAndResult_MergeIntoOneStep(t *testing.T) {
 	close(events)
 
 	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), events, sink, &eventID)
+	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
 	require.NoError(t, err)
 
 	require.Len(t, repo.steps, 2)
@@ -251,7 +251,7 @@ func TestConsumeEvents_ParallelToolCalls_ProduceSingleLLMStep(t *testing.T) {
 	close(events)
 
 	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), events, sink, &eventID)
+	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
 	require.NoError(t, err)
 
 	var llmSteps, toolSteps int
@@ -281,7 +281,7 @@ func TestConsumeEvents_SecondRoundAfterToolResult_GetsOwnLLMStep(t *testing.T) {
 	close(events)
 
 	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), events, sink, &eventID)
+	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
 	require.NoError(t, err)
 
 	// 两轮生成（都不带正文、都直接请求工具）→ llm, tool, llm, tool
@@ -344,7 +344,7 @@ func TestConsumeEvents_ErrorEvent_TypeMapping(t *testing.T) {
 			close(events)
 
 			var eventID int64
-			_, err := u.consumeEvents(context.Background(), uuid.New(), events, sink, &eventID)
+			_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
 
 			require.Error(t, err)
 			assert.Equal(t, tc.wantType, platform.SSEErrorType(err),
@@ -368,7 +368,7 @@ func TestConsumeEvents_FullReactCycle_StepOrderIsCorrect(t *testing.T) {
 	close(events)
 
 	var eventID int64
-	output, err := u.consumeEvents(context.Background(), uuid.New(), events, sink, &eventID)
+	output, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
 	require.NoError(t, err)
 	assert.Equal(t, "结果是 768。", output)
 
@@ -392,7 +392,7 @@ func TestConsumeEvents_EventIDsAreMonotonicallyIncreasing(t *testing.T) {
 	close(events)
 
 	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), events, sink, &eventID)
+	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
 	require.NoError(t, err)
 
 	require.Len(t, sink.events, 4)
@@ -410,7 +410,7 @@ func TestConsumeEvents_ErrorEvent_StopsAndReturnsError(t *testing.T) {
 	close(events)
 
 	var eventID int64
-	output, err := u.consumeEvents(context.Background(), uuid.New(), events, sink, &eventID)
+	output, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "upstream boom")
@@ -431,7 +431,7 @@ func TestConsumeEvents_ChannelClosedWithoutDone_ReturnsError(t *testing.T) {
 	close(events)
 
 	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), events, sink, &eventID)
+	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
 
 	require.Error(t, err)
 }
@@ -451,7 +451,7 @@ func TestConsumeEvents_WritesStepAndCheckpointWithDetachedContext(t *testing.T) 
 	cancel() // net/http 在客户端断开时取消请求 ctx
 
 	var eventID int64
-	_, err := u.consumeEvents(reqCtx, uuid.New(), events, sink, &eventID)
+	_, err := u.consumeEvents(reqCtx, uuid.New(), "model-1", events, sink, &eventID)
 	require.Error(t, err)
 
 	require.Len(t, repo.steps, 1, "未完成的那一轮要标失败落库")

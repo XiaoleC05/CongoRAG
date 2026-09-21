@@ -159,16 +159,16 @@ func (e MessageStatus) Valid() bool {
 
 // Defines values for ModelSummaryKind.
 const (
-	Chat      ModelSummaryKind = "chat"
-	Embedding ModelSummaryKind = "embedding"
+	ModelSummaryKindChat      ModelSummaryKind = "chat"
+	ModelSummaryKindEmbedding ModelSummaryKind = "embedding"
 )
 
 // Valid indicates whether the value is a known member of the ModelSummaryKind enum.
 func (e ModelSummaryKind) Valid() bool {
 	switch e {
-	case Chat:
+	case ModelSummaryKindChat:
 		return true
-	case Embedding:
+	case ModelSummaryKindEmbedding:
 		return true
 	default:
 		return false
@@ -190,6 +190,24 @@ func (e ToolCatalogEntrySideEffectLevel) Valid() bool {
 	case WRITEIDEMPOTENT:
 		return true
 	case WRITENONIDEMPOTENT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UsageByModelKind.
+const (
+	UsageByModelKindChat      UsageByModelKind = "chat"
+	UsageByModelKindEmbedding UsageByModelKind = "embedding"
+)
+
+// Valid indicates whether the value is a known member of the UsageByModelKind enum.
+func (e UsageByModelKind) Valid() bool {
+	switch e {
+	case UsageByModelKindChat:
+		return true
+	case UsageByModelKindEmbedding:
 		return true
 	default:
 		return false
@@ -513,6 +531,34 @@ type ToolCatalogEntry struct {
 // ToolCatalogEntrySideEffectLevel defines model for ToolCatalogEntry.SideEffectLevel.
 type ToolCatalogEntrySideEffectLevel string
 
+// UsageByModel defines model for UsageByModel.
+type UsageByModel struct {
+	// Calls 调用次数。**哪怕上游没回 usage 也会计一次**（那一行的 token 记 0）
+	// ——行数代表调用次数，是可观测事实。
+	Calls            int64            `json:"calls"`
+	CompletionTokens int64            `json:"completionTokens"`
+	Kind             UsageByModelKind `json:"kind"`
+
+	// ModelId llm_models 的主键
+	ModelId openapi_types.UUID `json:"modelId"`
+
+	// ModelName 用户在引导页里敲的那个模型名（llm_models.model_id）。
+	// 给用户看的是它，不是上面那个 uuid。
+	ModelName    string             `json:"modelName"`
+	PromptTokens int64              `json:"promptTokens"`
+	ProviderId   openapi_types.UUID `json:"providerId"`
+}
+
+// UsageByModelKind defines model for UsageByModel.Kind.
+type UsageByModelKind string
+
+// UsageSummary defines model for UsageSummary.
+type UsageSummary struct {
+	ByModel               []UsageByModel `json:"byModel"`
+	TotalCompletionTokens int64          `json:"totalCompletionTokens"`
+	TotalPromptTokens     int64          `json:"totalPromptTokens"`
+}
+
 // Cursor defines model for Cursor.
 type Cursor = string
 
@@ -609,6 +655,15 @@ type ListDocumentsParams struct {
 // UploadDocumentMultipartBody defines parameters for UploadDocument.
 type UploadDocumentMultipartBody struct {
 	File openapi_types.File `json:"file"`
+}
+
+// GetUsageSummaryParams defines parameters for GetUsageSummary.
+type GetUsageSummaryParams struct {
+	// Since 起始时间（含）。RFC3339 格式。省略表示不限。
+	Since *time.Time `form:"since,omitempty" json:"since,omitempty"`
+
+	// Until 结束时间（不含）。RFC3339 格式。省略表示不限。
+	Until *time.Time `form:"until,omitempty" json:"until,omitempty"`
 }
 
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
@@ -722,6 +777,9 @@ type ServerInterface interface {
 	// ListToolCatalog 列出可用工具目录（创建 Agent 表单的勾选列表用）
 	// (GET /api/v1/tools)
 	ListToolCatalog(c *gin.Context)
+	// GetUsageSummary 按模型聚合的 token 用量
+	// (GET /api/v1/usage)
+	GetUsageSummary(c *gin.Context, params GetUsageSummaryParams)
 	// Healthz 存活探针
 	// (GET /healthz)
 	Healthz(c *gin.Context)
@@ -1335,6 +1393,41 @@ func (siw *ServerInterfaceWrapper) ListToolCatalog(c *gin.Context) {
 	siw.Handler.ListToolCatalog(c)
 }
 
+// GetUsageSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetUsageSummary(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetUsageSummaryParams
+
+	// ------------- Optional query parameter "since" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "since", c.Request.URL.Query(), &params.Since, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter since: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "until" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "until", c.Request.URL.Query(), &params.Until, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter until: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetUsageSummary(c, params)
+}
+
 // Healthz operation middleware
 func (siw *ServerInterfaceWrapper) Healthz(c *gin.Context) {
 
@@ -1407,6 +1500,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/api/v1/conversations/:id/events", wrapper.SubscribeConversationEvents)
 	router.GET(options.BaseURL+"/api/v1/providers", wrapper.ListProviders)
 	router.POST(options.BaseURL+"/api/v1/providers", wrapper.CreateProvider)
+	router.GET(options.BaseURL+"/api/v1/usage", wrapper.GetUsageSummary)
 	router.GET(options.BaseURL+"/api/v1/tools", wrapper.ListToolCatalog)
 	router.GET(options.BaseURL+"/api/v1/agents", wrapper.ListAgents)
 	router.POST(options.BaseURL+"/api/v1/agents", wrapper.CreateAgent)

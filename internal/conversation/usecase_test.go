@@ -506,6 +506,9 @@ func (f *fakeRegistry) ActiveModel(ctx context.Context, kind llm.Kind) (*llm.Mod
 	return &llm.Model{ID: id, Kind: kind, ModelID: "fake-chat-model"}, nil
 }
 
+// RecordUsage 记账（issue #47）。这些测试不关心用量，空实现即可。
+func (f *fakeRegistry) RecordUsage(ctx context.Context, modelID string, kind llm.Kind, u llm.Usage) {}
+
 func (f *fakeRegistry) Capabilities(ctx context.Context, modelID string) (llm.Capabilities, error) {
 	return llm.Capabilities{}, errors.New("fakeRegistry.Capabilities: not implemented, this test should not reach here")
 }

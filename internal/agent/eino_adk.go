@@ -36,13 +36,19 @@ const maxIterations = 20
 // adkEvent 是 Eino ADK 事件流的中性投影,usecase.go 消费的是这个类型,
 // 从未导入任何 Eino 包。
 type adkEvent struct {
-	kind       string // token | tool_call | tool_result | error | done
+	kind       string // token | tool_call | tool_result | usage | error | done
 	text       string
 	toolCallID string
 	toolName   string
 	toolArgs   json.RawMessage
 	toolResult json.RawMessage
-	err        error
+	// usage 是这一轮模型调用的 token 用量（issue #47）。
+	//
+	// 【为什么它要走事件通道】ADK 路径自己构造 Eino 原生模型，刻意不经过
+	// llm 包的适配器（见文件头注释），所以适配器那套自动记账覆盖不到它。
+	// 代价由调用方承担：绕开封装，也要自己把观测数据报出去。
+	usage *schema.TokenUsage
+	err   error
 }
 
 const (
@@ -51,6 +57,7 @@ const (
 	adkEventToolResult = "tool_result"
 	adkEventError      = "error"
 	adkEventDone       = "done"
+	adkEventUsage      = "usage"
 )
 
 // toolAdapter 把本包的 Tool 接口包成 Eino 的 tool.InvokableTool——
@@ -241,6 +248,10 @@ func emitAssistantEvents(ctx context.Context, mv *adk.MessageVariant, out chan<-
 		if msg.Content != "" && !sendEvent(ctx, out, adkEvent{kind: adkEventToken, text: msg.Content}) {
 			return ctx.Err()
 		}
+		// 非流式分支的用量挂在消息自己身上（流式那边要靠 ConcatMessages 合并）。
+		if msg.ResponseMeta != nil && msg.ResponseMeta.Usage != nil {
+			sendEvent(ctx, out, adkEvent{kind: adkEventUsage, usage: msg.ResponseMeta.Usage})
+		}
 		emitToolCalls(ctx, msg.ToolCalls, out)
 		return nil
 	}
@@ -266,6 +277,12 @@ func emitAssistantEvents(ctx context.Context, mv *adk.MessageVariant, out chan<-
 	full, err := schema.ConcatMessages(chunks)
 	if err != nil {
 		return fmt.Errorf("concat assistant stream chunks: %w", err)
+	}
+	// 【用量在这一步可得】ConcatMessages 会把各块的 ResponseMeta.Usage 合并
+	// （取最大值，等价于取那个真正带 usage 的块）。这里把它送出去记为一条
+	// 事件，由 consumeEvents 转给 llm.RecordUsage。
+	if full.ResponseMeta != nil && full.ResponseMeta.Usage != nil {
+		sendEvent(ctx, out, adkEvent{kind: adkEventUsage, usage: full.ResponseMeta.Usage})
 	}
 	emitToolCalls(ctx, full.ToolCalls, out)
 	return nil

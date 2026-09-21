@@ -117,7 +117,9 @@ func Run(webFS embed.FS) error {
 	//
 	// llm.Registry 是本项目唯一 import Eino 的入口（internal/llm/eino.go）。
 	// 装配根这里只认识 llm.Registry 这个接口，不知道 Eino 存在。
-	registry := llm.NewRegistry(llmRepo, box, pool, cfg.TiktokenCacheDir)
+	// usageRepo 是 token 用量记账（issue #47）。api 侧要记：聊天、检索、
+	// 记忆检索、预算压缩都在这个进程里。
+	registry := llm.NewRegistry(llmRepo, box, pool, cfg.TiktokenCacheDir, llm.NewPgUsageRepo())
 
 	// 【启动时就把 tiktoken 词表准备好，不要等第一次聊天（issue #44）】
 	//
@@ -161,7 +163,7 @@ func Run(webFS embed.FS) error {
 	// 而第三步是对 knowledge 的动作。llm 通过它自己声明的
 	// llm.DocumentReindexer 端口拿到这个能力（knowledge 零 import 边），
 	// 唯一的连接点就是这一行的传参顺序——接不上编译器会直接报错。
-	llmUC := llm.NewUsecase(llmRepo, box, registry, platform.NewTxManager(pool), pool, knowUC)
+	llmUC := llm.NewUsecase(llmRepo, box, registry, platform.NewTxManager(pool), pool, knowUC, llm.NewPgUsageRepo())
 
 	// conversation 拥有会话/消息/事件/长期记忆。ctxmgr 是纯计算的
 	// Manager——唯一的外部依赖是 llm.Registry（经 LLMCompressor 间接持有）。

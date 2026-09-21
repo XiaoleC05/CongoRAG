@@ -430,6 +430,16 @@ func (u *Usecase) send(ctx context.Context, convID uuid.UUID, text, idempotencyK
 	}
 
 	// ⑥ 调模型。
+	//
+	// 【记账要的 message_id 走 ctx 传下去（issue #47）】assistant 那条消息
+	// 的 id 这里已经有了，而记账发生在 llm 适配器内部（Recv 里），拿不到
+	// 调用方的东西。用 ctx 值而不是加参数：把消息 id 加进 llm.Message 会让
+	// 线路类型认识数据库实体（见 port.go 里那条注释）。
+	//
+	// 外键风险可接受：万一这条消息没落库，23503 只会让这一行用量被丢弃
+	// 并记日志，不影响对话。
+	ctx = llm.WithUsageMessage(ctx, assistantMsgID)
+
 	chatModel, err := u.registry.Chat(ctx, chatModelID)
 	if err != nil {
 		return u.failMessage(ctx, assistantMsgID, "", fmt.Errorf("get chat model: %w", err))

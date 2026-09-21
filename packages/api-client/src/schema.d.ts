@@ -240,6 +240,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 按模型聚合的 token 用量 */
+        get: operations["getUsageSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tools": {
         parameters: {
             query?: never;
@@ -529,6 +546,39 @@ export interface components {
              *     请求做了什么"，不是一个可以持久化的状态。
              */
             requeuedDocuments?: number | null;
+        };
+        UsageSummary: {
+            /** Format: int64 */
+            totalPromptTokens: number;
+            /** Format: int64 */
+            totalCompletionTokens: number;
+            byModel: components["schemas"]["UsageByModel"][];
+        };
+        UsageByModel: {
+            /** Format: uuid */
+            providerId: string;
+            /**
+             * Format: uuid
+             * @description llm_models 的主键
+             */
+            modelId: string;
+            /**
+             * @description 用户在引导页里敲的那个模型名（llm_models.model_id）。
+             *     给用户看的是它，不是上面那个 uuid。
+             */
+            modelName: string;
+            /** @enum {string} */
+            kind: "chat" | "embedding";
+            /**
+             * Format: int64
+             * @description 调用次数。**哪怕上游没回 usage 也会计一次**（那一行的 token 记 0）
+             *     ——行数代表调用次数，是可观测事实。
+             */
+            calls: number;
+            /** Format: int64 */
+            promptTokens: number;
+            /** Format: int64 */
+            completionTokens: number;
         };
         ToolCatalogEntry: {
             name: string;
@@ -1233,6 +1283,33 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getUsageSummary: {
+        parameters: {
+            query?: {
+                /** @description 起始时间（含）。RFC3339 格式。省略表示不限。 */
+                since?: string;
+                /** @description 结束时间（不含）。RFC3339 格式。省略表示不限。 */
+                until?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 用量汇总 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageSummary"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            500: components["responses"]["InternalError"];
         };
     };
     listToolCatalog: {

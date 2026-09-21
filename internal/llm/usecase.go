@@ -27,10 +27,30 @@ type Usecase struct {
 	// （issue #39），所以允许为 nil——只跑引导流程的测试不必造一个。
 	// 装配根传的是 *knowledge.Usecase（见 apps/api/internal/app/app.go）。
 	reindexer DocumentReindexer
+	// usageRepo 服务的是读端点（issue #47）：按模型聚合的 token 用量。
+	// 写入不走这里——那是适配器内部的事（见 usage_record.go）。
+	usageRepo UsageRepo
 }
 
-func NewUsecase(repo ConfigRepo, box platform.SecretBox, registry Registry, txm platform.TxManager, db platform.Querier, reindexer DocumentReindexer) *Usecase {
-	return &Usecase{repo: repo, box: box, registry: registry, txm: txm, db: db, reindexer: reindexer}
+func NewUsecase(repo ConfigRepo, box platform.SecretBox, registry Registry, txm platform.TxManager, db platform.Querier, reindexer DocumentReindexer, usageRepo UsageRepo) *Usecase {
+	return &Usecase{
+		repo: repo, box: box, registry: registry, txm: txm, db: db,
+		reindexer: reindexer, usageRepo: usageRepo,
+	}
+}
+
+// UsageSummary 按模型聚合 token 用量（issue #47）。
+//
+// since / until 是左闭右开区间，nil 表示不限。
+func (u *Usecase) UsageSummary(ctx context.Context, since, until *time.Time) ([]*UsageByModel, error) {
+	if u.usageRepo == nil {
+		return nil, fmt.Errorf("usage repo is not configured")
+	}
+	rows, err := u.usageRepo.UsageSummary(ctx, u.db, since, until)
+	if err != nil {
+		return nil, fmt.Errorf("summarise token usage: %w", err)
+	}
+	return rows, nil
 }
 
 // ChatModelInput 是引导页表单里"聊天模型"那一节的字段,全部手填

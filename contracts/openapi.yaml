@@ -538,6 +538,46 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── Token 用量（issue #47）─────────────────────────────────
+  #
+  # 【为什么只做按模型聚合】按会话聚合要 JOIN messages，而只有聊天主路径
+  # 会填 message_id（摘要压缩、记忆抽取、文档索引都说明不了归属，留着
+  # NULL）——按会话加起来会天然少于总量，那个不一致几乎必然被用户发现。
+  # 先把这个限制摆在明面上，等真要做的时候再决定 NULL 行怎么归属。
+  #
+  # 不做前端页面：那属于后续工作，这里只保证"能答出我用了多少"。
+  /api/v1/usage:
+
+    get:
+      operationId: getUsageSummary
+      summary: 按模型聚合的 token 用量
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: 起始时间（含）。RFC3339 格式。省略表示不限。
+          schema:
+            type: string
+            format: date-time
+        - name: until
+          in: query
+          required: false
+          description: 结束时间（不含）。RFC3339 格式。省略表示不限。
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: 用量汇总
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageSummary'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ── M4-A：Agent ────────────────────────────────────────────
   /api/v1/tools:
 
@@ -1066,6 +1106,57 @@ components:
             这一次真的被重新排队的文档数。只有 POST /providers 在确实执行了
             重建时才是一个数字；GET /providers 恒为 null——它描述的是"这一次
             请求做了什么"，不是一个可以持久化的状态。
+
+    # ── Token 用量 ────────────────────────────────────────────
+
+    UsageSummary:
+      type: object
+      required: [totalPromptTokens, totalCompletionTokens, byModel]
+      properties:
+        totalPromptTokens:
+          type: integer
+          format: int64
+        totalCompletionTokens:
+          type: integer
+          format: int64
+        # 【绝不能是 null】没有用量时它是空数组，不是 null——前端拿到 null
+        # 去做 .map() 会直接崩（和 toAPIKBList 那条是同一个约定）。
+        byModel:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageByModel'
+
+    UsageByModel:
+      type: object
+      required: [providerId, modelId, modelName, kind, calls, promptTokens, completionTokens]
+      properties:
+        providerId:
+          type: string
+          format: uuid
+        modelId:
+          type: string
+          format: uuid
+          description: llm_models 的主键
+        modelName:
+          type: string
+          description: |
+            用户在引导页里敲的那个模型名（llm_models.model_id）。
+            给用户看的是它，不是上面那个 uuid。
+        kind:
+          type: string
+          enum: [chat, embedding]
+        calls:
+          type: integer
+          format: int64
+          description: |
+            调用次数。**哪怕上游没回 usage 也会计一次**（那一行的 token 记 0）
+            ——行数代表调用次数，是可观测事实。
+        promptTokens:
+          type: integer
+          format: int64
+        completionTokens:
+          type: integer
+          format: int64
 
     # ── Agent ─────────────────────────────────────────────────
 
