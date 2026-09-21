@@ -6,6 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 
 import {
   MAX_ANCHOR_RUNES,
@@ -212,8 +213,14 @@ test("分块数估算能看出语料太小的情形", () => {
 test("loadCorpus / loadDataset 对坏输入抛出带路径的错误", () => {
   assert.throws(() => loadCorpus("不存在的目录"), CorpusError);
   assert.throws(() => loadDataset("不存在的文件.jsonl"), /ENOENT|no such file/i);
+  // 【必须用 fileURLToPath，不能手写 .pathname.slice(1)】
+  // `.pathname` 在 Linux 上是 /home/runner/work/...（开头的 / 是路径本身的一部分），
+  // 在 Windows 上是 /D:/...（开头的 / 是盘符前的伪前缀）。`.slice(1)` 在 Windows
+  // 上正好把那个伪前缀去掉、路径是对的；在 Linux 上却把根目录的 / 也切掉了，
+  // 变成一个相对路径 → 文件不存在 → 抛 ENOENT 而不是 DatasetError。
+  // 这条断言因此在 Windows 上绿、在 Linux 上红（CI 上就是这样炸的）。
   assert.throws(
-    () => loadDataset(new URL("./resolve.test.mjs", import.meta.url).pathname.slice(1)),
+    () => loadDataset(fileURLToPath(new URL("./resolve.test.mjs", import.meta.url))),
     DatasetError,
   );
 });

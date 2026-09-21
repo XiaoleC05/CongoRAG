@@ -9,6 +9,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import { normalizeNewlines } from "./resolve.mjs";
+
 import {
   newParserState,
   parseSSE,
@@ -33,8 +35,15 @@ import {
 
 // ── fixture 装载 ────────────────────────────────────────────────
 
+// 【读进来先统一行结束符】fixture 是文本文件，而 git 在不同平台上把它们检出成
+// LF 或 CRLF（取决于 autocrlf）。不统一的话，"在文本里找帧边界"这类断言会
+// 依赖平台：按两个换行找分隔符在 CRLF 检出上会返回 -1，测试于是在一个平台上
+// 绿、在另一个平台上红（真的这样红过一整轮 14 条）。
+//
+// 解析器本身已经认三种行结束符（SSE 规范允许 CR/LF/CRLF），这里统一只是让
+// **断言**也能跨平台——两层都要，缺一层就会在某个平台上红。
 function fixtureText(name) {
-  return readFileSync(new URL(`../fixtures/${name}`, import.meta.url), "utf-8");
+  return normalizeNewlines(readFileSync(new URL(`../fixtures/${name}`, import.meta.url), "utf-8"));
 }
 
 // loadRun 模拟驱动拿到一次完整的流之后应该喂给打分函数的东西。

@@ -46,18 +46,53 @@ export function newParserState() {
   return { buffer: "", lastEventId: null };
 }
 
+// frameSeparators 是三种合法的帧分隔符。
+//
+// 【SSE 规范允许 CR、LF、CRLF 三种行结束符】只按 "\n\n" 切会在两种情况下
+// 静默解析出 0 帧：一是服务端用 CRLF（`\r\n\r\n` 里两个 \n 之间夹着 \r，
+// `indexOf("\n\n")` 找不到）；二是把 fixture 检出到 Windows 上——git 的
+// autocrlf 会把它们转成 CRLF。后者真的发生过：同一份测试在 Linux CI 上全绿、
+// 在 Windows 本地全红（14 条）。
+//
+// 三种都认之后，解析结果与行结束符无关——这正是这一步该有的性质。
+const frameSeparators = ["\r\n\r\n", "\n\n", "\r\r"];
+
+// splitFrames 找出最早的帧边界，返回 [完整帧数组, 剩余缓冲]。
+function splitFrames(buffer) {
+  const frames = [];
+  let rest = buffer;
+
+  for (;;) {
+    let at = -1;
+    let sepLen = 0;
+    for (const sep of frameSeparators) {
+      const i = rest.indexOf(sep);
+      if (i !== -1 && (at === -1 || i < at)) {
+        at = i;
+        sepLen = sep.length;
+      }
+    }
+    if (at === -1) break;
+
+    frames.push(rest.slice(0, at));
+    rest = rest.slice(at + sepLen);
+  }
+  return { frames, rest };
+}
+
 // parseSSE 吃一块字节（已经解码成字符串），吐出一批完整的帧。
 //
 // 【为什么要留缓冲区】TCP 不保证一次 read 刚好落在一帧的边界上
-// （docs/sse-protocol.md「帧格式」一节点名的坑）。按 "\n\n" 切，
+// （docs/sse-protocol.md「帧格式」一节点名的坑）。按帧分隔符切，
 // 最后一段永远是不完整的（或空串），留在状态里等下一次。
 export function parseSSE(chunk, state = newParserState()) {
   const buffer = state.buffer + chunk;
   const frames = [];
   let lastEventId = state.lastEventId;
 
-  const parts = buffer.split("\n\n");
-  const rest = parts.pop();
+  // 【缓冲区里也要容忍 CRLF】上面的分隔符列表已经认了 \r\n\r\n，但单独一个
+  // 行结束符（帧内）也要认——parseFrame 按 /\r\n|\r|\n/ 切行。
+  const { frames: parts, rest } = splitFrames(buffer);
 
   for (const raw of parts) {
     const frame = parseFrame(raw);
@@ -85,7 +120,10 @@ function parseFrame(raw) {
   let type = "";
   const dataLines = [];
 
-  for (const line of raw.split("\n")) {
+  // 【按三种行结束符切行】SSE 规范里 CR、LF、CRLF 都合法，而且 fixture 在不同
+  // 平台上被 git 检出成什么样子取决于 autocrlf——只认 \n 的话每一行尾部都会
+  // 留一个 \r，`id: 42\r` 解析出来的 id 是 "42\r"、Number() 变 NaN。
+  for (const line of raw.split(/\r\n|\r|\n/)) {
     if (line === "") continue;
     if (line.startsWith(":")) continue; // 心跳：以 ":" 开头的是注释
     const sep = line.indexOf(":");
