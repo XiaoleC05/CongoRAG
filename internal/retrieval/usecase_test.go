@@ -119,6 +119,10 @@ func (f *fakeRegistry) ActiveModelID(ctx context.Context, kind llm.Kind) (string
 	return "", errors.New("fakeRegistry.ActiveModelID: not implemented, this test should not reach here")
 }
 
+func (f *fakeRegistry) ActiveModel(ctx context.Context, kind llm.Kind) (*llm.Model, error) {
+	return nil, errors.New("fakeRegistry.ActiveModel: not implemented, this test should not reach here")
+}
+
 func (f *fakeRegistry) Capabilities(ctx context.Context, modelID string) (llm.Capabilities, error) {
 	return llm.Capabilities{}, errors.New("fakeRegistry.Capabilities: not implemented, this test should not reach here")
 }

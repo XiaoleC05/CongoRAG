@@ -159,14 +159,24 @@ func (r *registry) ProbeEmbeddingDimension(ctx context.Context, baseURL, apiKey,
 	return len(vecs[0]), nil
 }
 
-func (r *registry) ActiveModelID(ctx context.Context, kind Kind) (string, error) {
+func (r *registry) ActiveModel(ctx context.Context, kind Kind) (*Model, error) {
 	models, err := r.repo.ListModels(ctx, r.db)
 	if err != nil {
-		return "", fmt.Errorf("list models: %w", err)
+		return nil, fmt.Errorf("list models: %w", err)
 	}
 	m := LatestByKind(models, kind)
 	if m == nil {
-		return "", fmt.Errorf("no %s model configured yet: %w", kind, platform.ErrNotFound)
+		return nil, fmt.Errorf("no %s model configured yet: %w", kind, platform.ErrNotFound)
+	}
+	return m, nil
+}
+
+// ActiveModelID 是 ActiveModel 的薄包装——「哪个模型是当前生效的」这条判据
+// 只能有一处实现，多写一遍迟早会漂移。
+func (r *registry) ActiveModelID(ctx context.Context, kind Kind) (string, error) {
+	m, err := r.ActiveModel(ctx, kind)
+	if err != nil {
+		return "", err
 	}
 	return m.ID.String(), nil
 }

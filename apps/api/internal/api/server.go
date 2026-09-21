@@ -262,7 +262,13 @@ func (s *Server) DeleteDocument(c *gin.Context, id openapi_types.UUID) {
 // 那只是给读契约的人看的说明。这个函数自己把契约声明的默认值补上，
 // 相当于把"文档里的承诺"变成"代码里真的发生的事"。
 func fromAPICapabilities(c *Capabilities) llm.Capabilities {
-	out := llm.Capabilities{Chat: true} // 只有 chat 的契约默认值是 true,其余是 false
+	// chat 与 toolCalling 的契约默认值都是 true，其余是 false。
+	//
+	// 【toolCalling 是 true 这件事必须有理由】这一位现在真的参与判断
+	// （internal/agent 的门控会读它），默认 false 等于默认禁掉所有带工具的
+	// Agent。默认 true 同时对应迁移 0007 对已有行的回填——两边是同一件事
+	// 的两半，改一处必须改另一处。
+	out := llm.Capabilities{Chat: true, ToolCalling: true}
 	if c == nil {
 		return out
 	}

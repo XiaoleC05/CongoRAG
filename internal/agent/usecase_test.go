@@ -27,6 +27,7 @@ type fakeRepo struct {
 	// 状态——钉住"断开之后补写的 Step 不跟着请求 ctx 一起死"（issue #14）。
 	stepCtxErrs []error
 	agents      []*Agent
+	runs        []*Run
 	updates     []statusUpdate
 }
 
@@ -47,13 +48,26 @@ func (f *fakeRepo) CreateAgent(ctx context.Context, q platform.Querier, a *Agent
 	return nil
 }
 func (f *fakeRepo) GetAgent(ctx context.Context, q platform.Querier, id uuid.UUID) (*Agent, error) {
-	panic("not used")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, a := range f.agents {
+		if a.ID == id {
+			return a, nil
+		}
+	}
+	return nil, fmt.Errorf("agent %s: %w", id, platform.ErrNotFound)
 }
 func (f *fakeRepo) ListAgents(ctx context.Context, q platform.Querier) ([]*Agent, error) {
 	panic("not used")
 }
 func (f *fakeRepo) InsertRun(ctx context.Context, q platform.Querier, r *Run) error {
-	panic("not used")
+	// 【为什么记录而不是 panic】门控那条测试要断言的正是「InsertRun 没被
+	// 调用」——记录成切片之后失败信息是"期望 0 条，实际 1 条"，而 panic
+	// 只会给出一句"not used"，看不出是哪个不变式破了。
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.runs = append(f.runs, r)
+	return nil
 }
 func (f *fakeRepo) GetRun(ctx context.Context, q platform.Querier, id uuid.UUID) (*Run, error) {
 	panic("not used")

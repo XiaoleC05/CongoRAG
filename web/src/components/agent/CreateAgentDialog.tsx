@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { Link } from 'react-router'
 
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -15,6 +17,8 @@ import { Label } from '@/components/ui/label'
 import { ErrorText } from '@/components/ErrorText'
 import { useCreateAgent, useToolCatalog } from '@/hooks/useAgents'
 import { useErrorToast } from '@/hooks/useErrorToast'
+import { useProviders } from '@/hooks/useProviders'
+import { latestChatModel } from '@/lib/activeModel'
 import { errorPresentation } from '@/lib/errors'
 
 type Props = {
@@ -42,8 +46,21 @@ const inlineOnly = (err: unknown) =>
  */
 export function CreateAgentDialog({ open, onOpenChange }: Props) {
   const { data: tools } = useToolCatalog()
+  const { data: providers } = useProviders()
   const create = useCreateAgent()
   const showError = useErrorToast()
+
+  // 【这个弹窗就必须回答「当前模型支不支持工具」】它是产生"带工具的 Agent"
+  // 这个决定的地方，所以提示放在这里最有用——放到别处等于让用户在两次
+  // 导航之外才知道自己配错了。
+  //
+  // 【useProviders 不会多打一次请求】路由的 RequireProvider 在渲染列表页
+  // 之前就已经拉过一次，缓存是热的（顶多多一次后台核对，见 useProviders
+  // 的 onSuccess 注释）。
+  const activeModel = latestChatModel(providers ?? [])
+  // 没有 chat 模型时不禁用——那时用户连 provider 都没配好，RequireProvider
+  // 会先把他带去引导页，这里再报一次"模型不支持工具"是误报。
+  const toolCallingUnsupported = activeModel !== null && !activeModel.capabilities.toolCalling
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -133,11 +150,42 @@ export function CreateAgentDialog({ open, onOpenChange }: Props) {
 
             <div className="space-y-1.5">
               <Label>可用工具</Label>
+
+              {toolCallingUnsupported && (
+                <Alert variant="destructive">
+                  <AlertTitle>当前聊天模型不支持工具调用</AlertTitle>
+                  <AlertDescription>
+                    <p>
+                      生效的模型是 <span className="font-medium">{activeModel.modelId}</span>，
+                      它没有声明「支持工具调用」。勾选工具后创建会被拒绝（服务端返回
+                      400 并点名这个模型）。
+                    </p>
+                    <p className="mt-1.5">
+                      要么不勾工具直接创建一个纯对话 Agent，要么到{' '}
+                      <Link to="/onboarding" className="underline">
+                        引导页
+                      </Link>{' '}
+                      重新保存配置并勾上「支持工具调用」。注意重新保存会新增一条配置，
+                      生效的是最新的那一条。
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="space-y-2">
                 {tools?.map((tool) => (
                   <label key={tool.name} className="flex items-start gap-2 text-sm">
                     <Checkbox
                       checked={selectedTools.includes(tool.name)}
+                      // 【禁用而不是隐藏】隐藏会让用户以为"这个 Agent 没有工具
+                      // 可用"，禁用加上上面的说明才说得清"工具存在，但当前模型
+                      // 用不了"。
+                      //
+                      // 【不加"必须至少选一个工具"这类提交条件】勾选框一禁用，
+                      // selectedTools 恒为空，那种条件恒为 false，等于永远放行
+                      // ——它自己就把自己抵消了。零工具 Agent 是合法配置，
+                      // 正是这里的逃生口。
+                      disabled={toolCallingUnsupported}
                       onCheckedChange={(checked) => toggleTool(tool.name, checked === true)}
                     />
                     <span>

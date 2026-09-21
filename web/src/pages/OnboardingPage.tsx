@@ -35,7 +35,11 @@ export default function OnboardingPage() {
   const [embeddingModelId, setEmbeddingModelId] = useState('')
 
   const [streaming, setStreaming] = useState(true)
-  const [toolCalling, setToolCalling] = useState(false)
+  // 【默认勾选（issue #38）】这一位现在真的参与门控：模型没有声明它、
+  // 而 Agent 要用工具时，创建和运行都会被拒。默认不勾等于默认禁掉所有
+  // 带工具的 Agent——那是升级即坏。契约里的 default 也是 true，
+  // 迁移 0007 还把升级前就存在的 chat 行回填了，三处是同一件事。
+  const [toolCalling, setToolCalling] = useState(true)
   const [reasoning, setReasoning] = useState(false)
 
   // 客户端只做"必填"这一层最基本的校验——真正的强制在后端

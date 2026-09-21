@@ -155,7 +155,19 @@ type Registry interface {
 	// 找到 chat 模型的 id，再把这个 id 传给上面几个方法——本包内部只有
 	// 这一处需要遍历 ListModels，其余方法统一只接 modelID 这个已解析好的
 	// 身份，port.go 的其它接口不必因为"怎么找到当前模型"这件事而变复杂。
+	//
+	// 只需要 id 时用它；需要整行（比如读 Capabilities 或给用户看模型名）
+	// 时用下面的 ActiveModel，别去 ListModels 里自己找一遍。
 	ActiveModelID(ctx context.Context, kind Kind) (modelID string, err error)
+
+	// ActiveModel 返回当前生效的那一行模型，判据与 ActiveModelID 完全一致
+	//（同一套 LatestByKind）。
+	//
+	// 【为什么需要整行】agent 的工具门控要在报文里说清"是哪个模型缺哪个
+	// 能力"，而 llm_models 的 uuid 对用户没有意义——用户认得的是他自己在
+	// 引导页里敲进去的那个模型名（ModelID 字段）。顺带也省掉了
+	// "先拿 id、再 GetModel 查回来"的那一次往返。
+	ActiveModel(ctx context.Context, kind Kind) (*Model, error)
 
 	// ProbeEmbeddingDimension 是引导页"保存并开始"那一刻用的：
 	// 直接用表单上填的 base_url/key/model 发一次真实的 embedding 请求,

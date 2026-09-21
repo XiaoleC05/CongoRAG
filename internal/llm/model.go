@@ -32,13 +32,20 @@ const (
 // 全部由用户在引导页手工勾选,不是探测出来的——OpenAI 兼容 API 不保证
 // 能自动查询"这个模型支不支持 tool calling"(技术方案 §五)。
 //
-// 【这一组目前是展示位,没有任何生产路径读它】存进 llm_models.capabilities、
-// 由 GET /providers 原样回显,仅此而已:agent.Usecase.start 按 id 解析 chat
-// 模型后无条件绑定工具,不看 ToolCalling;Registry.Capabilities 至今没有
-// 生产调用方。所以 ToolCalling 既不会拦住也不会放开一次 Agent 运行——
-// 引导页里它默认未勾选(OnboardingPage.tsx),拿它做门控会把所有没动过
-// 复选框的用户的 Agent 一起禁掉。真要做门控,M4-B 得先把"用户没声明"
-// 和"用户声明不支持"这两种状态分开。
+// 【ToolCalling 现在真的参与判断了（issue #38）】agent.Usecase 在创建和
+// 运行两条路径上都会读它：模型没有声明这一位而 Agent 要用工具时，
+// 请求在**发起运行前**被拒（见 internal/agent/usecase.go 的
+// requireToolCapability）。引导页的复选框默认勾选，迁移 0007 也把升级前
+// 就存在的 chat 行回填了——这两件事是同一件事的两半，因为升级之前平台在
+// 行为上把每个 chat 模型都当成支持工具调用。
+//
+// 【其余几位仍然是展示位】Streaming / Reasoning 存进 llm_models.capabilities、
+// 由 GET /providers 原样回显，没有任何生产路径读它们。
+//
+// 【已知的不精确，将来要动的话在这里】这一位把"用户没声明"和"用户明确
+// 声明不支持"混成了一个 false。要分开就得把它变成三态（未声明 / 支持 /
+// 不支持），那要改契约 schema、改 UI、还要改门控判据——超出 #38 的范围，
+// 但方向是明确的。
 type Capabilities struct {
 	Chat        bool
 	Streaming   bool
@@ -148,9 +155,12 @@ const maxEmbeddingDim = 4000
 // 和"唯一存在的"是同一件事。换模型时（技术方案 §六）会走 ALTER + 全量
 // 重嵌入,新模型的 CreatedAt 天然比旧的晚,这个判据不用改就能跟着切换。
 //
-// 【为什么在 llm 包导出这个函数】retrieval（找 embedding 模型）和
-// llm.Registry.ActiveChat（找 chat 模型）需要同一段"按 kind 筛、按时间
-// 取最新"的逻辑——写两遍容易在两处产生不一致的判断，这里统一成一个函数。
+// 【为什么在 llm 包导出这个函数】retrieval（找 embedding 模型）与
+// llm.Registry.ActiveModel / ActiveModelID（找 chat 模型）需要同一段
+// "按 kind 筛、按时间取最新"的逻辑——写两遍容易在两处产生不一致的判断，
+// 这里统一成一个函数。前端也复刻了同一段判据（web/src/lib/activeModel.ts），
+// 改这里要一起改。
+//
 // 找不到时返回 nil，调用方决定报什么错误（不同调用方的错误上下文不同）。
 func LatestByKind(models []*Model, kind Kind) *Model {
 	var latest *Model

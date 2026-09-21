@@ -62,6 +62,34 @@ func NewUsecase(repo Repo, cp CheckpointStore, tools Registry, registry llm.Regi
 	return &Usecase{repo: repo, cp: cp, tools: tools, registry: registry, db: db}
 }
 
+// requireToolCapability 检查当前生效的 chat 模型是否声明了工具调用能力
+// （issue #38）。创建与运行两条路径共用它，文案因此不会漂移。
+//
+// 【为什么必须包 platform.ErrInvalid，而不是 ErrConflict】
+// 运行期这条拒绝只能走 SSE 的 error 帧——handler 在调 Start 之前就已经把
+// 200 写出去了，改不了状态码。而 platform.SSEErrorType 只认
+// ErrInvalid / ErrNotFound / ErrUpstream 三档，ErrConflict 会落到 default
+// 变成 internal_error，前端 web/src/lib/errors.ts 会把它显示成"服务内部
+// 错误"——排查方向从第一句话起就是错的（issue #34 修掉的正是这一类误报）。
+//
+// 语义上它也站得住：把一个不支持工具调用的模型配给要用工具的 Agent，
+// 这个请求本身就是无效的。
+//
+// 【报文必须是 sentinel 的直接包装者】apps/api/internal/api/problem.go 的
+// innermostMessage 只取错误链倒数第二层，也就是直接包装 sentinel 的那一层。
+// 再往外包一层的话，客户端拿到的 detail 会变成一句无关的半截话，
+// 而且不会报错——所以下面那个 fmt.Errorf 的 %w 必须直接落在
+// platform.ErrInvalid 上。
+func requireToolCapability(m *llm.Model, agentName string, toolNames []string) error {
+	if m.Capabilities.ToolCalling {
+		return nil
+	}
+	return fmt.Errorf(
+		"当前生效的聊天模型 %q（llm_models.id=%s）没有声明工具调用能力，而 Agent %q 要用工具 %v；"+
+			"请在引导页勾选「支持工具调用」后重新保存，或者把这个 Agent 的工具清空: %w",
+		m.ModelID, m.ID, agentName, toolNames, platform.ErrInvalid)
+}
+
 // CreateAgent 校验并创建一个 Agent。toolNames 里任何一个不在 Registry
 // 里注册过就拒绝——不允许创建一个引用了不存在工具的 Agent,那种配置
 // 只会在真正执行时才报错,提前挡在创建这一步对用户更友好。
@@ -92,6 +120,24 @@ func (u *Usecase) CreateAgent(ctx context.Context, name, description, instructio
 	// 顶回来变成 500（issue #18）。归一化放在业务层，所有调用方都覆盖。
 	if toolNames == nil {
 		toolNames = []string{}
+	}
+
+	// 创建期门控（issue #38）：让用户在"刚勾上工具"的那一刻就得到反馈，
+	// 而不是等到发起运行时才发现。运行期那一道仍然保留——创建之后用户
+	// 可能换了 chat 模型（当前生效模型由 LatestByKind 按 created_at 决定，
+	// 重跑一次引导页就会换掉），只拦创建挡不住那条路径。
+	//
+	// 【零工具 Agent 不需要工具能力】它对模型没有这个要求，而且 ADK 对
+	// 零工具走的是另一条路径。所以判据是"这个 Agent 是否声明了至少一个
+	// 工具"，不是"模型有没有能力"。
+	if len(toolNames) > 0 {
+		m, err := u.registry.ActiveModel(ctx, llm.KindChat)
+		if err != nil {
+			return nil, fmt.Errorf("resolve active chat model: %w", err)
+		}
+		if err := requireToolCapability(m, name, toolNames); err != nil {
+			return nil, err
+		}
 	}
 
 	now := time.Now()
@@ -201,9 +247,21 @@ func (u *Usecase) start(ctx context.Context, agentID uuid.UUID, input string, si
 		tools = append(tools, t)
 	}
 
-	chatModelID, err := u.registry.ActiveModelID(ctx, llm.KindChat)
+	chatModel, err := u.registry.ActiveModel(ctx, llm.KindChat)
 	if err != nil {
 		return nil, fmt.Errorf("resolve active chat model: %w", err)
+	}
+
+	// 运行期门控（issue #38）——它是权威的那一道，因为"创建之后又换了
+	// 模型"只有这里拦得住。
+	//
+	// 【必须在 InsertRun 之前】被拒的这一轮不该在 agent_runs 里留下一条
+	// running 行，否则历史列表里会出现一次用户从没见过的失败运行，还要靠
+	// failRun 去补写终态。
+	if len(ag.ToolNames) > 0 {
+		if err := requireToolCapability(chatModel, ag.Name, ag.ToolNames); err != nil {
+			return nil, err
+		}
 	}
 
 	now := time.Now()
@@ -223,7 +281,7 @@ func (u *Usecase) start(ctx context.Context, agentID uuid.UUID, input string, si
 	runCtx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
 
-	events, err := runAgent(runCtx, u.registry, chatModelID, ag, tools, input)
+	events, err := runAgent(runCtx, u.registry, chatModel.ID.String(), ag, tools, input)
 	if err != nil {
 		if ferr := u.failRun(ctx, run.ID); ferr != nil {
 			return run, errors.Join(fmt.Errorf("start agent run: %w", err), ferr)

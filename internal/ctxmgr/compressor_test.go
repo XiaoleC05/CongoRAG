@@ -46,6 +46,12 @@ func (r *fakeRegistry) ActiveModelID(ctx context.Context, kind llm.Kind) (string
 	return "fake-chat-model", nil
 }
 
+// 压缩器只用 Chat/Generate，从不问"当前是哪个模型"——走到这里说明
+// 被测代码的依赖方向变了。
+func (r *fakeRegistry) ActiveModel(ctx context.Context, kind llm.Kind) (*llm.Model, error) {
+	return nil, errors.New("fakeRegistry.ActiveModel: 这个测试不该走到这里")
+}
+
 func (r *fakeRegistry) Embedder(ctx context.Context, modelID string) (llm.Embedder, error) {
 	return nil, errors.New("fakeRegistry.Embedder: 这个测试不该走到这里")
 }

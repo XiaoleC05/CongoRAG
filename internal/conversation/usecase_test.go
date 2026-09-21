@@ -467,6 +467,20 @@ func (f *fakeRegistry) ActiveModelID(ctx context.Context, kind llm.Kind) (string
 	return f.chatModelID, nil
 }
 
+// ActiveModel 必须和 ActiveModelID 给同一个答案：真实实现里前者是后者的
+// 唯一来源（ActiveModelID 就是它的薄包装），假实现也不能各说各话，
+// 否则依赖哪一个的测试会给出矛盾的结论。
+func (f *fakeRegistry) ActiveModel(ctx context.Context, kind llm.Kind) (*llm.Model, error) {
+	if f.activeModelErr != nil {
+		return nil, f.activeModelErr
+	}
+	id, err := uuid.Parse(f.chatModelID)
+	if err != nil {
+		return nil, err
+	}
+	return &llm.Model{ID: id, Kind: kind, ModelID: "fake-chat-model"}, nil
+}
+
 func (f *fakeRegistry) Capabilities(ctx context.Context, modelID string) (llm.Capabilities, error) {
 	return llm.Capabilities{}, errors.New("fakeRegistry.Capabilities: not implemented, this test should not reach here")
 }

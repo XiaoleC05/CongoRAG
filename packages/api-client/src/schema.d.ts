@@ -377,7 +377,7 @@ export interface components {
             chat: boolean;
             /** @default false */
             streaming: boolean;
-            /** @default false */
+            /** @default true */
             toolCalling: boolean;
             /** @default false */
             reasoning: boolean;

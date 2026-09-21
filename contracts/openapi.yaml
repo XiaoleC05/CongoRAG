@@ -763,7 +763,14 @@ components:
           default: false
         toolCalling:
           type: boolean
-          default: false
+          # 【默认值是 true，而且这个默认值真的参与判断】引导页的「支持工具
+          # 调用」复选框默认勾选，服务端的模型门控会读这一位（issue #38）。
+          # 默认不勾等于默认禁掉所有带工具的 Agent——那是升级即坏。
+          #
+          # 注意 oapi-codegen 不会替服务端应用这里的 default，所以
+          # apps/api/internal/api/server.go 的 fromAPICapabilities 里也显式
+          # 补了一遍，两处必须一起改。
+          default: true
         reasoning:
           type: boolean
           default: false
