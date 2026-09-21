@@ -326,6 +326,81 @@ func (u *Usecase) ListDocuments(ctx context.Context, kbID uuid.UUID) ([]*Documen
 	return docs, nil
 }
 
+// ────────────────────────────────────────────────────────────────
+// 重新索引（issue #39）
+// ────────────────────────────────────────────────────────────────
+//
+// 【两条入口的差别只在粒度】单个文档是「这一份的向量坏了/是旧模型的，
+// 重跑它」；整个知识库是「这个库里的都要重排」。换 embedding 模型的场景
+// 更宽（影响全库），走的是 llm.Bootstrap 那条路，它通过下面的
+// RequeueAllDocuments 复用同一段逻辑。
+//
+// 【为什么状态标记与入队必须在同一个事务里】只标记不入队会留下一批
+// queued 但没人处理的文档；只入队不标记则任务跑起来时文档还是 ready，
+// ProcessDocument 会落进 default 分支报"状态不对"。两者同生共死，
+// 这正是 Upload 里已经在用的模式。
+
+// ReindexDocument 把一份文档标回 queued 并重新排队处理。
+//
+// 文档不在可重建状态里（已经在排队、或 id 不存在）时返回
+// platform.ErrConflict，由 handler 出 409。
+func (u *Usecase) ReindexDocument(ctx context.Context, docID uuid.UUID) error {
+	err := u.txm.InTx(ctx, func(q platform.Querier) error {
+		if err := u.docRepo.MarkForReindex(ctx, q, docID); err != nil {
+			return err
+		}
+		return u.enq.EnqueueProcessing(ctx, q, docID)
+	})
+	if err != nil {
+		return fmt.Errorf("reindex document %s: %w", docID, err)
+	}
+	return nil
+}
+
+// ReindexKnowledgeBase 把一个知识库下所有可重建的文档重新排队，
+// 返回这次真的排进去的数量。
+func (u *Usecase) ReindexKnowledgeBase(ctx context.Context, kbID uuid.UUID) (int, error) {
+	// 【先确认知识库存在】不查的话，"这个库里一份文档都没有"和"id 写错了"
+	// 都返回 0，用户会以为重建成功了，实际上什么都没发生。
+	if _, err := u.kbRepo.ByID(ctx, u.db, kbID); err != nil {
+		return 0, fmt.Errorf("get knowledge base %s: %w", kbID, err)
+	}
+
+	enqueued := 0
+	err := u.txm.InTx(ctx, func(q platform.Querier) error {
+		ids, err := u.docRepo.MarkKnowledgeBaseForReindex(ctx, q, kbID)
+		if err != nil {
+			return err
+		}
+		if err := u.enq.EnqueueProcessingBatch(ctx, q, ids); err != nil {
+			return err
+		}
+		enqueued = len(ids)
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("reindex knowledge base %s: %w", kbID, err)
+	}
+	return enqueued, nil
+}
+
+// RequeueAllDocuments 把所有可重建的文档重新排队，实现 llm.DocumentReindexer。
+//
+// 【它不自己开事务，q 由调用方给】换 embedding 模型的三步——清空旧向量、
+// ALTER 列类型、全部文档重新入队——必须在**同一个事务**里完成。第三步如果
+// 单独提交，「ALTER 成功但入队失败」会留下一个既没有旧向量、也没有任何任务
+// 在重建的库，正是 #39 要消掉的那个状态。所以事务边界必须由调用方持有。
+func (u *Usecase) RequeueAllDocuments(ctx context.Context, q platform.Querier) (int, error) {
+	ids, err := u.docRepo.MarkAllForReindex(ctx, q)
+	if err != nil {
+		return 0, err
+	}
+	if err := u.enq.EnqueueProcessingBatch(ctx, q, ids); err != nil {
+		return 0, err
+	}
+	return len(ids), nil
+}
+
 // GetDocument 按 id 取一份文档，主要给"查处理状态"这个端点用。
 func (u *Usecase) GetDocument(ctx context.Context, id uuid.UUID) (*Document, error) {
 	d, err := u.docRepo.ByID(ctx, u.db, id)
@@ -463,6 +538,14 @@ func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID, isLastAt
 		}
 	case StatusProcessing:
 		// 同一个任务被重试，已经跑到这一步了，往下继续。
+	case StatusReady:
+		// 【这是重新索引的安全网（issue #39）】正常路径下文档在入队时就已经
+		// 被 CAS 回 queued 了，走不到这里。但 River 重投、或者有人绕过入队
+		// 路径直接插任务时，文档可能还是 ready——不接住的话它会落进下面的
+		// default，报一个"状态不对"的冲突，而正确答案就是重新处理它一遍。
+		if err := u.docRepo.UpdateStatus(ctx, u.db, docID, StatusReady, StatusProcessing); err != nil {
+			return fmt.Errorf("mark document %s processing (reindex): %w", docID, err)
+		}
 	case StatusFailed:
 		// 【终态已达成，这次投递无事可做，返回 nil 而不是报错】
 		// 确定性失败（比如内容不是合法 UTF-8）会直接把文档推进终态 failed，

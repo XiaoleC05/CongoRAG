@@ -23,6 +23,7 @@ import (
 	"github.com/XiaoleC05/CongoRAG/internal/ctxmgr"
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/knowledge"
+	"github.com/XiaoleC05/CongoRAG/internal/llm"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
 
@@ -128,6 +129,20 @@ func (noopDocRepo) Delete(ctx context.Context, q platform.Querier, id uuid.UUID)
 func (noopDocRepo) DeleteByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID) ([]string, error) {
 	return nil, nil
 }
+// 下面三个是重新索引（issue #39）要的方法。这个替身只服务"api 层能不能
+// 装配起来"这件事，业务语义由 knowledge 包自己的测试覆盖。
+func (noopDocRepo) MarkForReindex(ctx context.Context, q platform.Querier, id uuid.UUID) error {
+	return nil
+}
+
+func (noopDocRepo) MarkKnowledgeBaseForReindex(ctx context.Context, q platform.Querier, kbID uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (noopDocRepo) MarkAllForReindex(ctx context.Context, q platform.Querier) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
 func (noopDocRepo) ExistingStorageKeys(ctx context.Context, q platform.Querier, keys []string) (map[string]bool, error) {
 	return nil, nil
 }
@@ -152,6 +167,10 @@ func (noopFileStore) SweepTemp(ctx context.Context, olderThan time.Time) error {
 type noopEnqueuer struct{}
 
 func (noopEnqueuer) EnqueueProcessing(ctx context.Context, q platform.Querier, documentID uuid.UUID) error {
+	return nil
+}
+
+func (noopEnqueuer) EnqueueProcessingBatch(ctx context.Context, q platform.Querier, documentIDs []uuid.UUID) error {
 	return nil
 }
 
@@ -483,6 +502,10 @@ func TestEverySentinelHasAnExplicitMapping(t *testing.T) {
 		{platform.ErrForeignKey, http.StatusNotFound, "not_found"},
 		{platform.ErrUpstream, http.StatusBadGateway, "upstream_llm_error"},
 		{ctxmgr.ErrOverflow, http.StatusBadRequest, "context_overflow"},
+		// 【包自己的 sentinel 也要进这张表】漏掉它不会编译失败、也不会红，
+		// 只会让换 embedding 模型那条路径静默变成 500——而正确答案是 409，
+		// 且前端要靠这个 type 弹确认框（issue #39）。
+		{llm.ErrEmbeddingResetRequired, http.StatusConflict, "embedding_change_requires_reindex"},
 	}
 
 	for _, tt := range cases {

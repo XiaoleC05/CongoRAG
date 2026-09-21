@@ -53,6 +53,15 @@ export type CreateProviderInput = {
     tokenizerType: string
   }
   embeddingModelId: string
+  /**
+   * 用户是否已经确认"换模型会清空已有向量并自动重建"（issue #39）。
+   *
+   * 【为什么不是可选的】契约里它有 default，openapi-typescript 因此把它
+   * 生成成非可选的 boolean——从"写请求"的角度这是对的：调用方必须明确
+   * 表态，不让"没传"和"传了 false"混在一起。第一次提交传 false；
+   * 服务端返回 embedding_change_requires_reindex 时，用户确认后传 true 重发。
+   */
+  allowEmbeddingReset: boolean
 }
 
 /**

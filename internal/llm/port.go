@@ -177,3 +177,25 @@ type Registry interface {
 	// 探测本身就是"决定要不要建这一行"的前提,不能反过来要求先有行才能探测。
 	ProbeEmbeddingDimension(ctx context.Context, baseURL, apiKey, modelID string) (int, error)
 }
+
+// DocumentReindexer 把"把所有文档重新排队处理"这件事，从 knowledge 包带进
+// llm 的重新配置流程里（issue #39，规则 A：端口由消费方声明）。
+//
+// 【它为什么必须存在】换 embedding 模型有三步：清空旧向量、ALTER 列到新
+// 维度、全部文档重新排队。第三步如果在外层单独提交，「ALTER 成功但入队失败」
+// 会留下一个既没有旧向量、也没有任何任务在重建的库——正是这条 issue 要消掉
+// 的状态。所以第三步必须和前面两步在同一个事务里，而那个事务在 llm.Usecase
+// 手里，于是需要一个接口让它能驱动 knowledge 的动作。
+//
+// 【边界论证，别把它当成可以先例随意扩大的口子】它在依赖表上完全合法：
+// 端口由消费方（llm）声明，实现方（knowledge.Usecase）零 import 边——
+// knowledge 不认识 llm，llm 也不认识 knowledge，唯一的连接点是
+// apps/api/internal/app/app.go 的装配顺序。它打破的是「llm 只管模型接入」
+// 这个直觉，换来的是上面那条原子性。要再加类似方法之前，先确认它同样
+// 换到了别的办法拿不到的性质。
+type DocumentReindexer interface {
+	// RequeueAllDocuments 把所有可重建的文档标回 queued 并批量入队，
+	// 返回这次真的排进去的数量。它不自己开事务——q 由调用方给，
+	// 而调用方保证那是一个已经打开的事务。
+	RequeueAllDocuments(ctx context.Context, q platform.Querier) (int, error)
+}

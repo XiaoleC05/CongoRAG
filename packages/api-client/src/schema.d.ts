@@ -80,6 +80,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge-bases/{id}/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 重新索引一个知识库下的全部文档 */
+        post: operations["reindexKnowledgeBase"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{id}": {
         parameters: {
             query?: never;
@@ -95,6 +114,25 @@ export interface paths {
         post?: never;
         /** 删除一份文档（连带它的分块；磁盘文件异步清理） */
         delete: operations["deleteDocument"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 重新索引一份文档（重新切分、向量化、入库） */
+        post: operations["reindexDocument"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -358,6 +396,13 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        ReindexAccepted: {
+            /**
+             * @description 本次真的排进队列的文档数。已经在排队或正在处理的文档不计入——
+             *     它们本来就会被重新处理一遍。
+             */
+            enqueued: number;
+        };
         CreateKnowledgeBaseRequest: {
             /** @example 我的知识库 */
             name: string;
@@ -405,6 +450,18 @@ export interface components {
              * @example BAAI/bge-m3
              */
             embeddingModelId: string;
+            /**
+             * @description 用户已经确认"换 embedding 模型会清空已有向量、并自动重建"。
+             *
+             *     默认 false：库里的向量不属于这个模型、或者改列类型会清空已有
+             *     向量时，保存失败并返回 409 `embedding_change_requires_reindex`，
+             *     不做任何修改。前端据此弹确认框，用户点了确认再带 true 重发一次。
+             *
+             *     true：在同一个事务里清空这些向量、改列类型，并把全部文档重新
+             *     排队重建；重建完成的文档数在响应的 requeuedDocuments 里。
+             * @default false
+             */
+            allowEmbeddingReset: boolean;
         };
         ModelSummary: {
             /** Format: uuid */
@@ -428,6 +485,12 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
             models: components["schemas"]["ModelSummary"][];
+            /**
+             * @description 这一次真的被重新排队的文档数。只有 POST /providers 在确实执行了
+             *     重建时才是一个数字；GET /providers 恒为 null——它描述的是"这一次
+             *     请求做了什么"，不是一个可以持久化的状态。
+             */
+            requeuedDocuments?: number | null;
         };
         ToolCatalogEntry: {
             name: string;
@@ -532,6 +595,19 @@ export interface components {
         };
         /** @description 与已有状态冲突 */
         Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description 换 embedding 模型需要先确认清空并重建。
+         *     type 是 embedding_change_requires_reindex，detail 里写明会丢掉
+         *     多少行、以及怎么继续（带 allowEmbeddingReset 重发）。
+         */
+        EmbeddingChangeRequiresReindex: {
             headers: {
                 [name: string]: unknown;
             };
@@ -762,6 +838,30 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
+    reindexKnowledgeBase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已排入处理队列 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReindexAccepted"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
     getDocument: {
         parameters: {
             query?: never;
@@ -805,6 +905,31 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    reindexDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已排入处理队列 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Document"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -973,7 +1098,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidArgument"];
-            409: components["responses"]["Conflict"];
+            409: components["responses"]["EmbeddingChangeRequiresReindex"];
             500: components["responses"]["InternalError"];
             /** @description 上游模型服务出错（Base URL / Key / 模型名有问题，或探测请求失败） */
             502: {

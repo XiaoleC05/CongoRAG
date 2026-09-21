@@ -324,6 +324,16 @@ type CreateKnowledgeBaseRequest struct {
 
 // CreateProviderRequest defines model for CreateProviderRequest.
 type CreateProviderRequest struct {
+	// AllowEmbeddingReset 用户已经确认"换 embedding 模型会清空已有向量、并自动重建"。
+	//
+	// 默认 false：库里的向量不属于这个模型、或者改列类型会清空已有
+	// 向量时，保存失败并返回 409 `embedding_change_requires_reindex`，
+	// 不做任何修改。前端据此弹确认框，用户点了确认再带 true 重发一次。
+	//
+	// true：在同一个事务里清空这些向量、改列类型，并把全部文档重新
+	// 排队重建；重建完成的文档数在响应的 requeuedDocuments 里。
+	AllowEmbeddingReset *bool `json:"allowEmbeddingReset,omitempty"`
+
 	// ApiKey 落盘前用应用级主密钥加密，明文只在这一次请求体里出现
 	ApiKey string `json:"apiKey"`
 
@@ -433,6 +443,18 @@ type ProviderWithModels struct {
 	CreatedAt time.Time          `json:"createdAt"`
 	Id        openapi_types.UUID `json:"id"`
 	Models    []ModelSummary     `json:"models"`
+
+	// RequeuedDocuments 这一次真的被重新排队的文档数。只有 POST /providers 在确实执行了
+	// 重建时才是一个数字；GET /providers 恒为 null——它描述的是"这一次
+	// 请求做了什么"，不是一个可以持久化的状态。
+	RequeuedDocuments *int `json:"requeuedDocuments,omitempty"`
+}
+
+// ReindexAccepted defines model for ReindexAccepted.
+type ReindexAccepted struct {
+	// Enqueued 本次真的排进队列的文档数。已经在排队或正在处理的文档不计入——
+	// 它们本来就会被重新处理一遍。
+	Enqueued int `json:"enqueued"`
 }
 
 // RenameKnowledgeBaseRequest defines model for RenameKnowledgeBaseRequest.
@@ -465,6 +487,9 @@ type ToolCatalogEntrySideEffectLevel string
 
 // Conflict defines model for Conflict.
 type Conflict = Problem
+
+// EmbeddingChangeRequiresReindex defines model for EmbeddingChangeRequiresReindex.
+type EmbeddingChangeRequiresReindex = Problem
 
 // InternalError defines model for InternalError.
 type InternalError = Problem
@@ -570,6 +595,9 @@ type ServerInterface interface {
 	// GetDocument 查一份文档的当前状态（前端拿它做处理中的轮询）
 	// (GET /api/v1/documents/{id})
 	GetDocument(c *gin.Context, id openapi_types.UUID)
+	// ReindexDocument 重新索引一份文档（重新切分、向量化、入库）
+	// (POST /api/v1/documents/{id}/reindex)
+	ReindexDocument(c *gin.Context, id openapi_types.UUID)
 	// ListKnowledgeBases 列出全部知识库（按创建时间倒序）
 	// (GET /api/v1/knowledge-bases)
 	ListKnowledgeBases(c *gin.Context)
@@ -591,6 +619,9 @@ type ServerInterface interface {
 	// UploadDocument 上传一个文档（异步处理：落盘 + 入队，立即返回）
 	// (POST /api/v1/knowledge-bases/{id}/documents)
 	UploadDocument(c *gin.Context, id openapi_types.UUID)
+	// ReindexKnowledgeBase 重新索引一个知识库下的全部文档
+	// (POST /api/v1/knowledge-bases/{id}/reindex)
+	ReindexKnowledgeBase(c *gin.Context, id openapi_types.UUID)
 	// ListProviders 列出已配置的模型接入（Key 不会出现在响应里）
 	// (GET /api/v1/providers)
 	ListProviders(c *gin.Context)
@@ -891,6 +922,31 @@ func (siw *ServerInterfaceWrapper) GetDocument(c *gin.Context) {
 	siw.Handler.GetDocument(c, id)
 }
 
+// ReindexDocument operation middleware
+func (siw *ServerInterfaceWrapper) ReindexDocument(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ReindexDocument(c, id)
+}
+
 // ListKnowledgeBases operation middleware
 func (siw *ServerInterfaceWrapper) ListKnowledgeBases(c *gin.Context) {
 
@@ -1042,6 +1098,31 @@ func (siw *ServerInterfaceWrapper) UploadDocument(c *gin.Context) {
 	siw.Handler.UploadDocument(c, id)
 }
 
+// ReindexKnowledgeBase operation middleware
+func (siw *ServerInterfaceWrapper) ReindexKnowledgeBase(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ReindexKnowledgeBase(c, id)
+}
+
 // ListProviders operation middleware
 func (siw *ServerInterfaceWrapper) ListProviders(c *gin.Context) {
 
@@ -1154,8 +1235,10 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.PATCH(options.BaseURL+"/api/v1/knowledge-bases/:id", wrapper.RenameKnowledgeBase)
 	router.GET(options.BaseURL+"/api/v1/knowledge-bases/:id/documents", wrapper.ListDocuments)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/documents", wrapper.UploadDocument)
+	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/reindex", wrapper.ReindexKnowledgeBase)
 	router.DELETE(options.BaseURL+"/api/v1/documents/:id", wrapper.DeleteDocument)
 	router.GET(options.BaseURL+"/api/v1/documents/:id", wrapper.GetDocument)
+	router.POST(options.BaseURL+"/api/v1/documents/:id/reindex", wrapper.ReindexDocument)
 	router.POST(options.BaseURL+"/api/v1/conversations", wrapper.CreateConversation)
 	router.GET(options.BaseURL+"/api/v1/conversations/:id/messages", wrapper.ListConversationMessages)
 	router.POST(options.BaseURL+"/api/v1/conversations/:id/messages", wrapper.SendMessage)

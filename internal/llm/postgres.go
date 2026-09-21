@@ -265,13 +265,22 @@ func foreignEmbeddingCount(ctx context.Context, q platform.Querier, table, embed
 // 判据见 foreignEmbeddingCount：比的是 provider 那侧的模型名。
 //
 // 【类型确实要变、而表里已有向量时：同样拒绝】用 USING NULL 抹掉向量就是
-// 永久丢失——v1.0 没有重嵌入 / 重建索引的路径（ProcessDocument 的 switch
-// 拒绝 ready 状态的文档,也没有 reindex 接口）。
+// 永久丢失。
 //
-// 两种情况都返回 ErrConflict，让这次保存失败、由调用方明确决定，而不是静默
-// 把库变成查不出东西的状态。错误消息会被 problem.go 取最内层那句当作 409 的
-// detail，所以必须写清楚"会损失什么"和"应用内没有恢复入口"——不能指向一个
-// 产品里根本做不到的动作。
+// 【allowReset 是 issue #39 加的出口】为 false 时两种情况都返回
+// ErrEmbeddingResetRequired，让这次保存失败、由调用方明确决定；为 true 时
+// 先清掉不属于新模型的那些向量（类型要变的情况下由下面那条 ALTER 的
+// USING NULL 完成），再由调用方在**同一个事务里**把全部文档重新排队重建——
+// 所以"永久丢失"这个前提不再成立：丢掉的会在重建完成后回来。
+//
+// 【返回值里的 resetPerformed 就是"这次真的清掉过东西"】调用方据此决定
+// 要不要重建；它不是"用户传了 allowReset"的回声——同模型同维度地重存一次
+// 会传 true，但什么都没清，那时候不该触发一次全库重建。
+//
+// 拒绝时返回的是本包的 ErrEmbeddingResetRequired 而不是 platform.ErrConflict：
+// 前端要按它弹确认框，用一个笼统的 conflict 分不出来（见 errors.go 的注释）。
+// 错误消息会被 problem.go 取最内层那句当作 detail，所以必须写清楚"会损失
+// 什么"以及"怎么继续"。
 //
 // 另外两条不变（技术方案 §六 / 代码架构设计 §5.5）：
 //   - opclass 必须是 halfvec_cosine_ops：列是 halfvec、检索用 <=>（余弦距离）,
@@ -280,40 +289,55 @@ func foreignEmbeddingCount(ctx context.Context, q platform.Querier, table, embed
 //     放弃索引退化成顺序扫描。
 //   - 不用 DROP INDEX：PostgreSQL 重写表（ALTER COLUMN TYPE）时会自动重建
 //     依赖这张表的索引，先手动删一次纯属多余。
-func alterVectorColumns(ctx context.Context, q platform.Querier, dim int, embedModel string) error {
+func alterVectorColumns(ctx context.Context, q platform.Querier, dim int, embedModel string, allowReset bool) (resetPerformed bool, err error) {
 	want := fmt.Sprintf("halfvec(%d)", dim)
 	for _, vc := range vectorColumns {
 		foreign, err := foreignEmbeddingCount(ctx, q, vc.table, embedModel)
 		if err != nil {
-			return err
+			return resetPerformed, err
 		}
 		if foreign > 0 {
-			return fmt.Errorf(
-				"%s 里有 %d 行向量不是 %s 生成的,而检索只认当前生效模型产生的向量,改完配置这些分块一条都查不到（文档仍显示 ready,检索静默返回零条）。v1.0 没有重嵌入路径,应用内也没有清空这些向量的入口,要继续只能换回原来的模型,或者先在数据库里手工清掉它们: %w",
-				vc.table, foreign, embedModel, platform.ErrConflict)
+			if !allowReset {
+				return resetPerformed, fmt.Errorf(
+					"%s 里有 %d 行向量不是 %s 生成的,而检索只认当前生效模型产生的向量,改完配置这些分块一条都查不到（文档仍显示 ready,检索静默返回零条）。要换模型就把 allowEmbeddingReset 打开,服务端会在同一个事务里清空这些向量、改列类型,并把全部文档重新排队重建: %w",
+					vc.table, foreign, embedModel, ErrEmbeddingResetRequired)
+			}
+			// 【只在允许重置时才真的清】清掉之后这些分块检索不到，直到
+			// 重建任务重跑完——这是用户已经确认过的代价。
+			if err := clearStaleEmbeddings(ctx, q, vc.table, embedModel); err != nil {
+				return resetPerformed, err
+			}
+			resetPerformed = true
 		}
 
 		current, err := embeddingColumnType(ctx, q, vc.table)
 		if err != nil {
-			return err
+			return resetPerformed, err
 		}
 
 		if current != want {
 			vectors, err := nonNullEmbeddingCount(ctx, q, vc.table)
 			if err != nil {
-				return err
+				return resetPerformed, err
 			}
+			if vectors > 0 && !allowReset {
+				return resetPerformed, fmt.Errorf(
+					"%s.embedding 现在是 %s 且已有 %d 行非 NULL 向量,改成 %s 会把它们全部清空。要换模型就把 allowEmbeddingReset 打开,服务端会改列类型并把全部文档重新排队重建: %w",
+					vc.table, current, vectors, want, ErrEmbeddingResetRequired)
+			}
+
+			// 【不需要在这里显式清空】下面这条 ALTER 的 USING NULL 对每一行
+			// 求值，会把所有已存向量置空——那正是"改列类型"的语义。只是要
+			// 记得它发生过（resetPerformed），调用方据此把文档重新排队。
 			if vectors > 0 {
-				return fmt.Errorf(
-					"%s.embedding 现在是 %s 且已有 %d 行非 NULL 向量,改成 %s 会把它们全部清空,而 v1.0 没有重嵌入路径（文档仍显示 ready、检索静默返回零条）。应用内没有清空这些向量的入口,要继续只能先在数据库里手工清掉它们: %w",
-					vc.table, current, vectors, want, platform.ErrConflict)
+				resetPerformed = true
 			}
 
 			alterSQL := fmt.Sprintf(
 				`ALTER TABLE %s ALTER COLUMN embedding TYPE halfvec(%d) USING NULL`,
 				vc.table, dim)
 			if _, err := q.Exec(ctx, alterSQL); err != nil {
-				return fmt.Errorf("alter %s.embedding: %w", vc.table, platform.WrapPgErr(err))
+				return resetPerformed, fmt.Errorf("alter %s.embedding: %w", vc.table, platform.WrapPgErr(err))
 			}
 		}
 
@@ -321,8 +345,28 @@ func alterVectorColumns(ctx context.Context, q platform.Querier, dim int, embedM
 			`CREATE INDEX IF NOT EXISTS %s ON %s USING hnsw (embedding halfvec_cosine_ops)`,
 			vc.index, vc.table)
 		if _, err := q.Exec(ctx, indexSQL); err != nil {
-			return fmt.Errorf("create hnsw index on %s: %w", vc.table, platform.WrapPgErr(err))
+			return resetPerformed, fmt.Errorf("create hnsw index on %s: %w", vc.table, platform.WrapPgErr(err))
 		}
+	}
+	return resetPerformed, nil
+}
+
+// clearStaleEmbeddings 清掉一张表里「不是当前生效模型生成的」向量。
+//
+// 【必须用 IS DISTINCT FROM，不能用 <>】embedding_model 为 NULL 的行用
+// `<> $1` 比较得到的是 NULL 而不是 true，会被整条 WHERE 漏掉——那些行就是
+// 「有向量但没有模型标记」的残留，正是最该被清掉的一类。
+//
+// 置 NULL 而不是 DELETE：这些行代表的分块内容本身还在（文件的切分结果），
+// 要重建的只是向量。删行会让 document_chunks 少一批，检索会缺内容。
+func clearStaleEmbeddings(ctx context.Context, q platform.Querier, table, embedModel string) error {
+	// table 只可能来自本文件里写死的 vectorColumns,不是外部输入。
+	_, err := q.Exec(ctx, fmt.Sprintf(
+		`UPDATE %s SET embedding = NULL, embedding_model = NULL
+		 WHERE embedding IS NOT NULL AND embedding_model IS DISTINCT FROM $1`, table),
+		embedModel)
+	if err != nil {
+		return fmt.Errorf("clear stale embeddings in %s: %w", table, platform.WrapPgErr(err))
 	}
 	return nil
 }

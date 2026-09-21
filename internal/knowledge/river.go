@@ -119,6 +119,33 @@ func (e *riverEnqueuer) EnqueueProcessing(ctx context.Context, q platform.Querie
 	return nil
 }
 
+// EnqueueProcessingBatch 是 EnqueueProcessing 的批量版，供重新索引用—
+// 换 embedding 模型时全库都要重排，逐个 InsertTx 在文档上千时是一千条
+// INSERT。InsertManyTx 同样要求传入事务，事务性入队这条性质不变。
+//
+// 【空列表直接返回】批量重建时"一个可重建的文档都没有"是完全正常的情况
+//（新库、或者所有文档都还没处理过），不该因此报错。
+func (e *riverEnqueuer) EnqueueProcessingBatch(ctx context.Context, q platform.Querier, documentIDs []uuid.UUID) error {
+	if len(documentIDs) == 0 {
+		return nil
+	}
+	tx, ok := q.(pgx.Tx)
+	if !ok {
+		return fmt.Errorf("river enqueuer requires a transaction, got %T", q)
+	}
+
+	params := make([]river.InsertManyParams, 0, len(documentIDs))
+	for _, id := range documentIDs {
+		params = append(params, river.InsertManyParams{
+			Args: DocumentProcessingArgs{DocumentID: id},
+		})
+	}
+	if _, err := e.client.InsertManyTx(ctx, tx, params); err != nil {
+		return fmt.Errorf("enqueue %d document processing jobs: %w", len(documentIDs), err)
+	}
+	return nil
+}
+
 // FileCleanupArgs 是异步磁盘清理任务的参数。
 //
 // 每个 storage_key 一个独立任务，不是"一批 key 一个任务"：

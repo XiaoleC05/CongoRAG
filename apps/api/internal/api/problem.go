@@ -19,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/XiaoleC05/CongoRAG/internal/ctxmgr"
+	"github.com/XiaoleC05/CongoRAG/internal/llm"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
 
@@ -206,6 +207,13 @@ func classify(err error) (status int, typ, title string) {
 	// 因为是它的领域概念」），不适合定义在 platform 里和别的 sentinel 混在一起。
 	case errors.Is(err, ctxmgr.ErrOverflow):
 		return http.StatusBadRequest, "context_overflow", "上下文超出了模型窗口"
+
+	// llm.ErrEmbeddingResetRequired 和上面那条是同一个模式：包自己的
+	// sentinel 在这里特判一档（issue #39）。它必须是独立的 type——前端要按
+	// 它弹"确认清空并重建"的对话框，混进笼统的 conflict 里就分不出来。
+	// 排在任何 platform sentinel 之前，避免被更宽的匹配接走。
+	case errors.Is(err, llm.ErrEmbeddingResetRequired):
+		return http.StatusConflict, "embedding_change_requires_reindex", "换 embedding 模型需要先确认清空重建"
 
 	case errors.Is(err, platform.ErrInvalid):
 		return http.StatusBadRequest, "invalid_argument", "参数不合法"

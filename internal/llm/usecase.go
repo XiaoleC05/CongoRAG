@@ -23,10 +23,14 @@ type Usecase struct {
 	registry Registry
 	txm      platform.TxManager
 	db       platform.Querier
+	// reindexer 只在"换 embedding 模型、需要把全部文档重新排队"时用到
+	// （issue #39），所以允许为 nil——只跑引导流程的测试不必造一个。
+	// 装配根传的是 *knowledge.Usecase（见 apps/api/internal/app/app.go）。
+	reindexer DocumentReindexer
 }
 
-func NewUsecase(repo ConfigRepo, box platform.SecretBox, registry Registry, txm platform.TxManager, db platform.Querier) *Usecase {
-	return &Usecase{repo: repo, box: box, registry: registry, txm: txm, db: db}
+func NewUsecase(repo ConfigRepo, box platform.SecretBox, registry Registry, txm platform.TxManager, db platform.Querier, reindexer DocumentReindexer) *Usecase {
+	return &Usecase{repo: repo, box: box, registry: registry, txm: txm, db: db, reindexer: reindexer}
 }
 
 // ChatModelInput 是引导页表单里"聊天模型"那一节的字段,全部手填
@@ -49,6 +53,14 @@ type BootstrapRequest struct {
 	APIKey           string
 	ChatModel        ChatModelInput
 	EmbeddingModelID string
+
+	// AllowEmbeddingReset 是用户已经确认"换 embedding 模型会清空已有向量"的
+	// 标记（issue #39）。
+	//
+	// 默认 false：库里有不属于该模型的向量、或者改列类型会清空已有向量时，
+	// 保存直接失败并返回 ErrEmbeddingResetRequired，由前端弹确认框。
+	// true：在同一个事务里清空、改列、把全部文档重新排队重建。
+	AllowEmbeddingReset bool
 }
 
 // BootstrapResult 是三行落库之后返回给 handler 的东西。
@@ -56,6 +68,14 @@ type BootstrapResult struct {
 	Provider       *Provider
 	ChatModel      *Model
 	EmbeddingModel *Model
+
+	// RequeuedDocuments 是这次真的被重新排队的文档数。
+	//
+	// 【只有真的重建过才非零】同模型同维度地重存一次也会传
+	// allowEmbeddingReset=true（前端不必判断"这次到底会不会清"——它判不出来），
+	// 但那种情况下一条向量都没丢，不该触发全库重建。判据是
+	// alterVectorColumns 返回的 resetPerformed，不是请求里的那个开关。
+	RequeuedDocuments int
 }
 
 // Bootstrap 是引导页"保存并开始"按钮触发的整条流程（开发文档 §4.4）：
@@ -134,8 +154,23 @@ func (u *Usecase) Bootstrap(ctx context.Context, req BootstrapRequest) (*Bootstr
 		if err := u.repo.UpsertModel(ctx, q, result.EmbeddingModel); err != nil {
 			return fmt.Errorf("insert embedding model: %w", err)
 		}
-		if err := alterVectorColumns(ctx, q, dim, req.EmbeddingModelID); err != nil {
+		reset, err := alterVectorColumns(ctx, q, dim, req.EmbeddingModelID, req.AllowEmbeddingReset)
+		if err != nil {
 			return fmt.Errorf("alter vector columns to halfvec(%d): %w", dim, err)
+		}
+
+		// 这一步必须在同一个事务里（见 DocumentReindexer 的注释）：
+		// "ALTER 成功但入队失败"会留下一个既没有旧向量、也没有任何任务在
+		// 重建的库，而调用方已经收到了 201。
+		//
+		// 【按 reset 判，不按 req.AllowEmbeddingReset 判】同模型同维度的
+		// 重存也会传 true，但那种情况一条向量都没丢，不该触发全库重建。
+		if reset && u.reindexer != nil {
+			n, err := u.reindexer.RequeueAllDocuments(ctx, q)
+			if err != nil {
+				return fmt.Errorf("requeue documents after embedding reset: %w", err)
+			}
+			result.RequeuedDocuments = n
 		}
 		return nil
 	})

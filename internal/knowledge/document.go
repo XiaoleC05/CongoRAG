@@ -25,18 +25,30 @@ const (
 // （Upload 方法）里没有任何一条边会产生它——rename 成功之前，document 这一行
 // 根本不存在于数据库里；它是一个不可达状态，已经从方案里删掉。
 //
-// 【failed->queued 和 ready->processing 目前没有调用点】UpdateStatus 实际用到的
-// 只有 queued->processing、processing->ready、processing->failed 三条边，全部在
-// ProcessDocument 里。剩下两条是留给还没做的"重试 / 重建索引"入口的——声明在
-// 先、调用点在后，但必须写清楚它们是空的，否则这张表看起来像已经实现了重试。
+// 【ready->queued 与 failed->queued 现在有调用点了（issue #39）】"重新索引"
+// 入口走的是这两条边：入队侧把文档直接 CAS 回 queued，再由 ProcessDocument
+// 从 queued 推进到 processing。
+//
+// 【为什么入队侧写 queued 而不是 processing】queued = 排队等着 worker、
+// processing = worker 正在它上面。队列里排着 500 份文档时同时显示 500 份
+// "处理中"是另一种说谎——Upload 写 queued、ProcessDocument 写 processing
+// 这条分工是已经建立的约定。
+//
+// 【processing->queued 是批量重建的取舍】批量重建会连正在 processing 的
+// 一起重排（`MarkAllForReindex` 的 WHERE 里有它）。不排的话，那份文档的
+// 向量是用旧模型算的，而切换事务的清空语句在 READ COMMITTED 下看不见它
+// 之后才提交的行——它会永久停在「ready + 旧模型向量 + 检索查不到」。
+// 代价只是一次可自愈的竞争：正在跑的任务最后那步 CAS 会失败，任务失败后
+// 被 River 重投，读到 queued 就正常重处理。
 //
 // 【重试不靠 failed->queued】一次可恢复的失败不会把文档落成 failed：不是最后
 // 一次 attempt 就只把错误交回 River，状态留在 processing，下一次投递接着跑
 // （理由见 ProcessDocument）。failed 因此等于"已放弃"，由最后一次 attempt 落下。
+// 那条边留给的是「用户显式要求重跑一份已经放弃的文档」。
 var transitions = map[Status][]Status{
 	StatusQueued:     {StatusProcessing, StatusFailed},
 	StatusProcessing: {StatusReady, StatusFailed, StatusQueued}, // 回到 queued = 允许重试
-	StatusReady:      {StatusProcessing},                        // 重新索引（换 embedding 模型之类）
+	StatusReady:      {StatusProcessing, StatusQueued},          // 重新索引（换 embedding 模型之类）
 	StatusFailed:     {StatusQueued},                            // 重试
 }
 

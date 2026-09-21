@@ -203,6 +203,37 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── 知识库：整库重新索引 ────────────────────────────────────
+  #
+  # 粒度与单文档那条的区别只在范围：一个库里的全部文档一起重排。
+  # 判断该用哪一条的判据是「影响面」——换 embedding 模型影响全库（走
+  # createProvider 那条路，服务端自己决定要重建多少），而"这个库的向量
+  # 看着不对"是局部怀疑，用这一条。
+  /api/v1/knowledge-bases/{id}/reindex:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: reindexKnowledgeBase
+      summary: 重新索引一个知识库下的全部文档
+      responses:
+        '202':
+          description: 已排入处理队列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReindexAccepted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ── 文档：单个 ──────────────────────────────────────────────
   /api/v1/documents/{id}:
 
@@ -239,6 +270,47 @@ paths:
         # 和上面的 getDocument 走同一套错误管线。
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── 重新索引（issue #39）────────────────────────────────────
+  #
+  # 【为什么需要它】换 embedding 模型会把旧向量清空，那些文档因此检索不到，
+  # 必须重新切分/向量化/入库。同理，某一次文档处理中途失败、或者上传上限
+  # 与任务超时（32 MiB / 30 分钟）卡住了一份大文档，也需要只重跑那一份。
+  #
+  # 【为什么要重建整库而不是只重建丢失的】清空发生在换模型那一刻，之后
+  # 哪一份缺向量是可以查出来的——但"只补缺的"会让库里的向量来自两个不同
+  # 时间点，而模型的向量空间只对同一批数据稳定。全量重建是唯一能保证
+  # 检索结果一致的选项，代价由用户确认（见 createProvider 的 409）。
+  /api/v1/documents/{id}/reindex:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: reindexDocument
+      summary: 重新索引一份文档（重新切分、向量化、入库）
+      responses:
+        # 202：和上传一样，只是"排上了队"——真正干活的是 worker，
+        # 文档此刻是 queued 状态，前端已有的轮询会自然跟上。
+        '202':
+          description: 已排入处理队列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        # 文档已经在排队、或者正在被处理时，重复点一次没有意义——
+        # 返回 409 而不是静默成功，用户才知道"这次没排新的"。
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -423,7 +495,7 @@ paths:
         '400':
           $ref: '#/components/responses/InvalidArgument'
         '409':
-          $ref: '#/components/responses/Conflict'
+          $ref: '#/components/responses/EmbeddingChangeRequiresReindex'
         '502':
           description: 上游模型服务出错（Base URL / Key / 模型名有问题，或探测请求失败）
           content:
@@ -722,6 +794,18 @@ components:
           type: string
           format: date-time
 
+    # 整库重建的响应。只报"这次真的排进去多少份"——不报总量、不报进度，
+    # 那些由前端轮询文档列表（受影响的行会显示为 queued）自己看。
+    ReindexAccepted:
+      type: object
+      required: [enqueued]
+      properties:
+        enqueued:
+          type: integer
+          description: |
+            本次真的排进队列的文档数。已经在排队或正在处理的文档不计入——
+            它们本来就会被重新处理一遍。
+
     # 请求体和响应体是两个 schema，不复用 KnowledgeBase：
     # 创建时客户端只该传 name——id 和两个时间戳由服务端生成。
     # 复用的话，生成的类型里会多出三个客户端不该填的字段。
@@ -824,6 +908,22 @@ components:
             只要模型名——维度不用填，服务端用这个字段连同 baseUrl/apiKey
             发一次真实的 embedding 请求探测出来。
           example: BAAI/bge-m3
+        allowEmbeddingReset:
+          type: boolean
+          # 【注意：带 default 会被生成成非可选字段】本仓已记录的行为——
+          # openapi-typescript 对有 default 的字段不会生成 `?`，所以前端
+          # 必须总是显式传它。这是有意的：这个字段的语义不允许"没传"和
+          # "传了 false"被混为一谈。
+          default: false
+          description: |
+            用户已经确认"换 embedding 模型会清空已有向量、并自动重建"。
+
+            默认 false：库里的向量不属于这个模型、或者改列类型会清空已有
+            向量时，保存失败并返回 409 `embedding_change_requires_reindex`，
+            不做任何修改。前端据此弹确认框，用户点了确认再带 true 重发一次。
+
+            true：在同一个事务里清空这些向量、改列类型，并把全部文档重新
+            排队重建；重建完成的文档数在响应的 requeuedDocuments 里。
 
     # 响应里的模型：比 ChatModelInput 多 id/kind/embeddingDim/createdAt，
     # 少不了（chat 模型的 embeddingDim 恒为 0，见 internal/llm/model.go）。
@@ -870,6 +970,16 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ModelSummary'
+        # 【绝对不能给它写 default】本仓已记录的生成器行为：带 default 的
+        # 可选字段会被 openapi-typescript 生成成必填，对现有 TS 客户端就是
+        # 破坏性变更。不带 default 它才是 `requeuedDocuments?: number | null`。
+        requeuedDocuments:
+          type: integer
+          nullable: true
+          description: |
+            这一次真的被重新排队的文档数。只有 POST /providers 在确实执行了
+            重建时才是一个数字；GET /providers 恒为 null——它描述的是"这一次
+            请求做了什么"，不是一个可以持久化的状态。
 
     # ── Agent ─────────────────────────────────────────────────
 
@@ -1039,12 +1149,29 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
 
-    # 409：请求本身合法，但和库里已有的状态冲突。目前唯一的来源是
-    # POST /providers——改 embedding 模型会让库里已有的向量变成检索
-    # 匹配不上的行，所以拒绝而不是静默清空（见 internal/llm/postgres.go
-    # 的 alterVectorColumns）。detail 会写清楚冲突在哪张表、多少行。
+    # 409：请求本身合法，但和库里已有的状态冲突。来源有两处——
+    # 重新索引一份已在排队/正在处理的文档，以及下面那条专门的
+    # embedding_change_requires_reindex。detail 会写清楚冲突在哪。
     Conflict:
       description: 与已有状态冲突
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    # 换 embedding 模型时，库里的向量不属于新模型——检索只会认当前生效
+    # 模型产生的向量，直接改配置会让那些分块一条都查不到（文档仍显示
+    # ready、检索静默返回零条，见 internal/llm/postgres.go 的
+    # alterVectorColumns）。
+    #
+    # 【为什么单独一条而不是复用 Conflict】前端要按 type 弹一个"会清空
+    # 已有向量并自动重建，期间检索结果为空"的确认框，用户确认后带
+    # allowEmbeddingReset 重发；一个笼统的 conflict 它分不出来。
+    EmbeddingChangeRequiresReindex:
+      description: |
+        换 embedding 模型需要先确认清空并重建。
+        type 是 embedding_change_requires_reindex，detail 里写明会丢掉
+        多少行、以及怎么继续（带 allowEmbeddingReset 重发）。
       content:
         application/problem+json:
           schema:

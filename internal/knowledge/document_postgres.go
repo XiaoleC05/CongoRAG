@@ -82,6 +82,69 @@ func (r *PgDocRepo) UpdateStatus(ctx context.Context, q platform.Querier, id uui
 	return nil
 }
 
+// reindexableStatuses 是可以被重新索引的状态集合，拼进下面三条 SQL 的
+// IN 列表里（编译期常量拼接，不是运行期拼用户输入）。
+//
+// 【为什么包含 'processing'】见 document.go 的 transitions 注释：跳过正在
+// processing 的文档，会让它的旧模型向量在换模型时被清空语句漏掉，结果是
+// 一份永久「ready 但检索查不到」的残骸。代价是一次可自愈的竞争。
+const reindexableStatuses = `('ready', 'failed', 'processing')`
+
+// markForReindexSQL 是三条 Mark*ForReindex 共用的 UPDATE 骨架。
+//
+// 【updated_at 由 Go 生成后传入】和 UpdateStatus 同一个理由：两个时钟
+// 来源会让时间戳看起来倒退。
+const markForReindexSQL = `UPDATE documents SET status = 'queued', updated_at = $1
+	 WHERE status IN ` + reindexableStatuses
+
+func (r *PgDocRepo) MarkForReindex(ctx context.Context, q platform.Querier, id uuid.UUID) error {
+	tag, err := q.Exec(ctx, markForReindexSQL+` AND id = $2`, time.Now(), id)
+	if err != nil {
+		return fmt.Errorf("mark document %s for reindex: %w", id, platform.WrapPgErr(err))
+	}
+	// 和 UpdateStatus 同一个约定：影响 0 行说明这个文档不在可重建状态里
+	// （已经在 queued、或者 id 根本不存在）——调用方需要的信息是"这次没改
+	// 成功"，具体哪种原因对它的下一步没有区别。
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("document %s is not in a reindexable state: %w", id, platform.ErrConflict)
+	}
+	return nil
+}
+
+func (r *PgDocRepo) MarkKnowledgeBaseForReindex(ctx context.Context, q platform.Querier, kbID uuid.UUID) ([]uuid.UUID, error) {
+	return r.markForReindexReturningIDs(ctx, q,
+		markForReindexSQL+` AND knowledge_base_id = $2 RETURNING id`, kbID)
+}
+
+func (r *PgDocRepo) MarkAllForReindex(ctx context.Context, q platform.Querier) ([]uuid.UUID, error) {
+	return r.markForReindexReturningIDs(ctx, q, markForReindexSQL+` RETURNING id`)
+}
+
+// markForReindexReturningIDs 跑一条 RETURNING id 的 UPDATE 并收齐结果。
+func (r *PgDocRepo) markForReindexReturningIDs(ctx context.Context, q platform.Querier, sql string, args ...any) ([]uuid.UUID, error) {
+	rows, err := q.Query(ctx, sql, append([]any{time.Now()}, args...)...)
+	if err != nil {
+		return nil, fmt.Errorf("mark documents for reindex: %w", platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	// 【必须是空切片而不是 nil】调用方会把它传给批量入队；nil 切片的
+	// 语义是"没有文档"，而空切片也一样——但返回 nil 时如果哪一层做了
+	// len() 之外的判断（比如 JSON 序列化成 null），行为会不一样。
+	out := make([]uuid.UUID, 0)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan document id: %w", err)
+		}
+		out = append(out, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate documents for reindex: %w", err)
+	}
+	return out, nil
+}
+
 func (r *PgDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID) ([]*Document, error) {
 	rows, err := q.Query(ctx,
 		`SELECT id, knowledge_base_id, filename, storage_key, status, byte_size, created_at, updated_at

@@ -250,6 +250,38 @@ func (s *Server) DeleteDocument(c *gin.Context, id openapi_types.UUID) {
 	c.Status(http.StatusNoContent)
 }
 
+// ReindexDocument 重新索引一份文档（issue #39）。
+//
+// 【202 而不是 200】和上传一样，这里只是"排上了队"——真正干活的是 worker，
+// 返回时文档是 queued 状态。
+//
+// 【为什么回读一次】响应里的 status 必须是数据库里真实的值。直接拼一个
+// queued 看起来一样，但那是"服务端以为的状态"，而这里是唯一能让调用方
+// 确认"状态真的变了"的地方。
+func (s *Server) ReindexDocument(c *gin.Context, id openapi_types.UUID) {
+	if err := s.deps.Knowledge.ReindexDocument(c.Request.Context(), id); err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	doc, err := s.deps.Knowledge.GetDocument(c.Request.Context(), id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, toAPIDocument(doc))
+}
+
+// ReindexKnowledgeBase 重新索引一个知识库下的全部文档（issue #39）。
+func (s *Server) ReindexKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
+	enqueued, err := s.deps.Knowledge.ReindexKnowledgeBase(c.Request.Context(), id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, ReindexAccepted{Enqueued: enqueued})
+}
+
 // ────────────────────────────────────────────────────────────────
 // BYOK：ListProviders / CreateProvider
 // ────────────────────────────────────────────────────────────────
@@ -370,13 +402,17 @@ func (s *Server) CreateProvider(c *gin.Context) {
 			TokenizerType:   req.ChatModel.TokenizerType,
 		},
 		EmbeddingModelID: req.EmbeddingModelId,
+		// AllowEmbeddingReset 是用户已经确认"会清空已有向量并重建"的标记。
+		// nil 表示没传，按契约默认的 false 处理——那时服务端会返回 409
+		// embedding_change_requires_reindex 让前端去弹确认框。
+		AllowEmbeddingReset: req.AllowEmbeddingReset != nil && *req.AllowEmbeddingReset,
 	})
 	if err != nil {
 		s.fail(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, ProviderWithModels{
+	resp := ProviderWithModels{
 		Id:        result.Provider.ID,
 		BaseUrl:   result.Provider.BaseURL,
 		CreatedAt: result.Provider.CreatedAt,
@@ -384,7 +420,16 @@ func (s *Server) CreateProvider(c *gin.Context) {
 			toAPIModelSummary(result.ChatModel),
 			toAPIModelSummary(result.EmbeddingModel),
 		},
-	})
+	}
+	// 【只有真的重建过才带这个字段】同模型同维度地重存一次也会传
+	// allowEmbeddingReset=true（前端判不出来这次会不会清），但那种情况一条
+	// 向量都没丢，服务端返回 0——它不是"用户传了 true"的回声。
+	if result.RequeuedDocuments > 0 {
+		n := result.RequeuedDocuments
+		resp.RequeuedDocuments = &n
+	}
+
+	c.JSON(http.StatusCreated, resp)
 }
 
 // ────────────────────────────────────────────────────────────────

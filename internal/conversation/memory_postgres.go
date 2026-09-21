@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/pgvector/pgvector-go"
 
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
@@ -38,6 +39,54 @@ func (r *PgMemoryRepo) Insert(ctx context.Context, q platform.Querier, m *domain
 	)
 	if err != nil {
 		return fmt.Errorf("insert memory %s: %w", m.ID, platform.WrapPgErr(err))
+	}
+	return nil
+}
+
+func (r *PgMemoryRepo) ListNeedingEmbedding(ctx context.Context, q platform.Querier, activeModel string, limit int) ([]*domain.Memory, error) {
+	// 【判据与 clearStaleEmbeddings 对称】那边清的是
+	// `embedding IS NOT NULL AND embedding_model IS DISTINCT FROM $1`，
+	// 这边要的正是它清完之后的样子，外加从来就没算过向量的那些行。
+	//
+	// 【必须用 IS DISTINCT FROM 而不是 <>】embedding_model 为 NULL 的行用
+	// `<> $1` 比较得到 NULL 而不是 true，会被漏掉——而那些行恰恰是最需要
+	// 补算的（向量为空、模型标记也为空）。
+	rows, err := q.Query(ctx,
+		`SELECT id, scope, content
+		 FROM memories
+		 WHERE embedding IS NULL OR embedding_model IS DISTINCT FROM $1
+		 ORDER BY created_at
+		 LIMIT $2`, activeModel, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list memories needing embedding: %w", platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	out := make([]*domain.Memory, 0)
+	for rows.Next() {
+		m := &domain.Memory{}
+		if err := rows.Scan(&m.ID, &m.Scope, &m.Content); err != nil {
+			return nil, fmt.Errorf("scan memory: %w", err)
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate memories needing embedding: %w", err)
+	}
+	return out, nil
+}
+
+func (r *PgMemoryRepo) UpdateEmbedding(ctx context.Context, q platform.Querier, id uuid.UUID, vec []float32, embeddingModel string) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE memories SET embedding = $2, embedding_model = $3 WHERE id = $1`,
+		id, pgvector.NewHalfVector(vec), embeddingModel)
+	if err != nil {
+		return fmt.Errorf("update memory %s embedding: %w", id, platform.WrapPgErr(err))
+	}
+	if tag.RowsAffected() == 0 {
+		// 记忆被删掉了（目前没有删除入口，但重建是异步的，将来可能有）。
+		// 这不是错误：调用方按"已处理"继续即可。
+		return fmt.Errorf("memory %s: %w", id, platform.ErrNotFound)
 	}
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -324,6 +325,51 @@ func (f *fakeFileStore) SweepTemp(ctx context.Context, olderThan time.Time) erro
 
 var _ Enqueuer = (*fakeEnqueuer)(nil)
 
+// markForReindex 复刻真实 SQL 里 WHERE status IN (...) 的语义：只有
+// ready / failed / processing 三种状态的行会被改成 queued。
+//
+// 【为什么要复刻而不是简单粗暴地全改】测试要钉的正是"哪些文档会被重排"
+// 这条边界——尤其是 processing 的那一份（跳过它会在换模型时留下一份永久
+// 查不到的残骸，见 document.go 的 transitions 注释）。
+func (f *fakeDocRepo) markForReindex(match func(*Document) bool) []uuid.UUID {
+	ids := make([]uuid.UUID, 0)
+	for _, d := range f.docs {
+		if !match(d) {
+			continue
+		}
+		switch d.Status {
+		case StatusReady, StatusFailed, StatusProcessing:
+			d.Status = StatusQueued
+			ids = append(ids, d.ID)
+		}
+	}
+	return ids
+}
+
+func (f *fakeDocRepo) MarkForReindex(ctx context.Context, q platform.Querier, id uuid.UUID) error {
+	if f.failOn == "MarkForReindex" {
+		return f.err
+	}
+	if len(f.markForReindex(func(d *Document) bool { return d.ID == id })) == 0 {
+		return fmt.Errorf("document %s is not in a reindexable state: %w", id, platform.ErrConflict)
+	}
+	return nil
+}
+
+func (f *fakeDocRepo) MarkKnowledgeBaseForReindex(ctx context.Context, q platform.Querier, kbID uuid.UUID) ([]uuid.UUID, error) {
+	if f.failOn == "MarkKnowledgeBaseForReindex" {
+		return nil, f.err
+	}
+	return f.markForReindex(func(d *Document) bool { return d.KnowledgeBaseID == kbID }), nil
+}
+
+func (f *fakeDocRepo) MarkAllForReindex(ctx context.Context, q platform.Querier) ([]uuid.UUID, error) {
+	if f.failOn == "MarkAllForReindex" {
+		return nil, f.err
+	}
+	return f.markForReindex(func(*Document) bool { return true }), nil
+}
+
 type fakeEnqueuer struct {
 	enqueued []uuid.UUID
 	fail     bool
@@ -334,6 +380,14 @@ func (f *fakeEnqueuer) EnqueueProcessing(ctx context.Context, q platform.Querier
 		return errors.New("fake enqueue failure")
 	}
 	f.enqueued = append(f.enqueued, documentID)
+	return nil
+}
+
+func (f *fakeEnqueuer) EnqueueProcessingBatch(ctx context.Context, q platform.Querier, documentIDs []uuid.UUID) error {
+	if f.fail {
+		return errors.New("fake enqueue failure")
+	}
+	f.enqueued = append(f.enqueued, documentIDs...)
 	return nil
 }
 
@@ -667,8 +721,12 @@ func TestStatus_CanTransition(t *testing.T) {
 		{StatusProcessing, StatusReady, true},
 		{StatusProcessing, StatusFailed, true},
 		{StatusProcessing, StatusQueued, true}, // 允许重试
-		{StatusReady, StatusProcessing, true},  // 重新索引
-		{StatusReady, StatusQueued, false},
+		{StatusReady, StatusProcessing, true}, // 重新索引（入队后由 worker 推进）
+		// 【#39 之前这一行是 false】重新索引的入口把文档直接 CAS 回 queued
+		// 再交给 worker——queued 与 processing 在代码里已经有明确分工
+		// （queued = 排队中，processing = worker 正在跑），入队侧写 processing
+		// 会在队列积压时说谎。见 document.go 的 transitions 注释。
+		{StatusReady, StatusQueued, true},
 		{StatusReady, StatusFailed, false},
 		{StatusFailed, StatusQueued, true}, // 重试
 		{StatusFailed, StatusProcessing, false},
@@ -944,18 +1002,26 @@ func TestProcessDocument_RetryFromProcessing_Succeeds(t *testing.T) {
 	assert.Equal(t, StatusReady, d.docRepo.docs[0].Status)
 }
 
-func TestProcessDocument_UnexpectedStatus_Rejected(t *testing.T) {
-	for _, status := range []Status{StatusReady} {
-		t.Run(string(status), func(t *testing.T) {
-			d := newFullTestUsecase()
-			docID := uuid.New()
-			d.docRepo.docs = []*Document{{ID: docID, Status: status}}
+// 【#39 之前这条断言的是「ready 落进 default 分支报 ErrConflict」】现在 ready
+// 是合法的重新索引起点：ProcessDocument 会把它 CAS 到 processing 再往下跑。
+// 所以这里钉的变成反向的事实——它不再以冲突收场。
+//
+// 用例里没有真实文件，所以会以一个打开文件的错误结束；那正是"已经越过状态
+// 检查、走到读文件那一步"的证据。状态也确认被推进到了 processing。
+func TestProcessDocument_ReadyIsAcceptedAsReindexStart(t *testing.T) {
+	d := newFullTestUsecase()
+	docID := uuid.New()
+	d.docRepo.docs = []*Document{{ID: docID, Status: StatusReady}}
 
-			err := d.uc.ProcessDocument(context.Background(), docID, true)
+	// 传 false（不是最后一次 attempt）：可恢复的失败不落终态，状态留在
+	// processing 交回 River 重试——这样才看得到 CAS 推进后的结果。
+	err := d.uc.ProcessDocument(context.Background(), docID, false)
 
-			assert.ErrorIs(t, err, platform.ErrConflict)
-		})
-	}
+	require.Error(t, err, "文件不存在，后面那一步必然失败——但它不该是状态冲突")
+	assert.NotErrorIs(t, err, platform.ErrConflict,
+		"ready 现在是合法的重新索引起点，不该落进 default 分支")
+	assert.Equal(t, StatusProcessing, d.docRepo.docs[0].Status,
+		"状态应该已经被 CAS 推进到 processing")
 }
 
 // 【failed 是终态，重投必须无事收尾】确定性失败会把文档直接推进 failed 并把

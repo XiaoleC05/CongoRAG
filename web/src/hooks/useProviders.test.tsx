@@ -38,6 +38,9 @@ const input: CreateProviderInput = {
     tokenizerType: 'cl100k_base',
   },
   embeddingModelId: 'text-embedding-3-small',
+  // 契约里它带 default，openapi-typescript 因此把它生成成非可选的 boolean——
+  // 调用方必须明确表态，不让"没传"和"传了 false"混在一起。
+  allowEmbeddingReset: false,
 }
 
 describe('useCreateProvider', () => {

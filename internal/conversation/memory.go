@@ -65,6 +65,21 @@ const preferenceExtractionInterval = 10 * time.Minute
 // 压缩文本),门槛设得更高,减少不必要的 LLM 调用。
 const preferenceExtractionMessages = 40
 
+// memoryEmbeddingInterval 是长期记忆补算向量的周期任务间隔（issue #39）。
+//
+// 【为什么和偏好抽取同一个量级】它平时什么都不做（一条待补的记忆都没有），
+// 而真正有事可做只发生在换 embedding 模型之后。10 分钟意味着换完模型到
+// 记忆重新可用最多等一个 tick——这个延迟对"长期记忆"这种增强能力完全可以接受，
+// 而更短的间隔会让一条空转的查询每几分钟打一次库。
+const memoryEmbeddingInterval = 10 * time.Minute
+
+// memoryReembedBatch 是单次补算最多处理多少条记忆。
+//
+// 【为什么要分批】换模型之后可能一次性有几千条待补。一批一次 embedding 请求
+// 也顺带给了这个任务一个自然的检查点：被关停截断时，已处理的那批已经写回，
+// 下一次 tick 从剩下的继续。
+const memoryReembedBatch = 256
+
 // ────────────────────────────────────────────────────────────────
 // 摘要（Summary）：管"刚才聊了什么"
 // ────────────────────────────────────────────────────────────────
@@ -317,6 +332,71 @@ func (u *Usecase) ExtractPreferences(ctx context.Context, convID uuid.UUID, rece
 	return out, nil
 }
 
+// reembedAllMemories 给一批「向量不是当前生效模型生成的」记忆补算向量
+// （issue #39）。
+//
+// 【它为什么存在】换 embedding 模型时，memories.embedding 会被 api 的切换
+// 事务清空——那一步是必需的（不同模型的向量空间不通用，留着它们检索会返回
+// 语义上错误的结果）。但 memories 不能像文档那样在同一个事务里重新排队：
+// 它的向量由这条周期任务产生，重建的成本与时机和文档不同，而且它只有一张
+// 表、不需要 River 那种按份重试的粒度。
+//
+// 【一次一批，不是一次全量】见 memoryReembedBatch 的注释。剩下的留给下一次
+// tick，不会永久遗漏——ListNeedingEmbedding 的判据是"当前状态"，处理过的
+// 行自动不再入选。
+//
+// 【没有 embedding 模型时安静返回】引导还没做、或者用户清空了配置，这都不该
+// 被记成周期任务失败——那会刷满日志而没有任何可操作的信息。
+func (u *Usecase) reembedAllMemories(ctx context.Context) error {
+	model, err := u.activeEmbeddingModel(ctx, u.db)
+	if err != nil {
+		if errors.Is(err, platform.ErrNotFound) {
+			return nil
+		}
+		return fmt.Errorf("resolve active embedding model for memory reindex: %w", err)
+	}
+
+	pending, err := u.memRepo.ListNeedingEmbedding(ctx, u.db, model.ModelID, memoryReembedBatch)
+	if err != nil {
+		return fmt.Errorf("list memories needing embedding: %w", err)
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+
+	// 和本文件其余周期任务同一个取舍：ctx 被取消（关停、任务超时）时
+	// 当成失败上报，而不是静默记成 completed——否则一轮被截断的重建
+	// 看起来就像"做完了，只是没东西可做"。
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("memory reindex interrupted before embedding (context done): %w", err)
+	}
+
+	embedder, err := u.registry.Embedder(ctx, model.ID.String())
+	if err != nil {
+		return fmt.Errorf("get embedding model for memory reindex: %w", err)
+	}
+
+	contents := make([]string, len(pending))
+	for i, m := range pending {
+		contents[i] = m.Content
+	}
+	vecs, err := embedder.Embed(ctx, contents)
+	if err != nil {
+		return fmt.Errorf("embed %d memories for reindex: %w", len(pending), err)
+	}
+	if len(vecs) != len(pending) {
+		return fmt.Errorf("embedder returned %d vectors for %d memories: %w",
+			len(vecs), len(pending), platform.ErrUpstream)
+	}
+
+	for i, m := range pending {
+		if err := u.memRepo.UpdateEmbedding(ctx, u.db, m.ID, vecs[i], model.ModelID); err != nil {
+			return fmt.Errorf("update reindexed memory %d/%d: %w", i+1, len(pending), err)
+		}
+	}
+	return nil
+}
+
 // activeEmbeddingModel 找出当前配置的 embedding 模型——和
 // retrieval.Usecase.activeEmbeddingModel 是同一段逻辑的独立副本,不是
 // 共用一个函数:两个包不允许互相依赖对方的私有实现细节(依赖图规则),
@@ -346,6 +426,13 @@ func (u *Usecase) StartMemoryMaintenance(ctx context.Context, sched platform.Per
 	})
 	sched.RegisterPeriodic("conversation-preferences", preferenceExtractionInterval, func(ctx context.Context) error {
 		return u.extractAllPreferences(ctx)
+	})
+	// 【换 embedding 模型之后 memories 的自愈路径（issue #39）】
+	// 清空在 api 的切换事务里完成（与 document_chunks 共用同一段 SQL），
+	// 重建在这里。两个进程之间不需要协调——api 只负责"把不属于新模型的
+	// 向量清掉"，worker 的下一次 tick 会发现它们需要重算。
+	sched.RegisterPeriodic("conversation-memory-embeddings", memoryEmbeddingInterval, func(ctx context.Context) error {
+		return u.reembedAllMemories(ctx)
 	})
 }
 

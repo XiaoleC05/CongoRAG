@@ -1,4 +1,4 @@
-import { ArrowLeft, FileText, MessageSquarePlus, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, FileText, MessageSquarePlus, RotateCw, Trash2, Upload } from 'lucide-react'
 import { useRef } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
@@ -8,7 +8,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCreateConversation } from '@/hooks/useConversations'
-import { useDocumentMutations, useDocuments } from '@/hooks/useDocuments'
+import {
+  useDocumentMutations,
+  useDocuments,
+  useReindexKnowledgeBase,
+} from '@/hooks/useDocuments'
 import { useErrorToast } from '@/hooks/useErrorToast'
 import { useKnowledgeBases } from '@/hooks/useKnowledgeBases'
 import { errorPresentation } from '@/lib/errors'
@@ -47,7 +51,8 @@ export default function KnowledgeBaseDetailPage() {
   const kbName = kbs?.find((kb) => kb.id === kbId)?.name
 
   const { data: docs, isPending, error } = useDocuments(kbId)
-  const { upload, remove } = useDocumentMutations(kbId)
+  const { upload, remove, reindex } = useDocumentMutations(kbId)
+  const reindexAll = useReindexKnowledgeBase(kbId)
   const createConversation = useCreateConversation()
   const navigate = useNavigate()
   // 写操作的失败出口。三个 mutation 共用同一个——判据在 errorPresentation 里，
@@ -102,6 +107,14 @@ export default function KnowledgeBaseDetailPage() {
           >
             <MessageSquarePlus />
             {createConversation.isPending ? '创建中…' : '开始对话'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => reindexAll.mutate(undefined, { onError: showError })}
+            disabled={reindexAll.isPending || (docs?.length ?? 0) === 0}
+          >
+            <RotateCw />
+            {reindexAll.isPending ? '排队中…' : '重新索引全部'}
           </Button>
           <input
             ref={fileInputRef}
@@ -162,6 +175,19 @@ export default function KnowledgeBaseDetailPage() {
                     {formatDateTime(doc.createdAt)}
                   </td>
                   <td className="px-4 py-2 text-right">
+                    {/* 【为什么单文档也要有这个】换 embedding 模型要重跑全库，
+                        但一份文档处理中途失败、或者被 32 MiB 上限 / 30 分钟
+                        超时卡住时，只需要重跑它自己。两个粒度是不同的用途，
+                        不是同一个按钮的两种说法。 */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`重新索引 ${doc.filename}`}
+                      disabled={reindex.isPending}
+                      onClick={() => reindex.mutate(doc.id, { onError: showError })}
+                    >
+                      <RotateCw className="text-muted-foreground" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"

@@ -609,6 +609,37 @@ type fakeMemoryRepo struct {
 	inserted  []domain.Memory
 	searchErr error
 	result    []domain.Memory
+
+	// 重新索引（issue #39）：pending 是"待补算向量"的那批，updated 记录
+	// 每次 UpdateEmbedding 收到的 (id, model)。
+	pending []domain.Memory
+	updated []memoryEmbeddingUpdate
+}
+
+type memoryEmbeddingUpdate struct {
+	id    uuid.UUID
+	model string
+}
+
+func (f *fakeMemoryRepo) ListNeedingEmbedding(ctx context.Context, q platform.Querier, activeModel string, limit int) ([]*domain.Memory, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*domain.Memory, 0, len(f.pending))
+	for i := range f.pending {
+		if len(out) >= limit {
+			break
+		}
+		m := f.pending[i]
+		out = append(out, &m)
+	}
+	return out, nil
+}
+
+func (f *fakeMemoryRepo) UpdateEmbedding(ctx context.Context, q platform.Querier, id uuid.UUID, vec []float32, embeddingModel string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.updated = append(f.updated, memoryEmbeddingUpdate{id: id, model: embeddingModel})
+	return nil
 }
 
 func (f *fakeMemoryRepo) Insert(ctx context.Context, q platform.Querier, m *domain.Memory, vec []float32, embeddingModel string) error {

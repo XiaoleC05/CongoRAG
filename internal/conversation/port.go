@@ -186,6 +186,18 @@ type MemoryRepo interface {
 	// 结果按相关度从高到低排好——和 retrieval.PgRepo.Search 同样的调用
 	// 约定（vec 由调用方 embed 好再传进来,这里不认识 llm.Registry）。
 	SearchByRelevance(ctx context.Context, q platform.Querier, req domain.MemoryRequest, vec []float32, embeddingModel string) ([]domain.Memory, error)
+
+	// ListNeedingEmbedding 取一批「向量不是当前生效模型生成的」记忆
+	// （包括向量为 NULL 的），按创建时间升序，最多 limit 条。
+	//
+	// 【issue #39：为什么记忆的重建是一条独立的路径】它的向量由周期任务
+	// 产生，重嵌入的成本与时机和文档不一样：换 embedding 模型时它只是被
+	// 清空（清空与文档共用同一段 SQL，在 api 的切换事务里完成），重建交给
+	// worker 的下一次周期 tick 自愈。两个进程之间因此不需要任何协调。
+	ListNeedingEmbedding(ctx context.Context, q platform.Querier, activeModel string, limit int) ([]*domain.Memory, error)
+
+	// UpdateEmbedding 把一条记忆的向量与模型标记写回去。
+	UpdateEmbedding(ctx context.Context, q platform.Querier, id uuid.UUID, vec []float32, embeddingModel string) error
 }
 
 // EventSink 是 SSE 的出口。

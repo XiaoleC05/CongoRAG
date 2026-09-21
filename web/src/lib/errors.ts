@@ -18,12 +18,28 @@ const MESSAGES: Record<string, string> = {
   invalid_argument: '提交的内容不合法',
   not_found: '要找的东西不存在',
   conflict_duplicate_key: '已经有一个同名的了',
-  // 目前只有"换 embedding 模型会和库里已有的向量冲突"这一种，detail 里有
-  // 具体是哪张表、多少行，所以这里只给一句概括，细节靠 detail 补充。
+  // 状态机不允许的转换、并发修改，以及"重新索引一份正在处理的文档"。
+  // detail 里有具体原因，所以这里只给一句概括。
   conflict: '和已有的数据冲突了，这次改动没有生效',
+  // 【换 embedding 模型的专用类型（issue #39）】它不是"失败"，而是"需要你
+  // 确认"——确认之后会清空已有向量并自动重建。引导页会按这个 type 弹确认框，
+  // 所以文案要说清代价，不能写成一句普通的报错。
+  embedding_change_requires_reindex:
+    '换 embedding 模型会清空已有的向量（之后会自动重建，重建期间检索结果为空）',
   context_overflow: '上下文超出了模型的窗口，减少一些输入或换窗口更大的模型',
   upstream_llm_error: '上游模型服务出错，检查一下 API Key 和配额',
   internal_error: '服务内部错误',
+}
+
+/**
+ * 取出后端给的错误 type。认不出时返回 undefined。
+ *
+ * 【为什么要单独导出】有几个地方必须按具体的 type 分支做不同的事——引导页
+ * 要按 embedding_change_requires_reindex 弹确认框而不是显示红字。按 detail
+ * 的文案分支是禁止的（后端随时可改），所以只能走这条路。
+ */
+export function errorType(err: unknown): string | undefined {
+  return asProblem(err)?.type
 }
 
 /**

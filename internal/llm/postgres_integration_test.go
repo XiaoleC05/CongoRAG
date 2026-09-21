@@ -200,7 +200,10 @@ func TestIntegration_Bootstrap_EndToEnd(t *testing.T) {
 	box := testSecretBox(t)
 	txm := platform.NewTxManager(pool)
 	reg := &fakeRegistry{probeDim: 768} // 换一个和其它测试不同的维度,便于确认这次跑的是这次的结果
-	uc := NewUsecase(repo, box, reg, txm, pool)
+	// 第六个参数是重新索引端口（issue #39）。这里传 nil：这个用例只验证
+	// "拒绝"，而拒绝路径根本走不到入队那一步；真要触发重建的用例见文件
+	// 末尾的 TestBootstrap_AllowEmbeddingReset。
+	uc := NewUsecase(repo, box, reg, txm, pool, nil)
 
 	req := validBootstrapRequest()
 	req.APIKey = "sk-integration-test-real-crypto-path"
@@ -218,8 +221,11 @@ func TestIntegration_Bootstrap_EndToEnd(t *testing.T) {
 	if refused {
 		// 这条分支就是 issue #2 的回归测试：修复前这里返回成功、把两张表
 		// 的向量全部置成 NULL，测试却仍然 PASS。
-		require.ErrorIs(t, err, platform.ErrConflict,
-			"库里已有向量时,改列类型必须被拒绝,不能静默清空")
+		// 【#39 之后用的是本包的 sentinel，不再是 platform.ErrConflict】
+		// 前端要按这个 type 弹"确认清空并重建"的对话框，笼统的 conflict
+		// 它分不出来。语义也从"拒绝到底"变成了"需要用户明确同意"。
+		require.ErrorIs(t, err, ErrEmbeddingResetRequired,
+			"库里已有向量时,没带 allowEmbeddingReset 的改列必须被拒绝,不能静默清空")
 		assert.Nil(t, result)
 		assertEmbeddingsIntact(t, pool, "document_chunks", preTestChunks)
 		assertEmbeddingsIntact(t, pool, "memories", preTestMemories)

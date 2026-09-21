@@ -3,12 +3,23 @@ import { useNavigate } from 'react-router'
 
 import { ErrorText } from '@/components/ErrorText'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCreateProvider } from '@/hooks/useProviders'
+import { errorMessage, errorType } from '@/lib/errors'
 
 /**
  * 引导页：首次打开填 Base URL + Key + 模型信息,"保存并开始"探测 embedding
@@ -55,8 +66,13 @@ export default function OnboardingPage() {
     return null
   })()
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  // 【换 embedding 模型是一条确认流程，不是一条报错路径（issue #39）】
+  // 服务端发现库里的向量不属于这个模型时会返回 409，但那不是"你做错了什么"——
+  // 用户改任何一个字段都过不去，唯一的出路是确认"清空并重建"。所以这里弹的是
+  // 确认框，不是红字。
+  const [resetPromptOpen, setResetPromptOpen] = useState(false)
+
+  const submit = (allowEmbeddingReset: boolean) => {
     createProvider.mutate(
       {
         baseUrl: baseUrl.trim(),
@@ -69,12 +85,27 @@ export default function OnboardingPage() {
           tokenizerType: tokenizerType.trim(),
         },
         embeddingModelId: embeddingModelId.trim(),
+        allowEmbeddingReset,
       },
       {
         onSuccess: () => navigate('/knowledge-bases', { replace: true }),
+        onError: (err) => {
+          if (errorType(err) === 'embedding_change_requires_reindex') {
+            setResetPromptOpen(true)
+          }
+        },
       },
     )
   }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    submit(false)
+  }
+
+  // 这个 409 不该同时以红字显示——它已经被上面那个确认框解释过了，
+  // 两边都出现等于同一个信息说两遍。
+  const resetRequired = errorType(createProvider.error) === 'embedding_change_requires_reindex'
 
   return (
     <div className="mx-auto flex min-h-screen max-w-xl items-center p-6">
@@ -211,7 +242,7 @@ export default function OnboardingPage() {
               </div>
             </section>
 
-            {createProvider.error && (
+            {createProvider.error && !resetRequired && (
               <Alert variant="destructive">
                 <AlertTitle>保存失败</AlertTitle>
                 <AlertDescription>
@@ -230,6 +261,39 @@ export default function OnboardingPage() {
             </Button>
           </div>
         </form>
+
+        <AlertDialog open={resetPromptOpen} onOpenChange={setResetPromptOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>要换 embedding 模型吗？</AlertDialogTitle>
+              <AlertDialogDescription>
+                {createProvider.error ? errorMessage(createProvider.error) : ''}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            <p className="text-muted-foreground text-sm">
+              确认之后服务端会在同一个事务里清空这些向量、把列改成新模型的维度，
+              并把全部文档重新排队重建。重建是后台异步做的，期间检索会返回空结果；
+              文档列表里能看到它们重新变成「处理中」，跑完就恢复。
+            </p>
+
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={createProvider.isPending}>取消</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={createProvider.isPending}
+                onClick={(e) => {
+                  // 不阻止的话弹窗会立刻关闭，而请求还在飞——用户看不到
+                  // "正在探测"这个中间态。
+                  e.preventDefault()
+                  setResetPromptOpen(false)
+                  submit(true)
+                }}
+              >
+                清空并重建
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </Card>
     </div>
   )

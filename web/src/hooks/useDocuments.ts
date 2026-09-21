@@ -90,5 +90,47 @@ export function useDocumentMutations(kbId: string) {
     onSuccess: invalidateList,
   })
 
-  return { upload, remove }
+  /**
+   * 重新索引一份文档（issue #39）。
+   *
+   * 用途有两个：换 embedding 模型之后重跑，以及某一次处理失败/超时之后
+   * 只重跑那一份。服务端返回 202，状态回到 queued——上面的轮询会自动
+   * 接着看它跑到终态。
+   *
+   * 【它返回 409 是正常的】文档已经在排队或正在处理时会 409（重复排没有
+   * 意义）。调用方按 conflict 呈现即可，不要当成故障。
+   */
+  const reindex = useMutation({
+    mutationFn: async (documentId: string) => {
+      const { error } = await api.POST('/api/v1/documents/{id}/reindex', {
+        params: { path: { id: documentId } },
+      })
+      if (error) throw error
+    },
+    onSuccess: invalidateList,
+  })
+
+  return { upload, remove, reindex }
+}
+
+/**
+ * 写：整库重新索引（issue #39）。
+ *
+ * 【为什么单独一个 hook 而不是塞进 useDocumentMutations】它不是文档级的
+ * 操作，作用对象是这个知识库；放在一起会让那个 hook 的语义变成"一堆和
+ * 文档有关但粒度不同的写操作"。两者共用同一个列表 key，所以失效逻辑一致。
+ */
+export function useReindexKnowledgeBase(kbId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      const { data, error } = await api.POST('/api/v1/knowledge-bases/{id}/reindex', {
+        params: { path: { id: kbId } },
+      })
+      if (error) throw error
+      return data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: documentsKey(kbId) }),
+  })
 }

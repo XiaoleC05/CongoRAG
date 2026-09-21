@@ -284,8 +284,12 @@ func (f *fakeTxManager) InTx(ctx context.Context, fn func(q platform.Querier) er
 }
 
 // newTestUsecase 组一套全假的依赖,外加一个可断言的 fakeQuerier。
+//
+// 【第六个参数（重新索引端口）传 nil】绝大多数用例走的是"拒绝"路径，那里
+// 根本到不了入队。要验证重建的用例直接给返回的 uc 赋一个假的 reindexer
+// （同包，字段可写）——比给这个构造器再加一个参数要少改十几处调用点。
 func newTestUsecase(repo *fakeConfigRepo, box *fakeSecretBox, reg *fakeRegistry, q *fakeQuerier) *Usecase {
-	return NewUsecase(repo, box, reg, &fakeTxManager{q: q}, q)
+	return NewUsecase(repo, box, reg, &fakeTxManager{q: q}, q, nil)
 }
 
 func validBootstrapRequest() BootstrapRequest {
@@ -455,11 +459,17 @@ func TestBootstrap_RefusesToWipeExistingVectors(t *testing.T) {
 			result, err := uc.Bootstrap(context.Background(), validBootstrapRequest())
 
 			assert.Nil(t, result)
-			// 409 而不是 500：这是"配置和已有数据冲突",调用方要知道。
-			assert.ErrorIs(t, err, platform.ErrConflict)
+			// 【#39 之后用的是本包的 sentinel，不再是 platform.ErrConflict】
+			// 语义也变了：从"拒绝到底"变成"需要用户明确同意"——前端按这个
+			// type 弹确认框，带 allowEmbeddingReset 重发一次就能继续。
+			// 它仍然映射成 HTTP 409（见 problem.go 的 classify），所以
+			// "调用方要知道这是配置与已有数据的冲突"这条没有变。
+			assert.ErrorIs(t, err, ErrEmbeddingResetRequired)
 			assert.Contains(t, err.Error(), tt.refusedTable)
 			assert.Contains(t, err.Error(), fmt.Sprintf("%d 行非 NULL 向量", tt.refusedRows),
 				"错误消息要说清楚会毁掉多少数据")
+			assert.Contains(t, err.Error(), "allowEmbeddingReset",
+				"错误消息要告诉调用方怎么继续，不能只说不行")
 
 			// 有向量的那张表一条 ALTER 都不能跑（前面的空表可以先改完，
 			// 那一条在真事务里会随这次拒绝一起回滚）。
@@ -491,7 +501,10 @@ func TestBootstrap_RefusesWhenVectorsComeFromAnotherModel(t *testing.T) {
 	result, err := uc.Bootstrap(context.Background(), validBootstrapRequest())
 
 	assert.Nil(t, result)
-	assert.ErrorIs(t, err, platform.ErrConflict, "换模型属于配置与已有数据冲突，不是 500")
+	// 【#39 之后是 ErrEmbeddingResetRequired，仍是 409】换模型属于"配置与
+	// 已有数据冲突"，只是现在由用户确认之后可以继续，而不是一律拒绝。
+	assert.ErrorIs(t, err, ErrEmbeddingResetRequired,
+		"换模型属于配置与已有数据冲突，不是 500；只是需要用户明确同意清空重建")
 	assert.Contains(t, err.Error(), "document_chunks")
 	assert.Contains(t, err.Error(), "12", "错误消息要说清楚有多少行会被抛下")
 

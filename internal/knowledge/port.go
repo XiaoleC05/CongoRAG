@@ -98,6 +98,29 @@ type DocRepo interface {
 	// Usecase.StartReconciler 里做（见 usecase.go），这个方法只负责
 	// DocRepo 那一半：批量查存在性。
 	ExistingStorageKeys(ctx context.Context, q platform.Querier, keys []string) (map[string]bool, error)
+
+	// ── 重新索引（issue #39）──────────────────────────────────
+	//
+	// 【为什么是批量 UPDATE 而不是逐行 UpdateStatus】三个方法都要改一批行，
+	// 逐行做就是 N 条 SQL；而且 UpdateStatus 的 CAS 只认单一起点状态，
+	// 这里要同时覆盖 ready / failed / processing 三种。
+	//
+	// 【这三个方法必须是无分页的全量语义】将来给列表查询加 limit/offset 时，
+	// 绝不能把它们改成复用带分页的列表方法——重建一个 500 份文档的库却只
+	// 排了 20 份，而且不报错，是这条路径上最像"看起来成功了"的缺陷。
+
+	// MarkForReindex 把一份文档标回 queued，供单文档重建用。
+	// 状态不在可重建集合里（比如正在 processing 或已经在 queued）时返回
+	// platform.ErrConflict，和 UpdateStatus 同一个约定。
+	MarkForReindex(ctx context.Context, q platform.Querier, id uuid.UUID) error
+
+	// MarkKnowledgeBaseForReindex 把一个知识库下所有可重建的文档标回
+	// queued，返回它们的 id（调用方用它批量入队）。
+	MarkKnowledgeBaseForReindex(ctx context.Context, q platform.Querier, kbID uuid.UUID) ([]uuid.UUID, error)
+
+	// MarkAllForReindex 把所有可重建的文档标回 queued，返回它们的 id。
+	// 换 embedding 模型时用它——那件事影响的是全库，不只是某一个知识库。
+	MarkAllForReindex(ctx context.Context, q platform.Querier) ([]uuid.UUID, error)
 }
 
 // FileStore 把"写临时文件 → fsync → rename"这条写路径封成接口，
@@ -147,6 +170,13 @@ type FileInfo struct {
 // 只声明"我需要能把一个文档 ID 塞进处理队列"这一个能力。
 type Enqueuer interface {
 	EnqueueProcessing(ctx context.Context, q platform.Querier, documentID uuid.UUID) error
+
+	// EnqueueProcessingBatch 一次把多份文档排进队列，供重新索引用。
+	//
+	// 【为什么要批量】换 embedding 模型时要把全库的文档重新排队，逐个
+	// InsertTx 在文档上千时是一次请求上千条 INSERT。批量版走 River 的
+	// InsertManyTx，仍然是事务性的（与状态标记同事务）。
+	EnqueueProcessingBatch(ctx context.Context, q platform.Querier, documentIDs []uuid.UUID) error
 }
 
 // ChunkIndexer 是【规则 A】的例子：knowledge 声明它需要什么，
