@@ -187,8 +187,17 @@ if (!body) {
 }
 
 // 2. 契约版本必须跟产品版本一致（ADR-002）
+//
+// 【--allow-existing-tag 时跳过】那个开关的用途是「补建历史版本的 Release」
+// （v1.0 当时只推了 tag、没建 Release）。契约版本跟的是**当前**产品版本，
+// 补建一个旧版本时它当然不等于那个旧号——拿它去挡补建是错的。
+// 断言管的是"新发布一个版本"，不是"给旧 tag 补一个 Release 对象"。
 const gotContract = contractVersion(readFileSync(CONTRACT, 'utf8'))
-if (gotContract !== version) {
+if (allowExistingTag) {
+  if (gotContract !== version) {
+    console.log(`· 补建历史版本：契约版本是 "${gotContract}"（当前产品版本），跳过一致性断言`)
+  }
+} else if (gotContract !== version) {
   fail(
     `${CONTRACT} 的 info.version 是 "${gotContract}"，而要发布的是 "${version}"。\n` +
       `  契约版本跟产品版本走（ADR-002），发布前必须先把那一行改成 "${version}"。`,
