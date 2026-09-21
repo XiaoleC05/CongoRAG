@@ -265,7 +265,28 @@ git push -u origin fix/xxx
 ```
 
 提交前请确保 `make check` 通过；改了 `contracts/openapi.yaml` 的话记得
-`make generate` 并把产物一起提交。前端改动先读 [`web/README.md`](web/README.md)。
+`make generate` 并把产物一起提交。动了 SQL 的话再跑一遍 `make test-integration`
+——本地 `make test` 跳过的正是那些需要真库的测试。前端改动先读
+[`web/README.md`](web/README.md)。
+
+### 改到这些地方要顺手做的事
+
+| 改了什么 | 还要做什么 |
+| --- | --- |
+| `contracts/openapi.yaml` | `make generate` + 提交两个产物；CI 会检查有没有忘记 |
+| 数据库 schema | `migrations/NNNN_xxx.{up,down}.sql` **一对**都要写 |
+| 对外行为（端点、状态码、默认值、错误类型、环境变量） | 写进 `CHANGELOG.md` 的 `### 行为变更`，判据见该文件顶部 |
+| 发布 | 见 [`docs/releasing.md`](docs/releasing.md) |
+
+### 模块边界的判据
+
+包之间的依赖方向由编译期保证，改动时不要绕过：
+
+- 业务包（`internal/` 下那八个）不 import gin、不知道 HTTP 状态码
+- 跨包的「我需要什么」由**消费方**声明成 port，实现方零 import 边
+  （例子：`llm.DocumentReindexer` 由 llm 声明、`knowledge.Usecase` 实现，
+  连接点只在 `apps/api/internal/app/app.go` 的装配顺序上）
+- 两个进程各有自己的装配根，重复十几行是正常的，不要为此造共享装配包
 
 ## License
 

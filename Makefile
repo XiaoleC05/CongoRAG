@@ -57,7 +57,7 @@ GO_TEST_FLAGS ?=
         river-migrate-up river-migrate-down \
         generate generate-go generate-ts \
         dev dev-web dev-worker build build-web build-web-assets build-web-placeholder build-go \
-        test test-integration test-integration-db lint tidy fmt vet check
+        test test-integration test-integration-db lint tidy fmt vet check         release release-dry check-changelog
 
 help:
 	@echo ConGoRAG 开发命令
@@ -75,6 +75,8 @@ help:
 	@echo   make dev-web            跑 Vite 开发服务器（:5173，改前端要用这个）
 	@echo   make dev-worker         跑 worker（文档处理的消费端）
 	@echo   make test-integration   跑集成测试（重建独立测试库，不动开发库）
+	@echo   make release VERSION=3.0 发布：打 tag + 建 Release（正文来自 CHANGELOG）
+	@echo   make release-dry VERSION=3.0  只打印发布内容，不碰 git、不联网
 	@echo   make check              build + vet + test
 	@echo   make fmt                格式化
 	@echo   开发前端要开两个终端：一个 make dev，一个 make dev-web，浏览器开 :5173
@@ -205,6 +207,25 @@ build-go:
 
 vet:
 	go vet ./...
+
+# ── 发布 ────────────────────────────────────────────────────
+#
+# 【脚本必须是 .mjs 且不依赖 gh】本机没有装 gh；仓库根也没有 package.json，
+# .js 会被当成 CommonJS 而顶层 await 不可用。见 scripts/release.mjs 的注释。
+#
+# 缺 VERSION 用 $(error) 报错——它在 recipe 执行到那一行时才炸，不会让
+# make help 也失败。
+
+release:
+	$(if $(VERSION),,$(error 用法：make release VERSION=3.0))
+	node scripts/release.mjs $(VERSION)
+
+release-dry:
+	$(if $(VERSION),,$(error 用法：make release-dry VERSION=3.0))
+	node scripts/release.mjs $(VERSION) --dry-run
+
+check-changelog:
+	node scripts/release.mjs --check-changelog
 
 test:
 	go test ./...
