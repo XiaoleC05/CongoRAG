@@ -1,0 +1,4 @@
+id: 1
+event: error
+data: {"type":"error","data":{"type":"upstream_error","detail":"上游模型服务不可用"}}
+

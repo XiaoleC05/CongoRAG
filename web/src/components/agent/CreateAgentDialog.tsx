@@ -14,11 +14,24 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ErrorText } from '@/components/ErrorText'
 import { useCreateAgent, useToolCatalog } from '@/hooks/useAgents'
+import { useErrorToast } from '@/hooks/useErrorToast'
+import { errorPresentation } from '@/lib/errors'
 
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
+
+/**
+ * 只把"toast 说不清"的错误交给下面的内联 ErrorText。
+ *
+ * 能重试的那类（internal_error / upstream_llm_error）已经由 useErrorToast
+ * 弹过了，这里再渲染一份就是同一个错误两个 role="alert"。
+ * 要用户改东西的（名字不合法之类）反过来：必须贴在字段旁边，弹 toast
+ * 一闪而过用户根本来不及读。两份判据方向相反，同一条错误只出现一次。
+ */
+const inlineOnly = (err: unknown) =>
+  err && errorPresentation(err, 'mutation') !== 'toast' ? err : undefined
 
 /**
  * 创建 Agent 的表单弹窗。
@@ -30,6 +43,7 @@ type Props = {
 export function CreateAgentDialog({ open, onOpenChange }: Props) {
   const { data: tools } = useToolCatalog()
   const create = useCreateAgent()
+  const showError = useErrorToast()
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -69,6 +83,9 @@ export function CreateAgentDialog({ open, onOpenChange }: Props) {
                   reset()
                   onOpenChange(false)
                 },
+                // 失败时弹窗不关，输入都还在——能重试的错误走 toast 说一声，
+                // 需要改内容的留在下面内联显示。
+                onError: showError,
               },
             )
           }}
@@ -132,7 +149,7 @@ export function CreateAgentDialog({ open, onOpenChange }: Props) {
               </div>
             </div>
 
-            <ErrorText error={create.error} />
+            <ErrorText error={inlineOnly(create.error)} />
           </div>
 
           <DialogFooter>

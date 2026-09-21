@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -34,6 +35,8 @@ type fakeRepo struct {
 	events        map[uuid.UUID][]Event
 	nextEventID   map[uuid.UUID]int64
 	summaries     map[uuid.UUID]*Summary
+	// idempotency 的键是 "endpoint\x00key"，复刻真实主键 (endpoint, key)。
+	idempotency map[string]*IdempotencyRecord
 
 	failOn string
 	err    error
@@ -46,7 +49,14 @@ func newFakeRepo() *fakeRepo {
 		events:        map[uuid.UUID][]Event{},
 		nextEventID:   map[uuid.UUID]int64{},
 		summaries:     map[uuid.UUID]*Summary{},
+		idempotency:   map[string]*IdempotencyRecord{},
 	}
+}
+
+// idempotencyKeyOf 拼出假表的主键，分隔符用一个不可能出现在 endpoint 里的
+// 字节，避免 "a" + "bc" 和 "ab" + "c" 撞在一起。
+func idempotencyKeyOf(endpoint, key string) string {
+	return endpoint + "\x00" + key
 }
 
 func (f *fakeRepo) CreateConversation(ctx context.Context, q platform.Querier, c *Conversation) error {
@@ -238,6 +248,57 @@ func (f *fakeRepo) NextEventID(ctx context.Context, q platform.Querier, convID u
 	return f.nextEventID[convID], nil
 }
 
+// LastIssuedEventID 读的是和 NextEventID 同一个计数器——真实实现里那一列
+// 存的确实是「最后发出的号」，所以两个假实现必须共用这份状态，否则幂等键
+// 记下的游标会和事件表对不上，测试就测不出真实语义了。
+func (f *fakeRepo) LastIssuedEventID(ctx context.Context, q platform.Querier, convID uuid.UUID) (int64, error) {
+	if f.failOn == "LastIssuedEventID" {
+		return 0, f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.nextEventID[convID], nil
+}
+
+func (f *fakeRepo) ReserveIdempotencyKey(ctx context.Context, q platform.Querier, rec *IdempotencyRecord, expiredBefore time.Time) error {
+	if f.failOn == "ReserveIdempotencyKey" {
+		return f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	// 先清理过期键，再插入——和真实实现同一个顺序、同一个事务语义。
+	for k, existing := range f.idempotency {
+		if existing.CreatedAt.Before(expiredBefore) {
+			delete(f.idempotency, k)
+		}
+	}
+
+	k := idempotencyKeyOf(rec.Endpoint, rec.Key)
+	if _, exists := f.idempotency[k]; exists {
+		// 【这里复刻的是 platform.WrapPgErr 的可观测输出】真实实现撞主键时
+		// 返回的正是 fmt.Errorf("%w: %s", ErrIdempotentHit, 约束名)。测试要
+		// 钉住的是「命中只能被认成 ErrIdempotentHit，绝不能是 ErrDuplicateKey」，
+		// 所以错误形状必须和真库那条路径一致。
+		return fmt.Errorf("%w: %s", platform.ErrIdempotentHit, "idempotency_keys_pkey")
+	}
+	f.idempotency[k] = rec
+	return nil
+}
+
+func (f *fakeRepo) LookupIdempotencyKey(ctx context.Context, q platform.Querier, endpoint, key string) (*IdempotencyRecord, error) {
+	if f.failOn == "LookupIdempotencyKey" {
+		return nil, f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	rec, ok := f.idempotency[idempotencyKeyOf(endpoint, key)]
+	if !ok {
+		return nil, fmt.Errorf("idempotency key %s: %w", key, platform.ErrNotFound)
+	}
+	return rec, nil
+}
+
 func (f *fakeRepo) AppendEvent(ctx context.Context, q platform.Querier, convID uuid.UUID, ev Event) error {
 	if f.failOn == "AppendEvent" {
 		return f.err
@@ -315,6 +376,9 @@ var _ llm.ChatModel = (*fakeChatModel)(nil)
 type fakeChatModel struct {
 	streamChunks []string
 	streamErr    error
+	// streamCalls 记录 Stream 被真正调用了几次——幂等重放的断言靠它
+	// 区分「没有重新执行生成」和「执行了但被别的东西挡住了」。
+	streamCalls int
 	// streamMidErrAfter/streamMidErr：前 N 个 chunk 正常吐，之后 Recv 报错——
 	// 模拟生成到一半上游断掉。streamErr 是 Stream() 根本没建起来。
 	streamMidErrAfter int
@@ -351,6 +415,9 @@ func (m *fakeChatModel) Generate(ctx context.Context, msgs []llm.Message, opts .
 
 func (m *fakeChatModel) Stream(ctx context.Context, msgs []llm.Message, opts ...llm.CallOption) (llm.Stream, error) {
 	m.lastMessages = msgs
+	// 每次真正发起流式生成都记一笔。幂等重放的核心契约是「不重新执行生成」，
+	// 而唯一能证明这一点的观测量就是它——消息条数不变也可能是因为别的原因。
+	m.streamCalls++
 	if m.streamErr != nil {
 		return nil, m.streamErr
 	}
@@ -723,7 +790,7 @@ func TestSend_Success_WritesMessagesInOrder(t *testing.T) {
 	conv := d.createConversation(t, nil)
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	require.NoError(t, err)
 
@@ -745,7 +812,7 @@ func TestSend_EmptyText_Rejected(t *testing.T) {
 	conv := d.createConversation(t, nil)
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "   ", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "   ", "", sink)
 
 	assert.ErrorIs(t, err, platform.ErrInvalid)
 	assert.Empty(t, d.repo.messages[conv.ID], "校验不过时不该写任何消息")
@@ -757,7 +824,7 @@ func TestSend_EmitsTokenEventsForEachChunk(t *testing.T) {
 	conv := d.createConversation(t, nil)
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "hi", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "hi", "", sink)
 
 	require.NoError(t, err)
 	tokenEvents := sink.eventsByType("token")
@@ -776,7 +843,7 @@ func TestSend_EventsArePersisted(t *testing.T) {
 	conv := d.createConversation(t, nil)
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "hi", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "hi", "", sink)
 	require.NoError(t, err)
 
 	persisted, err := d.uc.EventsAfter(context.Background(), conv.ID, 0)
@@ -805,7 +872,7 @@ func TestSend_WithKnowledgeBase_SearchesAndEmitsCitations(t *testing.T) {
 	conv := d.createConversation(t, &kbID)
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	require.NoError(t, err)
 	assert.True(t, d.search.called)
@@ -821,7 +888,7 @@ func TestSend_WithoutKnowledgeBase_SkipsSearch(t *testing.T) {
 	conv := d.createConversation(t, nil) // 没有关联知识库
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	require.NoError(t, err)
 	assert.False(t, d.search.called, "没有关联知识库时不该调用检索")
@@ -835,7 +902,7 @@ func TestSend_SearchFails_ChatStillSucceeds(t *testing.T) {
 	conv := d.createConversation(t, &kbID)
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	require.NoError(t, err, "检索失败不该导致整个 Send 失败")
 	msgs := d.repo.messages[conv.ID]
@@ -853,7 +920,7 @@ func TestSend_ActiveModelResolutionFails_MarksFailed(t *testing.T) {
 	conv := d.createConversation(t, nil)
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	require.Error(t, err)
 	msgs := d.repo.messages[conv.ID]
@@ -867,7 +934,7 @@ func TestSend_ContextBuildOverflow_MarksFailed(t *testing.T) {
 	conv := d.createConversation(t, nil)
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	assert.ErrorIs(t, err, ctxmgr.ErrOverflow)
 	msgs := d.repo.messages[conv.ID]
@@ -886,7 +953,7 @@ func TestSend_ChatModelStreamFails_MarksFailed(t *testing.T) {
 	conv := d.createConversation(t, nil)
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, platform.ErrUpstream)
@@ -909,7 +976,7 @@ func TestSend_AnyFailure_EmitsErrorEvent(t *testing.T) {
 	conv := d.createConversation(t, nil)
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	require.Error(t, err)
 	errorEvents := sink.eventsByType("error")
@@ -923,7 +990,7 @@ func TestSend_ConversationNotFound_EmitsErrorEvent(t *testing.T) {
 	d := newTestUsecase()
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), uuid.New(), "你好", sink)
+	err := d.uc.Send(context.Background(), uuid.New(), "你好", "", sink)
 
 	require.Error(t, err)
 	errorEvents := sink.eventsByType("error")
@@ -936,7 +1003,7 @@ func TestSend_Success_DoesNotEmitErrorEvent(t *testing.T) {
 	conv := d.createConversation(t, nil)
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	require.NoError(t, err)
 	assert.Empty(t, sink.eventsByType("error"))
@@ -975,7 +1042,7 @@ func TestSend_ClientDisconnects_StopsGracefully(t *testing.T) {
 	sink := newFakeSink()
 	sink.closeConn() // 提前关闭,模拟"还没开始收就已经断开"
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	require.Error(t, err)
 	msgs := d.repo.messages[conv.ID]
@@ -997,7 +1064,7 @@ func TestSend_ClientDisconnects_PreservesPartialContent(t *testing.T) {
 	// 第一个 token 发出去之后就断开：循环下一次迭代顶部的 Done() 能看到。
 	sink.disconnectAfterEmit = 1
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	require.Error(t, err)
 	msgs := d.repo.messages[conv.ID]
@@ -1019,7 +1086,7 @@ func TestSend_StreamFailsMidway_PreservesPartialContent(t *testing.T) {
 	conv := d.createConversation(t, nil)
 	sink := newFakeSink()
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, platform.ErrUpstream)
@@ -1038,7 +1105,7 @@ func TestSend_EmitFailsMidway_PreservesPartialContent(t *testing.T) {
 	sink := newFakeSink()
 	sink.failEmit = true
 
-	err := d.uc.Send(context.Background(), conv.ID, "你好", sink)
+	err := d.uc.Send(context.Background(), conv.ID, "你好", "", sink)
 
 	require.Error(t, err)
 	msgs := d.repo.messages[conv.ID]
@@ -1180,7 +1247,7 @@ func TestSend_PromptMessageList_FirstTurn(t *testing.T) {
 	conv := d.createConversation(t, nil)
 	sink := newFakeSink()
 
-	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "你好", sink))
+	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "你好", "", sink))
 
 	assert.Equal(t, []llm.Message{
 		{Role: domain.RoleSystem, Content: defaultSystemPrompt},
@@ -1197,10 +1264,10 @@ func TestSend_PromptMessageList_TwoTurns(t *testing.T) {
 	sink := newFakeSink()
 
 	d.registry.chatModel.streamChunks = []string{"知识库在 data/documents"}
-	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "知识库存在哪个目录？", sink))
+	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "知识库存在哪个目录？", "", sink))
 
 	d.registry.chatModel.streamChunks = []string{"可以"}
-	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "改成 data/files 可以吗？", sink))
+	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "改成 data/files 可以吗？", "", sink))
 
 	assert.Equal(t, []llm.Message{
 		{Role: domain.RoleSystem, Content: defaultSystemPrompt},
@@ -1223,7 +1290,7 @@ func TestSend_PromptMessageList_RetrievedChunkIsUntrustedUserMessage(t *testing.
 	conv := d.createConversation(t, &kbID)
 	sink := newFakeSink()
 
-	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "知识库在哪个目录？", sink))
+	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "知识库在哪个目录？", "", sink))
 
 	msgs := d.registry.chatModel.lastMessages
 	require.Len(t, msgs, 3)
@@ -1247,9 +1314,9 @@ func TestSend_PromptMessageList_SummaryCoveredHistoryIsNotRepeated(t *testing.T)
 	sink := newFakeSink()
 
 	d.registry.chatModel.streamChunks = []string{"第一答"}
-	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "第一问", sink))
+	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "第一问", "", sink))
 	d.registry.chatModel.streamChunks = []string{"第二答"}
-	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "第二问", sink))
+	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "第二问", "", sink))
 
 	// 摘要已经吸收了前两条（seq 1、2），剩下的历史从 seq 3 开始。
 	require.NoError(t, d.repo.UpsertSummary(context.Background(), nil, &Summary{
@@ -1258,7 +1325,7 @@ func TestSend_PromptMessageList_SummaryCoveredHistoryIsNotRepeated(t *testing.T)
 	}))
 
 	d.registry.chatModel.streamChunks = []string{"第三答"}
-	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "第三问", sink))
+	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "第三问", "", sink))
 
 	assert.Equal(t, []llm.Message{
 		{Role: domain.RoleSystem, Content: defaultSystemPrompt + "\n\n此前对话摘要：用户问了第一问，助手答了第一答"},
@@ -1285,7 +1352,7 @@ func TestEventsAfter_ReturnsOnlyNewerEvents(t *testing.T) {
 	d := newTestUsecase()
 	conv := d.createConversation(t, nil)
 	sink := newFakeSink()
-	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "你好", sink))
+	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "你好", "", sink))
 
 	all, err := d.uc.EventsAfter(context.Background(), conv.ID, 0)
 	require.NoError(t, err)

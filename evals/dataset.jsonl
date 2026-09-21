@@ -1,0 +1,20 @@
+{"id":"q001","class":"answerable","question":"ConGoRAG 的回答里带的引用，具体包含哪些信息？","anchors":["每一次回答都会带上引用，引用里包含这段内容来自哪份文档、来自文档里的哪一段原文，以及检索阶段给这段内容打的相似度分数"],"facts":["引用"]}
+{"id":"q002","class":"answerable","question":"为什么 ConGoRAG 要把检索和生成当成两件独立的事？","anchors":["检索只负责从知识库里把可能相关的内容找出来，它不判断对错"],"facts":[]}
+{"id":"q003","class":"answerable","question":"引用是在回答生成完之后才发给客户端的吗？","anchors":["引用是随流式回答一起下发的，不是等整段答完再补上"],"facts":["引用"]}
+{"id":"q004","class":"answerable","question":"pgvector 在 ConGoRAG 里承担什么角色？","anchors":["它给数据库加了向量类型、向量距离运算符和向量索引"],"facts":["pgvector"]}
+{"id":"q005","class":"answerable","question":"向量列为什么不直接用 float4，而用半精度？","anchors":["半精度把每个维度的存储从四字节压到两字节，索引体积和内存占用都明显下降"],"facts":["halfvec"]}
+{"id":"q006","class":"answerable","question":"HNSW 索引是怎么找到近邻的？","anchors":["它把向量组织成多层图，查询时从稀疏的上层快速跳到目标区域附近，再在稠密的下层做局部搜索"],"facts":["HNSW"]}
+{"id":"q007","class":"answerable","question":"把 ef_search 调大，检索会有什么变化？","anchors":["把它调大，搜索会访问更多节点，召回率上升、耗时增加"],"facts":["ef_search"]}
+{"id":"q008","class":"answerable","question":"recall@K 这个指标衡量的到底是什么？","anchors":["它衡量的是索引相对全量计算漏掉了多少，不是回答对不对"],"facts":["recall"]}
+{"id":"q009","class":"answerable","question":"goroutine 和操作系统线程相比，开销为什么更小？","anchors":["它的初始栈很小，按需增长，创建和销毁的开销远低于操作系统线程"],"facts":["goroutine"]}
+{"id":"q010","class":"answerable","question":"goroutine 泄漏是怎么发生的，该怎么避免？","anchors":["一个 goroutine 如果永远阻塞在一个没有人会再发送的 channel 上，它就永远不会退出"],"facts":["goroutine"]}
+{"id":"q011","class":"answerable","question":"模型看到的上下文窗口里，除了用户这次的问题还有什么？","anchors":["还包括系统提示词、历史对话、检索出来的分块、长期记忆，以及模型自己要生成的回答"],"facts":["token"]}
+{"id":"q012","class":"answerable","question":"预算不够的时候，上下文里的哪一部分会最先被丢掉？","anchors":["长期记忆属于个性化增强，预算紧张时它最先出局"],"facts":[]}
+{"id":"q013","class":"answerable","question":"文档切分时，一个块的大小上限是多少，怎么切？","anchors":["再把段落贪心地装进不超过 1200 个字符的块里"],"facts":["1200"]}
+{"id":"q014","class":"answerable","question":"为什么不能把某个分块的 id 记下来长期使用？","anchors":["任何依赖记住某个分块标识的做法，都会在下一次重新处理之后失效"],"facts":[]}
+{"id":"q015","class":"should_refuse","question":"ConGoRAG 支持 SAML 单点登录吗？","anchors":[],"facts":[],"refusalMarkers":["没有","未提及","无法","不清楚","不知道","不涉及","不包含","抱歉"]}
+{"id":"q016","class":"should_refuse","question":"怎么把 ConGoRAG 接入公司现有的 LDAP 目录服务？","anchors":[],"facts":[],"refusalMarkers":["没有","未提及","无法","不清楚","不知道","不涉及","不包含","抱歉"]}
+{"id":"q017","class":"should_refuse","question":"ConGoRAG 有官方认证的 SSO 集成吗？","anchors":[],"facts":[],"refusalMarkers":["没有","未提及","无法","不清楚","不知道","不涉及","不包含","抱歉"]}
+{"id":"q018","class":"should_refuse","question":"ConGoRAG 是否支持多租户隔离？","anchors":[],"facts":[],"refusalMarkers":["没有","未提及","无法","不清楚","不知道","不涉及","不包含","抱歉"]}
+{"id":"q019","class":"should_refuse","question":"ConGoRAG 企业版的授权价格是多少？","anchors":[],"facts":[],"refusalMarkers":["没有","未提及","无法","不清楚","不知道","不涉及","不包含","抱歉"]}
+{"id":"q020","class":"should_refuse","question":"可以按文档数量计费、再按部门分摊成本吗？","anchors":[],"facts":[],"refusalMarkers":["没有","未提及","无法","不清楚","不知道","不涉及","不包含","抱歉"]}

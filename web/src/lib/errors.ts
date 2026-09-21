@@ -26,6 +26,47 @@ const MESSAGES: Record<string, string> = {
   internal_error: '服务内部错误',
 }
 
+/**
+ * 错误该以什么形式呈现给用户。
+ *
+ *   'page'   —— 这次失败之后，当前这个视图没有东西可渲染了（整页占位）
+ *   'inline' —— 用户必须改这个字段才能重试（错误要显示在输入框旁边）
+ *   'toast'  —— 界面还是完整的，重试一次就行（一闪而过的提示足够）
+ */
+export type ErrorPresentation = 'page' | 'inline' | 'toast'
+
+/** 错误出在【读】请求上还是【写】请求上——同一个 type 在这两者下的归宿不同。 */
+export type ErrorContext = 'query' | 'mutation'
+
+/**
+ * 一个错误该用哪种形式呈现。
+ *
+ * 【为什么按 type 先分、再让 ctx 收口】type 决定"用户能不能自己解决"，
+ * ctx 决定"页面还剩不剩内容"——后者只有调用方知道，所以必须传进来。
+ *
+ *   invalid_argument / conflict_duplicate_key / context_overflow
+ *       用户得改输入才能过，错误得贴在字段旁边。但读请求没有"字段"可贴
+ *       （查询参数不是用户当场填的），只能整页显示。
+ *   not_found
+ *       目标不存在。读请求遇上它，这个页面本来就没内容可显示；
+ *       写请求遇上它（比如删一条已经被别人删掉的行）页面还是好的，提示一下即可。
+ *   conflict / upstream_llm_error / internal_error / 认不出的 type
+ *       重试一次就行。但读请求失败后页面是空白的，得留在页面上顶着。
+ */
+export function errorPresentation(err: unknown, ctx: ErrorContext): ErrorPresentation {
+  const p = asProblem(err)
+  switch (p?.type) {
+    case 'invalid_argument':
+    case 'conflict_duplicate_key':
+    case 'context_overflow':
+      return ctx === 'query' ? 'page' : 'inline'
+    case 'not_found':
+      return ctx === 'mutation' ? 'toast' : 'page'
+    default:
+      return ctx === 'query' ? 'page' : 'toast'
+  }
+}
+
 type ProblemLike = { type?: string; title?: string; detail?: string }
 
 function asProblem(err: unknown): ProblemLike | null {

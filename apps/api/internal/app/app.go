@@ -10,7 +10,14 @@ package app
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -35,10 +42,18 @@ import (
 // webFS 是内嵌的前端产物，由 main.go 用 go:embed 传进来
 // （embed 指令只能嵌"同目录及以下"，所以它必须写在 main.go 里）。
 func Run(webFS embed.FS) error {
-	// 顶层 ctx 现在是最朴素的那个——它永远不会被取消，
-	// 所以按 Ctrl-C 不会触发优雅退出。M4-B 做优雅退出时，
-	// 这里换成 signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)。
-	ctx := context.Background()
+	// 顶层 ctx 挂在信号上：Ctrl-C（Windows 的 os.Interrupt）和 SIGTERM
+	// （Linux 容器停机的标准信号）都会取消它，关停流程从这里开始。
+	//
+	// 【o.Interrupt 在 Windows 上够用】Windows 没有 SIGTERM，Go 运行时把
+	// 控制台 CTRL_C_EVENT / CTRL_BREAK_EVENT 映射成 os.Interrupt，把
+	// CTRL_CLOSE_EVENT / CTRL_SHUTDOWN_EVENT 映射成 syscall.SIGTERM。
+	// 两个都注册上，开发期（Windows）和交付期（Linux 容器）就都能触发。
+	//
+	// 【stop 是延迟调用的，但关停路径里还会再显式调一次】原因见下面
+	// 收到信号之后那段——不提前 stop() 的话第二次 Ctrl-C 会被吞掉。
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	cfg, err := platform.LoadConfig()
 	if err != nil {
@@ -194,9 +209,63 @@ func Run(webFS embed.FS) error {
 		return fmt.Errorf("mount embedded frontend: %w", err)
 	}
 
-	logger.Info("listening", "addr", cfg.ListenAddr)
-	if err := r.Run(cfg.ListenAddr); err != nil {
-		return fmt.Errorf("run http server: %w", err)
+	// ── 启动与优雅退出 ──────────────────────────────────
+	//
+	// 【为什么不用 r.Run】gin 的 Engine.Run 在内部构造一个**局部**的
+	// http.Server 再 ListenAndServe，那个 server 既没返回也没存字段，
+	// 外部拿不到 → 无法调 Shutdown。所以这里自己造 server。
+	//
+	// 【绝对不要设 ReadTimeout / WriteTimeout】WriteTimeout 覆盖到整个
+	// 响应写完为止，而 SSE 是长响应——设了等于给每次对话加一个硬上限。
+	// ReadHeaderTimeout 只管请求头，对 SSE 安全。
+	//
+	// 【BaseContext 是排空的关键】它让每个请求的 ctx 都挂在 rootCtx 上。
+	// 关停时 cancelRoot() 会让所有在途 handler 的 ctx.Done() 立刻触发，
+	// 而 sseSink 的 Done() 返回的正是 c.Request.Context().Done()——
+	// 这就是「排空 SSE 不需要改 sse.go 一行」的原因。
+	rootCtx, cancelRoot := context.WithCancel(context.Background())
+	defer cancelRoot()
+
+	httpSrv := &http.Server{
+		Addr:              cfg.ListenAddr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return rootCtx },
 	}
+
+	logger.Info("listening", "addr", cfg.ListenAddr)
+
+	serveErr := make(chan error, 1)
+	go func() {
+		// Shutdown / Close 之后 ListenAndServe 返回 ErrServerClosed，
+		// 那是正常关停，不是错误——不滤掉的话每次 Ctrl-C 都会打一条
+		// 看起来像故障的日志。
+		if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErr <- fmt.Errorf("run http server: %w", err)
+			return
+		}
+		serveErr <- nil
+	}()
+
+	select {
+	case err := <-serveErr:
+		// 监听失败（端口被占用之类）要立刻返回，不能傻等信号。
+		return err
+	case <-ctx.Done():
+	}
+
+	// 【必须先 stop()】ctx 已经取消之后，NotifyContext 仍然占着信号处理器，
+	// 不 stop() 的话第二次 Ctrl-C 会被它吃掉——用户就失去了「再按一次
+	// 强行退出」这条路，只能去杀进程。
+	stop()
+	logger.Info("shutdown signal received, draining")
+
+	if err := drain(httpSrv, cancelRoot, apiDrainTimeout, logger); err != nil {
+		logger.Warn("graceful shutdown incomplete, connections force-closed", "error", err)
+	}
+
+	// drain 返回时监听已经关闭（Shutdown 或 Close 都保证这一点），
+	// 所以这个接收一定会到，不会挂住。
+	<-serveErr
 	return nil
 }

@@ -1,17 +1,40 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { ErrorText } from '@/components/ErrorText'
+import { PageFallback } from '@/components/PageFallback'
 import { useProviders } from '@/hooks/useProviders'
 import AppLayout from '@/layouts/AppLayout'
-import AgentDetailPage from '@/pages/AgentDetailPage'
-import AgentsPage from '@/pages/AgentsPage'
-import ConversationPage from '@/pages/ConversationPage'
-import KnowledgeBaseDetailPage from '@/pages/KnowledgeBaseDetailPage'
 import KnowledgeBasesPage from '@/pages/KnowledgeBasesPage'
 import NotFoundPage from '@/pages/NotFoundPage'
-import OnboardingPage from '@/pages/OnboardingPage'
-import RunTracePage from '@/pages/RunTracePage'
+
+// 除落地页和 404 之外的页面都按路由懒加载：每个 lazy() 切成一个独立 chunk，
+// 只有真的走到那条路由时才下载。
+//
+// 【为什么 lazy() 写在模块作用域，绝不能写进 AppRouter() 里】
+// 在组件函数体里调 lazy()，每次渲染都会造出一个【全新的组件类型】。
+// React 比的是引用，于是它认为"这是个不同的组件"，把整棵子树卸载重挂：
+// 输入框里的草稿、正在流式的回答、滚动位置全丢。这个 bug 不报错，
+// 表现为"切个路由回来，我刚打的东西没了"——看起来像玄学。
+// lazy() 的结果必须跨渲染稳定，所以只能在模块作用域算这一次。
+//
+// 【Suspense 边界放在哪】主界面那几条路由的边界在 AppLayout 的 <main> 里面
+// （见 layouts/AppLayout.tsx），不是包在 <Routes> 外面：包在外面的话，
+// 页面 chunk 没到时连侧栏一起消失，整屏变骨架——那看起来像应用崩了。
+// OnboardingPage 是挂在 AppLayout 之外的独立路由（它没有侧栏），
+// 所以它的路由元素得自己带一个 <Suspense>。
+//
+// 【为什么落地页和 404 页保持静态导入】index 会重定向到 /knowledge-bases，
+// 它是绝大多数会话打开时命中的第一条路由，拆出去只是把一次下载提前变成
+// "先下载入口、再下载它"，多一次往返还多了首帧骨架。NotFoundPage 的源码
+// 只有几百字节，单独成 chunk 是净亏。
+const OnboardingPage = lazy(() => import('@/pages/OnboardingPage'))
+const KnowledgeBaseDetailPage = lazy(() => import('@/pages/KnowledgeBaseDetailPage'))
+const ConversationPage = lazy(() => import('@/pages/ConversationPage'))
+const AgentsPage = lazy(() => import('@/pages/AgentsPage'))
+const AgentDetailPage = lazy(() => import('@/pages/AgentDetailPage'))
+const RunTracePage = lazy(() => import('@/pages/RunTracePage'))
 
 /**
  * 路由表。
@@ -35,8 +58,17 @@ export function AppRouter() {
     <BrowserRouter>
       <Routes>
         {/* 引导页独立于 AppLayout：技术方案 §4.1 把它画成"首次打开"的
-            全屏向导，不带侧栏——这时候用户还没有任何知识库/会话可看。 */}
-        <Route path="onboarding" element={<OnboardingPage />} />
+            全屏向导，不带侧栏——这时候用户还没有任何知识库/会话可看。
+            也正因为不在 AppLayout 里，它拿不到 <main> 那个 Suspense 边界，
+            所以这里必须自己包一层，否则 chunk 没到时整屏空白。 */}
+        <Route
+          path="onboarding"
+          element={
+            <Suspense fallback={<PageFallback />}>
+              <OnboardingPage />
+            </Suspense>
+          }
+        />
 
         <Route element={<RequireProvider />}>
           <Route element={<AppLayout />}>

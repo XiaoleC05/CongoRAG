@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
+import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AppRouter } from '@/router'
 import './index.css'
@@ -24,11 +25,17 @@ const queryClient = new QueryClient({
 //   QueryClientProvider  —— useQuery 是往下找最近的 Provider 拿 queryClient 的
 //   TooltipProvider      —— SidebarProvider 不内置它，而侧栏折叠成图标时要用 tooltip
 //   AppRouter            —— 路由在布局路由里渲染 AppLayout（含 SidebarProvider）
+//   Toaster              —— 写操作失败的出口
+//
+// 【Toaster 必须挂在路由树外面】引导页（OnboardingPage）是挂在 AppLayout
+// 之外的独立路由（见 router.tsx），它的保存失败正是 toast 要覆盖的场景之一。
+// 塞进 AppLayout 或任何布局路由里，那一页的失败就没人接。
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AppRouter />
+        <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
   </StrictMode>,

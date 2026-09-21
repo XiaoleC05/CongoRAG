@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -454,10 +455,29 @@ func (s *Server) ListConversationMessages(c *gin.Context, id openapi_types.UUID)
 //
 // 【为什么请求体解析失败还能用 s.fail】那一步发生在 newSSESink 之前，
 // 响应还没有被提交成 200，这时候返回一个正常的 400 Problem 是安全的。
-func (s *Server) SendMessage(c *gin.Context, id openapi_types.UUID) {
+//
+// 【幂等键为什么在这里读，而不是做成中间件】这个键的作用域要包含会话 id
+// （endpoint 字符串是 "POST /api/v1/conversations/<id>/messages"），而中间件
+// 拿不到路由参数之外的东西；更要紧的是真正的裁决发生在
+// WithConversationLock 的事务里（见 conversation.Usecase 的注释），中间件
+// 两头都够不着。handler 只负责把头读出来并做长度校验。
+func (s *Server) SendMessage(c *gin.Context, id openapi_types.UUID, params SendMessageParams) {
 	var req SendMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+		return
+	}
+
+	idempotencyKey := ""
+	if params.IdempotencyKey != nil {
+		idempotencyKey = strings.TrimSpace(*params.IdempotencyKey)
+	}
+	// 【校验必须在 newSSESink 之前】sink 一构造出来，响应就切进 SSE 模式，
+	// 那时再想返回 400 problem+json 已经来不及了。超长键属于"请求本身不合法"，
+	// 用正常的 400 拒绝比在流里推一条 error 帧更准确。
+	if len(idempotencyKey) > conversation.MaxIdempotencyKeyLen {
+		s.fail(c, fmt.Errorf("Idempotency-Key must not exceed %d characters: %w",
+			conversation.MaxIdempotencyKeyLen, platform.ErrInvalid))
 		return
 	}
 
@@ -465,7 +485,7 @@ func (s *Server) SendMessage(c *gin.Context, id openapi_types.UUID) {
 	// Send 的返回值只用于日志和兜底——一旦切到 SSE 模式，错误已经通过
 	// error 事件传给客户端了（conversation.Usecase.Send 自己保证这一点），
 	// 这里不需要、也不能再对 c 做任何响应相关的操作。
-	if err := s.deps.Conversation.Send(c.Request.Context(), id, req.Text, sink); err != nil {
+	if err := s.deps.Conversation.Send(c.Request.Context(), id, req.Text, idempotencyKey, sink); err != nil {
 		s.deps.Logger.Warn("send message failed",
 			"request_id", platform.RequestIDFrom(c.Request.Context()),
 			"conversation_id", id, "error", err)

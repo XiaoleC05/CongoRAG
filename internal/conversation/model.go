@@ -77,3 +77,41 @@ type Event struct {
 	Type    string
 	Payload []byte
 }
+
+// 幂等键指向的资源类型。目前只有一种：那一轮生成的 assistant 消息。
+//
+// 单独定义成常量而不是散在 SQL 里，是为了命中时有东西可以判断
+// 「这行记录说的是哪种资源」——将来如果别端点也用上这张表，
+// 这里会出现第二种取值，而补发逻辑必须能区分。
+const resourceTypeAssistantMessage = "assistant_message"
+
+// IdempotencyRecord 是 idempotency_keys 表的一行，字段与
+// migrations/0003_conversations.up.sql + 0006_idempotency_replay.up.sql
+// 两张迁移合起来建出来的表一一对应。
+type IdempotencyRecord struct {
+	// Endpoint 是「哪个资源上的哪次操作」，形如
+	// "POST /api/v1/conversations/<uuid>/messages"。
+	//
+	// 【为什么把会话 id 编进这一列】表的主键是 (endpoint, idempotency_key)，
+	// 把会话 id 写进 endpoint 就等于把作用域收窄到会话——同一个键在另一个
+	// 会话里不会命中。这样既不用改主键（pgerr.go 的 23505 分流依赖
+	// idempotency_keys_pkey 这个约束名），也不用动表结构。
+	//
+	// 【全局作用域会出什么错】同一个键在会话 B 复用时命中会话 A 的行，
+	// 客户端会拿到对不上的东西。
+	Endpoint string
+	Key      string
+
+	ResourceType string
+	ResourceID   uuid.UUID
+
+	// FirstEventID 是预留这个键的那一刻、该会话已经发出的最后一个
+	// event_id。补发从 event_id > FirstEventID 开始，正好是本轮产生的事件。
+	FirstEventID int64
+
+	// RequestFingerprint 是请求正文的 sha256 十六进制，用来识别
+	// 「同一个键配了不同的正文」。
+	RequestFingerprint string
+
+	CreatedAt time.Time
+}

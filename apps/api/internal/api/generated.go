@@ -481,6 +481,18 @@ type SubscribeConversationEventsParams struct {
 	AfterEventId *int64 `form:"after_event_id,omitempty" json:"after_event_id,omitempty"`
 }
 
+// SendMessageParams defines parameters for SendMessage.
+type SendMessageParams struct {
+	// IdempotencyKey 客户端生成的去重键。同一个会话里带同一个键重复提交时，
+	// 服务端不重新执行生成，而是把该轮已记录的事件补发出来，
+	// 并以该轮的 done / error 帧收尾。
+	//
+	// 省略这个头时行为与没有幂等能力时完全一样（每次都重新生成）。
+	// 同一个键配不同的正文会返回 invalid_argument 的错误帧，
+	// 而不是把上一轮的回答重放一遍。
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
 // UploadDocumentMultipartBody defines parameters for UploadDocument.
 type UploadDocumentMultipartBody struct {
 	File openapi_types.File `json:"file"`
@@ -543,8 +555,15 @@ type ServerInterface interface {
 	// SendMessage 发一条消息，响应是 SSE 流（text/event-stream），不是普通 JSON。
 	// 帧格式和事件类型见 docs/sse-protocol.md，那份文档是唯一权威来源，
 	// 这里的 schema 只是占位（OpenAPI 对流式响应体的描述能力有限）。
+	//
+	// 带 Idempotency-Key 重复提交时不会重新生成：服务端把那一轮已经
+	// 产生的事件补发一遍（同样的 event 类型、同样的真实 event_id），
+	// 所以客户端不需要为「重发」写第二套解析逻辑。
+	//
+	// 补发的作用域是「同一个会话 + 同一个键」。键保留 24 小时，过期之后
+	// 同一个键可以重新执行。
 	// (POST /api/v1/conversations/{id}/messages)
-	SendMessage(c *gin.Context, id openapi_types.UUID)
+	SendMessage(c *gin.Context, id openapi_types.UUID, params SendMessageParams)
 	// DeleteDocument 删除一份文档（连带它的分块；磁盘文件异步清理）
 	// (DELETE /api/v1/documents/{id})
 	DeleteDocument(c *gin.Context, id openapi_types.UUID)
@@ -788,6 +807,30 @@ func (siw *ServerInterfaceWrapper) SendMessage(c *gin.Context) {
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SendMessageParams
+
+	headers := c.Request.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for Idempotency-Key, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter Idempotency-Key: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -795,7 +838,7 @@ func (siw *ServerInterfaceWrapper) SendMessage(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.SendMessage(c, id)
+	siw.Handler.SendMessage(c, id, params)
 }
 
 // DeleteDocument operation middleware

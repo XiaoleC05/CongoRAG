@@ -1,0 +1,10 @@
+{
+  "status": "not-yet-produced",
+  "note": "这份文件是一个显式的占位，不是一次真实运行的结果——仓库里还没有任何一次跑到头的 eval，所以这里一个数字都没有，也不该有。evals/run_eval.mjs 认得 status 这个字段：它发现基线是这个状态时会明确拒绝对比，而不是把它当成一份 0 分的基线（那样会让每一次运行都看起来像大幅进步）。",
+  "how": "要产生真实基线，先起 make up / make dev / make dev-worker，设好 CONGORAG_API_BASE_URL 和 CONGORAG_EMBED_MODEL，然后跑：node evals/run_eval.mjs --write-baseline",
+  "producedAt": null,
+  "corpusHash": null,
+  "gitHead": null,
+  "metrics": null,
+  "questions": []
+}

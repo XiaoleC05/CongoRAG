@@ -1,7 +1,10 @@
 import { BarChart3, BookOpen, Bot, MessagesSquare, Moon, Settings, Sun } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { Suspense } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 
+import { PageFallback } from '@/components/PageFallback'
+import { RouteErrorBoundary } from '@/components/RouteErrorBoundary'
 import {
   Sidebar,
   SidebarContent,
@@ -123,7 +126,21 @@ export default function AppLayout() {
           <SidebarTrigger />
         </header>
         <main className="min-w-0 flex-1 overflow-auto">
-          <Outlet />
+          {/* 错误边界和 Suspense 都套在 <main>【里面】。
+              【为什么不能套到 <Routes> 外面】套在外面的话，页面 chunk 没到时
+              连侧栏和顶栏一起消失，整屏变骨架——那是"应用崩了"的样子，
+              不是"内容在加载"。反过来，这里的 min-w-0 和 flex-1 必须留在
+              边界外面：它们靠的是父级 flex 容器的直接子项身份，
+              中间多插一层就会把侧栏撑变形（README 的"已知的坑"里记过这条）。
+
+              【key={pathname}】错误边界一旦记下 error 就不会自己复位。
+              不加 key 的话，一次 chunk 404 会把之后访问的每个页面都盖住——
+              用户点了别的导航，看到的还是刚才那个报错。换 key 换实例。 */}
+          <RouteErrorBoundary key={pathname}>
+            <Suspense fallback={<PageFallback />}>
+              <Outlet />
+            </Suspense>
+          </RouteErrorBoundary>
         </main>
       </SidebarInset>
     </SidebarProvider>

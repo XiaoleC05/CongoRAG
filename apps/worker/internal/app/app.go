@@ -11,6 +11,10 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	pgxvec "github.com/pgvector/pgvector-go/pgx"
@@ -27,9 +31,44 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Run 装配并启动 worker 进程，阻塞到 ctx 被取消或出错。
+// worker 关停的三个时间预算。三个数各自都有理由，不要合并成一个。
+const (
+	// workerSoftStopTimeout 是 River 给「正在跑的任务」留的收尾时间。
+	//
+	// 【不设它会发生什么】River 的 SoftStopTimeout 为 0 时，job 的 ctx
+	// 继承 Start 的 ctx，而唯一能在 producer 停完之前取消 job ctx 的就是
+	// 这个定时器。于是 Ctrl-C 会一直等到那份文档跑完——单份文档的上限是
+	// 30 分钟（internal/knowledge/river.go 的 documentProcessingTimeout），
+	// 那不叫优雅退出，叫挂死。
+	//
+	// 【为什么是 60 秒而不是 30 分钟】等 30 分钟没有意义：Windows 关控制台
+	// 窗口只给几秒（Go 运行时把 CTRL_CLOSE_EVENT 映射成 SIGTERM 之后靠
+	// block() 拖延，系统到点就 TerminateProcess），docker stop 默认 10 秒
+	// 就 SIGKILL。60 秒覆盖的是「差几秒就跑完」这种常见情形；被截断的任务
+	// 走正常失败路径交回 River 重试，不会丢。
+	workerSoftStopTimeout = 60 * time.Second
+
+	// workerStopTimeout 是 Stop 的总预算，比 SoftStopTimeout 多 15 秒：
+	// 前者是「等任务收尾」，后者还要算上 producer 停轮询、队列维护服务
+	// 退出这些收尾开销。
+	workerStopTimeout = 75 * time.Second
+
+	// workerCancelTimeout 是 Stop 超时之后 StopAndCancel 的预算。
+	// 走到这一步说明有任务不听话，只能强取消它的 ctx。
+	workerCancelTimeout = 15 * time.Second
+
+	// workerFinalWait 是最后一次等 Stopped() 的上限。
+	// 【必须有上限】`<-riverClient.Stopped()` 本身是无界的，两次 Stop 都
+	// 失败时会永远挂在这里——那正好是用户最需要它能退出的时候。
+	workerFinalWait = 5 * time.Second
+)
+
+// Run 装配并启动 worker 进程，阻塞到收到关停信号或出错。
 func Run() error {
-	ctx := context.Background()
+	// 顶层 ctx 挂在信号上，理由同 apps/api/internal/app/app.go：
+	// Ctrl-C 与 SIGTERM 都要能触发关停。
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	cfg, err := platform.LoadConfig()
 	if err != nil {
@@ -104,6 +143,24 @@ func Run() error {
 			river.QueueDefault: {MaxWorkers: 10},
 		},
 		Workers: workers,
+
+		// 关停时给正在跑的任务留的收尾时间，见文件头部的常量说明。
+		SoftStopTimeout: workerSoftStopTimeout,
+
+		// 【为什么改 rescue 的默认值】River 默认认为「跑了 1 小时还没结束的
+		// 任务已经死了」（client.go 的 JobRescuerRescueAfterDefault），然后
+		// 把它重新入队。默认值的前提是普通任务秒级完成；本项目单份文档的
+		// 上限是 30 分钟，一个正常跑着的大文档会在 1 小时线附近被误判。
+		//
+		// 40 分钟 > 单任务上限 30 分钟（internal/knowledge/river.go），
+		// 所以活着的任务不会被误判为 stuck；同时比默认的 1 小时更快地回收
+		// 「worker 被 taskkill /F 杀掉」时留在 processing 的行——否则用户
+		// 顶着界面上那个转圈的文档要等满一小时。
+		//
+		// 【代价要如实记住】River 文档明确警告：rescue 一个其实还活着的任务
+		// 会导致同一份文档被处理两次。本机只有一个 worker，且 30 分钟硬上限
+		// 保证活着的任务跑不到 40 分钟，所以这个风险可接受。
+		RescueStuckJobsAfter: 40 * time.Minute,
 	})
 	if err != nil {
 		return fmt.Errorf("create river client: %w", err)
@@ -142,13 +199,47 @@ func Run() error {
 
 	logger.Info("worker running")
 
-	// 【暂无优雅退出】和 apps/api/internal/app/app.go 同样的现状：
-	// ctx 是最朴素的 context.Background()，Ctrl-C 不会触发优雅退出。
-	// M4-B 做优雅退出时，这里和 api 那边一起换成
-	// signal.NotifyContext(...) + riverClient.Stop(ctx) + <-riverClient.Stopped()。
+	select {
+	case <-ctx.Done():
+		logger.Info("shutdown signal received, stopping river client")
+	case <-riverClient.Stopped():
+		// 客户端在 Start 之后自己停了（内部致命错误之类）。
+		// 这里直接收尾，不要再调 Stop。
+		return nil
+	}
+
+	// 【先 stop() 再关停】ctx 已经取消之后 NotifyContext 仍占着信号处理器，
+	// 不 stop() 的话第二次 Ctrl-C 会被吞掉，用户就没法强行退出了。
+	stop()
+
+	// 【为什么是 Stop 而不是直接 StopAndCancel】Stop 先停 producer（不再
+	// 拉新任务），给在途任务最多 workerSoftStopTimeout 收尾，然后才取消
+	// job ctx。文档处理是可恢复的，让它跑完比打断它更好。
 	//
-	// 空 select 永久阻塞，让进程保持运行——它是 Go 规范里明确列出的
-	// "终止语句"（terminating statement），函数在这里结束不需要再写
-	// return，编译器不会因为"函数缺少返回值"报错。
-	select {}
+	// 【为什么超时之后还要 StopAndCancel】Stop 的 ctx 只管它自己等多久，
+	// 不会取消已经在跑的任务。不补这一刀的话，一个卡住的任务会让 Stop
+	// 返回错误、但 job 仍在跑，进程退不掉。
+	//
+	// 【为什么最后还要给 Stopped() 加个上限】正常情况下 Stop 返回时客户端
+	// 已经停了，Stopped() 立刻返回。两次 Stop 都失败时才需要这个上限——
+	// 那时如果无界地等下去，关停就变成了「按 Ctrl-C 挂死」。
+	stopCtx, cancelStop := context.WithTimeout(context.Background(), workerStopTimeout)
+	defer cancelStop()
+	if err := riverClient.Stop(stopCtx); err != nil {
+		logger.Warn("graceful river stop incomplete; cancelling remaining jobs", "error", err)
+
+		cancelCtx, cancelCancel := context.WithTimeout(context.Background(), workerCancelTimeout)
+		defer cancelCancel()
+		if err := riverClient.StopAndCancel(cancelCtx); err != nil {
+			logger.Error("river client did not stop", "error", err)
+		}
+	}
+
+	select {
+	case <-riverClient.Stopped():
+		logger.Info("worker stopped cleanly")
+	case <-time.After(workerFinalWait):
+		logger.Error("river client did not report stopped; exiting anyway")
+	}
+	return nil
 }

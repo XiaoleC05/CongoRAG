@@ -36,6 +36,12 @@ func writeProblem(c *gin.Context, status int, p Problem) {
 		c.Status(status)
 		return
 	}
+
+	// 【为什么每个错误响应都要带 no-store】404 和 503 属于启发式可缓存的
+	// 状态码，而拼错端点返回的正是 404（spa.go 的那条 API 前缀分支）。
+	// 不显式关掉的话，浏览器可能把「这个端点不存在」记下来，之后端点补上了
+	// 还是 404；503 同理——服务恢复了，用户还在看旧的「暂不可用」。
+	c.Header("Cache-Control", cacheNoStore)
 	c.Data(status, problemContentType, body)
 }
 

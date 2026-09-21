@@ -133,6 +133,13 @@ export interface paths {
          * 发一条消息，响应是 SSE 流（text/event-stream），不是普通 JSON。
          *     帧格式和事件类型见 docs/sse-protocol.md，那份文档是唯一权威来源，
          *     这里的 schema 只是占位（OpenAPI 对流式响应体的描述能力有限）。
+         *
+         *     带 Idempotency-Key 重复提交时不会重新生成：服务端把那一轮已经
+         *     产生的事件补发一遍（同样的 event 类型、同样的真实 event_id），
+         *     所以客户端不需要为「重发」写第二套解析逻辑。
+         *
+         *     补发的作用域是「同一个会话 + 同一个键」。键保留 24 小时，过期之后
+         *     同一个键可以重新执行。
          */
         post: operations["sendMessage"];
         delete?: never;
@@ -854,7 +861,18 @@ export interface operations {
     sendMessage: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 客户端生成的去重键。同一个会话里带同一个键重复提交时，
+                 *     服务端不重新执行生成，而是把该轮已记录的事件补发出来，
+                 *     并以该轮的 done / error 帧收尾。
+                 *
+                 *     省略这个头时行为与没有幂等能力时完全一样（每次都重新生成）。
+                 *     同一个键配不同的正文会返回 invalid_argument 的错误帧，
+                 *     而不是把上一轮的回答重放一遍。
+                 */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 id: string;
             };
@@ -894,7 +912,12 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description SSE 流（补发历史事件后保持连接，继续推送新事件） */
+            /**
+             * @description SSE 流。把 event_id > after_event_id 的事件补发一遍，然后结束响应。
+             *     【它不持有连接等新事件】——那条承诺从来没有被实现，本地单机场景
+             *     下也没有意义。要看某一轮后续的内容用 POST messages 的幂等键补发
+             *     （见 docs/sse-protocol.md「幂等与断线的闭环」）。
+             */
             200: {
                 headers: {
                     [name: string]: unknown;

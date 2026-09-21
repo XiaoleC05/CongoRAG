@@ -40,6 +40,11 @@ func (r *failAfterFirstRead) Read(p []byte) (int, error) {
 // 【这条测试只有在 Windows 上才会在修复前变红】POSIX 允许 unlink 一个仍被
 // 打开的文件，Linux/macOS 上旧代码也能删掉它。但"先关句柄再删"在两个平台上
 // 都是对的，只有错的那半边是平台相关的。
+//
+// 【所以它不是那条顺序的门禁】CI 跑在 ubuntu-latest 上，这条用例在那里
+// 改前改后都绿。真正钉住顺序的是下面与平台无关的
+// TestCloseAndRemoveTempFile_ClosesBeforeRemoving；这条继续留着，作为
+// "接缝没有和真实文件系统脱节"的锚。
 func TestWriteTemp_WriteFails_LeavesNoTempFile(t *testing.T) {
 	fs := NewLocalFileStore(t.TempDir())
 
@@ -50,6 +55,73 @@ func TestWriteTemp_WriteFails_LeavesNoTempFile(t *testing.T) {
 	entries, readErr := os.ReadDir(fs.tmpDir())
 	require.NoError(t, readErr)
 	assert.Empty(t, entries, "写失败的半成品必须被删掉，不能留在 tmp/ 里")
+}
+
+// fakeTempFile 记录自己被关了几次，好让断言能说出「删的时候关了没有」。
+//
+// Close 是幂等的（真实代码在修复路径上会显式关一次、defer 再关一次），
+// 所以这里只累加计数，不做"已经关过就报错"那种断言——那会让假实现自己的
+// 语义干扰被测的顺序。
+type fakeTempFile struct {
+	name       string
+	closeErr   error
+	closeCalls int
+}
+
+func (f *fakeTempFile) Close() error {
+	f.closeCalls++
+	return f.closeErr
+}
+
+func (f *fakeTempFile) Name() string { return f.name }
+
+// 【这条是与平台无关的回归测试，钉住「先关句柄再删」这个顺序】
+//
+// 为什么必须有它：上面那条 TestWriteTemp_WriteFails_LeavesNoTempFile 只在
+// Windows 上才会在修复前变红，而 CI 跑的是 ubuntu-latest——那段顺序在 CI 上
+// 从来没有门禁，改回旧写法不会被任何东西发现，只有开发者的本机会红。
+//
+// 做法是把顺序本身抽成 closeAndRemoveTempFile，再用假句柄 + 假删除函数
+// 直接观察「删除发生时句柄关了没有」。断言写成 Equal(1, ...) 而不是
+// True(closed)：顺序被换回去时，失败信息会直接说出「删的时候还没关」。
+func TestCloseAndRemoveTempFile_ClosesBeforeRemoving(t *testing.T) {
+	f := &fakeTempFile{name: "tmp/upload-abc123"}
+
+	removeCalls := 0
+	closeCallsAtRemove := -1
+	removedName := ""
+
+	closeErr, removeErr := closeAndRemoveTempFile(f, func(path string) error {
+		removeCalls++
+		closeCallsAtRemove = f.closeCalls
+		removedName = path
+		return nil
+	})
+
+	require.NoError(t, closeErr)
+	require.NoError(t, removeErr)
+	assert.Equal(t, 1, removeCalls, "删除必须被尝试一次")
+	assert.Equal(t, f.name, removedName, "删的必须是这个句柄指向的文件")
+	assert.Equal(t, 1, closeCallsAtRemove,
+		"删除发生时句柄必须已经关掉——Windows 上句柄未关时的 os.Remove 会以共享冲突失败")
+}
+
+// 关闭失败不等于不删：半成品留在 tmp/ 里没有任何好处，调用方负责把它记进
+// 日志，SweepTemp 是最后一道兜底。这条语义现有代码就是对的，只是从来没被
+// 任何断言钉住过——将来有人为了"让错误更干净"加一句 early return 就会静默
+// 改变行为。
+func TestCloseAndRemoveTempFile_RemoveStillAttemptedWhenCloseFails(t *testing.T) {
+	f := &fakeTempFile{name: "tmp/upload-abc123", closeErr: errors.New("close failed")}
+
+	removeCalls := 0
+	closeErr, removeErr := closeAndRemoveTempFile(f, func(string) error {
+		removeCalls++
+		return nil
+	})
+
+	require.Error(t, closeErr, "关闭失败必须如实报出来，不能吞掉")
+	require.NoError(t, removeErr)
+	assert.Equal(t, 1, removeCalls, "关闭失败也要继续尝试删除")
 }
 
 func TestWriteTemp_Success_ReturnsPathAndSizeAndKeepsFile(t *testing.T) {

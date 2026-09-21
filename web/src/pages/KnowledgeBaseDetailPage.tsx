@@ -9,8 +9,22 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCreateConversation } from '@/hooks/useConversations'
 import { useDocumentMutations, useDocuments } from '@/hooks/useDocuments'
+import { useErrorToast } from '@/hooks/useErrorToast'
 import { useKnowledgeBases } from '@/hooks/useKnowledgeBases'
+import { errorPresentation } from '@/lib/errors'
 import { formatByteSize, formatDateTime } from '@/lib/format'
+
+/**
+ * 写操作失败在页面上还剩多少要显示。
+ *
+ * 【为什么要过滤】这个页面的三个写操作（上传/开始对话/删除）失败后，
+ * 能 toast 的那类（internal_error 之类，重试就行）已经由 useErrorToast 说过了，
+ * 这里再渲染一份就是同一个错误两个 role="alert"，读屏软件念两遍。
+ * 剩下的（要用户换一个文件、或知识库已经没了）toast 说不清，必须留在页面上——
+ * 直接删掉 ErrorText 的话它们会凭空消失，那比重复更糟。
+ */
+const residual = (err: unknown) =>
+  err && errorPresentation(err, 'mutation') !== 'toast' ? err : undefined
 
 /**
  * 知识库详情页——文件列表 + 上传按钮。
@@ -36,6 +50,9 @@ export default function KnowledgeBaseDetailPage() {
   const { upload, remove } = useDocumentMutations(kbId)
   const createConversation = useCreateConversation()
   const navigate = useNavigate()
+  // 写操作的失败出口。三个 mutation 共用同一个——判据在 errorPresentation 里，
+  // 不在这里按操作名各写各的。
+  const showError = useErrorToast()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -47,7 +64,10 @@ export default function KnowledgeBaseDetailPage() {
   const handleStartConversation = () => {
     createConversation.mutate(
       { title: kbName ?? '新对话', knowledgeBaseId: kbId },
-      { onSuccess: (conv) => navigate(`/conversations/${conv.id}`) },
+      {
+        onSuccess: (conv) => navigate(`/conversations/${conv.id}`),
+        onError: showError,
+      },
     )
   }
 
@@ -57,7 +77,7 @@ export default function KnowledgeBaseDetailPage() {
     // onChange 不会再触发（浏览器认为"值没变"），第二次上传就悄悄失效。
     e.target.value = ''
     if (file) {
-      upload.mutate(file)
+      upload.mutate(file, { onError: showError })
     }
   }
 
@@ -97,8 +117,8 @@ export default function KnowledgeBaseDetailPage() {
         </div>
       </header>
 
-      <ErrorText error={upload.error} className="mb-4" />
-      <ErrorText error={createConversation.error} className="mb-4" />
+      <ErrorText error={residual(upload.error)} className="mb-4" />
+      <ErrorText error={residual(createConversation.error)} className="mb-4" />
 
       {isPending ? (
         <SkeletonList />
@@ -147,7 +167,7 @@ export default function KnowledgeBaseDetailPage() {
                       size="icon"
                       aria-label={`删除 ${doc.filename}`}
                       disabled={remove.isPending}
-                      onClick={() => remove.mutate(doc.id)}
+                      onClick={() => remove.mutate(doc.id, { onError: showError })}
                     >
                       <Trash2 className="text-muted-foreground" />
                     </Button>
@@ -158,7 +178,7 @@ export default function KnowledgeBaseDetailPage() {
           </table>
         </div>
       )}
-      <ErrorText error={remove.error} className="mt-4" />
+      <ErrorText error={residual(remove.error)} className="mt-4" />
     </div>
   )
 }

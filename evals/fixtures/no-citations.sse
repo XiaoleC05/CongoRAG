@@ -1,0 +1,12 @@
+id: 1
+event: token
+data: {"type":"token","data":{"text":"这个问题"}}
+
+id: 2
+event: token
+data: {"type":"token","data":{"text":"我需要更多材料"}}
+
+id: 3
+event: done
+data: {"type":"done","data":{}}
+

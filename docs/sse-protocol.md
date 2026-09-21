@@ -102,33 +102,67 @@ RETURNING next_event_id;
 ③ 客户端重新发起请求：
      GET /api/v1/conversations/{id}/events?after_event_id={lastEventId}
 ④ 服务端从 conversation_events 表按 event_id > after_event_id 查出补发的部分，
-   发完历史再继续实时推送新产生的事件
+   发完就结束响应
 ```
+
+**第 ④ 步发完历史就结束，不会继续持有连接等新事件。** 这一点与本文档早期
+版本写的「发完历史再继续实时推送」不同——那条承诺从来没有被实现，而且
+它对本地单机场景没有意义：持有连接等新事件，和客户端直接再发一次请求，
+得到的结果是一样的。要看某一轮后续的内容，走「幂等与断线的闭环」那一节
+的补发路径。
 
 **`Last-Event-ID` 请求头不会被浏览器自动带上**——那是 `EventSource` 的行为，
 `fetch` 什么都不会替你做。重连循环、记录 `lastEventId`、拼进请求 URL，
 三件事都是前端自己的代码要做的（见 `web/src/lib/streamChat.ts`）。
 
-## 幂等与断线的闭环（M4-B 计划，当前未实现）
+## 幂等与断线的闭环
 
-**下面写的是设计意图，v1.0 的代码里没有实现，不要按它写客户端。**
-服务端不读 `Idempotency-Key` 请求头（`contracts/openapi.yaml` 也没声明它），
-也没有任何语句往 `idempotency_keys` 表（`migrations/0003_conversations.up.sql`
-建的）里写。所以带同一个键重发一次请求**不会**重放：`Send` 照常分配一个新的
-`sequence_no`，会话里多出一轮用户消息 + 一份 assistant 回答，模型调用和
-BYOK 的 key 各多扣一次。
+`POST /conversations/{id}/messages` 接受可选的 `Idempotency-Key` 请求头
+（契约里已声明）。同一个会话带同一个键重复提交时，服务端**不重新执行**
+生成，而是把那一轮已经记录的事件补发出来。
 
-计划中的语义：`POST /conversations/{id}/messages` 带 `Idempotency-Key` 请求头，
-命中重复键（同一个 `(endpoint, idempotency_key)` 组合）时服务端**不重新执行**
-一遍生成，而是返回已创建的资源标识（这里是那条 assistant 消息所在会话的信息），
-客户端据此调 `GET .../events?after_event_id=0` 重新订阅，走上面那条续传路径
-接着看到剩下的内容。
+**这就是 `fetch` 而非 `EventSource` 的主要理由**——`EventSource` 发不了
+自定义请求头（见本文开头）。
 
-落地时的位置：在 messages handler 里读这个头，把
-`(endpoint, idempotency_key, resource_id)` 和 sequence 分配放进**同一个事务**
-插入；`internal/platform/pgerr.go` 已经把 `idempotency_keys` 的唯一约束违规
-（23505）翻译成 `platform.ErrIdempotentHit`，但目前没有语句能撞上那条约束，
-所以它是条死路径。
+### 作用域与保留窗口
+
+- **作用域 = 同一个会话 + 同一个键。** 键落在 `idempotency_keys` 表，
+  主键是 `(endpoint, idempotency_key)`，而 `endpoint` 里编了会话 id
+  （`POST /api/v1/conversations/<uuid>/messages`）。同一个键在另一个
+  会话里不会命中。
+- **保留 24 小时。** 超过之后同一个键可以重新执行——这是有意的产品语义，
+  因为隔了一天之后的重试本来就没有意义了。过期行在每次预留时顺手清掉。
+
+### 命中时客户端收到什么
+
+**同一轮事件的补发**，不是一条错误、也不是一个资源 id：
+
+- 帧的类型、**真实的 `event_id`**、顺序都和原请求一致，所以客户端的
+  续传游标仍然正确，`lastEventId` 的语义不变。
+- 如果命中时这一轮**还没生成完**，服务端会边等边发，直到该轮出现终态
+  事件（`done` 或 `error`）为止。等待有绝对上限（10 分钟），超时会推一条
+  带真实 `event_id` 的 `error` 帧收场——静默结束响应会让客户端停在
+  一个空流上。
+- 同一个键配**不同的正文**会收到 `invalid_argument` 的 error 帧，而不是
+  把上一轮的答案重放一遍。
+
+### 不要再按旧写法用 `after_event_id=0` 重新订阅
+
+本文档早期版本让客户端在命中幂等键后调
+`GET .../events?after_event_id=0` 重新订阅。**那是错的**：`event_id` 是按
+会话发号的（见上面「事件与续传」），`0` 会把此前每一轮的 token 全部重放
+一遍，而客户端会把它们拼进同一个正在生成的气泡里。
+
+补发所需的「本轮从哪条事件开始」由服务端在预留键时记下
+（`idempotency_keys.first_event_id`），客户端不需要、也不应该自己算。
+
+### 两条已知局限
+
+- 补发以 `POST` 这一次请求的响应为边界，**它自己不 tail**。`GET /events`
+  补发完历史就结束响应（见下），所以客户端不要指望靠它接着看实时内容。
+- 同一个会话有两轮在并发（两个标签页、不同的键）时，另一轮的事件号会
+  高于本轮的游标，补发可能混入它、并可能提前停在它的 `done` 上。这是
+  「事件号按会话发号」这个既有设计的性质，不是幂等引入的。
 
 ## 服务端实现要点
 

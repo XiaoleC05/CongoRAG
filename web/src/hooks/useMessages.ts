@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 import { api } from '@congorag/api-client'
 import type { Schemas } from '@congorag/api-client'
 import { streamChat } from '@/lib/streamChat'
+import { newIdempotencyKey } from '@/lib/uuid'
 
 type Message = Schemas['Message']
 
@@ -83,6 +84,11 @@ export function useSendMessage(conversationId: string) {
 
       const key = messagesKey(conversationId)
 
+      // 【一次用户意图 = 一个键】新按下发送就该是一个新键；将来若加自动
+      // 重试，必须把同一个 attempt 的键存在 ref 里复用——每次重试都换新键
+      // 等于幂等完全失效，而用户遇到的正是"重试之后多出一轮回答"。
+      const idempotencyKey = newIdempotencyKey()
+
       // 乐观插入：内容、顺序都取自用户刚敲的这一下，不等后端返回 uuid 和
       // sequence_no。随后的作废重取会用数据库里的那一行把它替换掉。
       queryClient.setQueryData<Message[]>(key, (old) => [
@@ -99,7 +105,7 @@ export function useSendMessage(conversationId: string) {
       ])
 
       try {
-        await streamChat(conversationId, text, {
+        await streamChat(conversationId, text, idempotencyKey, {
           onEvent: (event) => {
             switch (event.type) {
               case 'citation':

@@ -2,6 +2,7 @@ package conversation
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -105,6 +106,41 @@ type Repo interface {
 	// EventsAfter 返回 event_id > afterEventID 的全部事件，按 event_id
 	// 升序——断线续传用它把错过的部分补发给客户端。
 	EventsAfter(ctx context.Context, q platform.Querier, convID uuid.UUID, afterEventID int64) ([]Event, error)
+
+	// ReserveIdempotencyKey 抢一个幂等键，成功即代表「这次请求由我执行」。
+	//
+	// 【只能返回 ErrIdempotentHit，绝不能返回 ErrDuplicateKey】两者在 SQL 层
+	// 都是 23505，区别只在约束名。撞上主键说明这个键已经被用掉了，是正常的
+	// 重放场景；映射成 ErrDuplicateKey 的话调用方会当成 409 冲突报给用户，
+	// 而正确答案是「把上一轮的结果补发给他」——这正是 pgerr.go 里
+	// constraintIdempotencyKey 那个常量存在的理由。
+	//
+	// 【expiredBefore 由调用方算好传进来】保留窗口是业务参数，不在 SQL 里
+	// 写 now() - interval——本包所有时间戳都由 Go 侧生成后传入，这样测试能
+	// 控制时间，也避免同一件事在后端和数据库里各写一份。
+	//
+	// 【必须在同一事务里既清理过期键又 INSERT】否则两次并发预留可能都先
+	// 清理、再各自插入，中间出现一个谁也没删掉的窗口。
+	ReserveIdempotencyKey(ctx context.Context, q platform.Querier, rec *IdempotencyRecord, expiredBefore time.Time) error
+
+	// LookupIdempotencyKey 按 (endpoint, key) 取回一条记录，找不到返回
+	// platform.ErrNotFound。
+	//
+	// 【为什么预留时不能顺手把整行读回来】预留只关心「抢到了没有」；
+	// 而真正的补发发生在 Send 的另一条分支上，那时才需要 ResourceID 和
+	// FirstEventID。分成两个方法让两条路径各自只拿自己需要的东西。
+	LookupIdempotencyKey(ctx context.Context, q platform.Querier, endpoint, key string) (*IdempotencyRecord, error)
+
+	// LastIssuedEventID 返回一个会话已经发出的最后一个 event_id，
+	// 该会话还没有任何事件时返回 0。
+	//
+	// 【这一列的真实语义是「最后发出的号」，不是「下一个要发的号」】
+	// conversation_counters.next_event_id 的名字与 0003 里那句注释都容易让人
+	// 以为是后者，但 NextEventID 的 SQL 是 INSERT ... VALUES ($1, 1) ...
+	// RETURNING next_event_id——第一次返回 1，之后 2、3……所以它存的是
+	// 已经发出去的那个号。幂等键预留要的正是这个值（本轮事件的严格下界），
+	// 所以这里必须按真实语义命名与注释，不要再沿用一个反话。
+	LastIssuedEventID(ctx context.Context, q platform.Querier, convID uuid.UUID) (int64, error)
 
 	// GetSummary 取一个会话当前的摘要。没有摘要（从没压缩过）时返回
 	// platform.ErrNotFound——这不是异常情况，是"这个会话还短，压缩阶梯

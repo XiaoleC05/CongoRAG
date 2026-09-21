@@ -2,6 +2,8 @@ package conversation
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +38,77 @@ const maxTitleLen = 200
 // 不同 tokenizer 的"一个 token"实际字节数差异很大，时间间隔对用户体验
 // 的意义更直接（多久能看到内容在动）。
 const checkpointInterval = 500 * time.Millisecond
+
+// 幂等键重放相关（issue #37）。
+const (
+	// idempotencyKeyTTL 是一个幂等键的保留窗口。超过它之后，带同一个键再来
+	// 一次会真的重新执行生成——这也是产品语义的一部分，写进了
+	// web/README 与 docs/sse-protocol.md。
+	//
+	// 【为什么是 24 小时】超过这个窗口的"重试"本身已经没有意义（用户不会
+	// 隔一天之后还在等那次失败的发送结果），而永不清理的代价是这张表随
+	// 消息量单调增长，且客户端一旦把键写死就再也拿不到新回答。
+	//
+	// 【清理方式】每次预留时顺手删掉过期的行（见 ReserveIdempotencyKey）。
+	// 不用 River 周期任务是刻意的：那要单开一条 issue、还要动 worker 的
+	// 装配根，而这里只需要一条带索引的 DELETE。
+	idempotencyKeyTTL = 24 * time.Hour
+
+	// MaxIdempotencyKeyLen 是幂等键的长度上限，与契约里 Idempotency-Key
+	// 请求头的 maxLength 保持一致。导出是因为 handler 也要用它——
+	// 同一个数字在契约之外只该有一处。
+	MaxIdempotencyKeyLen = 255
+
+	// replayPollInterval 是补发时轮询事件表的间隔。
+	//
+	// 【为什么是轮询而不是订阅】补发要等的是"这一轮什么时候产生下一条事件"，
+	// 而事件是由另一个请求（原请求那个进程/goroutine）写进去的。本进程没有
+	// 任何事件通知机制（没有 pg NOTIFY，也没有内存里的广播），所以只能轮询。
+	// 100ms 是"用户感觉不到延迟"与"每秒查库不超过 10 次"之间的取舍；
+	// 一次补发通常只有几轮查询（token 事件是成批写进去的）。
+	replayPollInterval = 100 * time.Millisecond
+
+	// replayTimeout 是补发等待本轮终态事件的绝对上限。
+	//
+	// 【为什么需要上限】messages 表没有 updated_at 列，判断不了"那一轮是不是
+	// 卡住了"——原请求所在进程被 Ctrl-C 杀掉时，那条消息会永远停在 streaming。
+	// 没有上限的话，每个重复请求都会泄漏一个 goroutine 和一条连接。
+	//
+	// 【为什么是 10 分钟】它覆盖本地模型上任何一次合理的生成，量级上与
+	// internal/knowledge/river.go 的 documentProcessingTimeout（30 分钟）
+	// 是同一档思路。超时必须显式推一条 error 帧——静默结束响应会让客户端
+	// 拿到一个空流，与"数据库不可用"那次缺陷同形。
+	replayTimeout = 10 * time.Minute
+)
+
+// SSE 事件名。与 apps/api/internal/api/sse.go 里的同名常量各存一份——
+// 理由和那边注释里写的一样：协议的唯一规范来源是 docs/sse-protocol.md，
+// 不是对方的代码。业务包不 import gin，这一侧也不该反向依赖 handler 包。
+const (
+	eventDoneName  = "done"
+	eventErrorName = "error"
+)
+
+// messagesEndpoint 拼出幂等键的 endpoint 列。
+//
+// 【把会话 id 编进这一列是有意的】主键是 (endpoint, idempotency_key)，
+// 于是作用域天然收窄到「这个会话上的这次操作」——同一个键在另一个会话里
+// 不会命中。这一条替代了「改主键」那种方案，从而保住了约束名
+// idempotency_keys_pkey（pgerr.go 的 23505 分流按名字判断）。
+//
+// 它同时也是「endpoint 该指向具体那个资源上的那次操作」这个语义的正确写法。
+func messagesEndpoint(convID uuid.UUID) string {
+	return "POST /api/v1/conversations/" + convID.String() + "/messages"
+}
+
+// fingerprint 是请求正文的指纹，用来识别「同一个键配了不同的正文」。
+//
+// 输入必须是已经 trim 过的正文——send 在调用它之前就 trim 了，否则
+// "你好" 与 "你好 " 会被当成两个不同的请求。
+func fingerprint(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])
+}
 
 // Usecase 是普通聊天的业务层。
 //
@@ -169,8 +242,20 @@ func (u *Usecase) EventsAfter(ctx context.Context, convID uuid.UUID, afterEventI
 // "这次失败了"——docs/sse-protocol.md 定义的 error 事件就是为这种情况
 // 存在的。所以 Send 自己包一层：内部真正的逻辑在 send 里，这一层负责
 // "不管 send 从哪条路径出错，都先把 error 事件推给客户端"。
-func (u *Usecase) Send(ctx context.Context, convID uuid.UUID, text string, sink EventSink) error {
-	err := u.send(ctx, convID, text, sink)
+// 【idempotencyKey 为空表示不做幂等】不传这个头的调用方（以及所有既有测试）
+// 行为与加这个参数之前完全一样，一条幂等行都不会写。
+//
+// 【命中重复键不是错误路径】抢键失败说明这次的键已经被用过，服务端不重新
+// 生成，而是把那一轮已经产生的事件补发给客户端——见 replayRecordedTurn。
+// 所以 replay 失败才推 error 帧，命中本身不推。
+func (u *Usecase) Send(ctx context.Context, convID uuid.UUID, text, idempotencyKey string, sink EventSink) error {
+	err := u.send(ctx, convID, text, idempotencyKey, sink)
+	if errors.Is(err, platform.ErrIdempotentHit) {
+		// 【为什么不是 409】命中意味着"这次请求是上一次的重发"，正确答案是
+		// 把上一次的结果还给他。项目里多处注释（sentinel.go、sse-protocol.md）
+		// 都写死了这一条：ErrIdempotentHit 不该出现在任何 HTTP 状态映射表里。
+		err = u.replayRecordedTurn(ctx, convID, idempotencyKey, text, sink)
+	}
 	if err != nil {
 		// 用 context.Background()：原始 ctx 可能已经因为客户端断开被取消，
 		// 但"至少尝试把错误原因发出去"这个动作应该不被那个取消影响——
@@ -212,7 +297,7 @@ type errorPayload struct {
 	Detail string `json:"detail"`
 }
 
-func (u *Usecase) send(ctx context.Context, convID uuid.UUID, text string, sink EventSink) error {
+func (u *Usecase) send(ctx context.Context, convID uuid.UUID, text, idempotencyKey string, sink EventSink) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return fmt.Errorf("message text must not be empty: %w", platform.ErrInvalid)
@@ -223,7 +308,7 @@ func (u *Usecase) send(ctx context.Context, convID uuid.UUID, text string, sink 
 		return fmt.Errorf("get conversation %s: %w", convID, err)
 	}
 
-	assistantMsgID, userSeq, err := u.lockAndWriteInitialMessages(ctx, convID, text)
+	assistantMsgID, userSeq, err := u.lockAndWriteInitialMessages(ctx, convID, text, idempotencyKey)
 	if err != nil {
 		return err
 	}
@@ -339,10 +424,27 @@ func (u *Usecase) send(ctx context.Context, convID uuid.UUID, text string, sink 
 // 【为什么要把 userSeq 返回出去】它写下的这两行在本轮提交之后就落库了，
 // 而 send 是在事务提交之后才去查历史的——调用方需要这个序号把"本轮
 // 自己刚写的消息"和真正的历史区分开（RecentMessages 的 beforeSequenceNo）。
-func (u *Usecase) lockAndWriteInitialMessages(ctx context.Context, convID uuid.UUID, text string) (assistantMsgID uuid.UUID, userSeq int64, err error) {
+func (u *Usecase) lockAndWriteInitialMessages(ctx context.Context, convID uuid.UUID, text, idempotencyKey string) (assistantMsgID uuid.UUID, userSeq int64, err error) {
 	assistantMsgID = uuid.New()
 
 	err = u.writer.WithConversationLock(ctx, convID, func(q platform.Querier) error {
+		// 【预留排在分配 sequence_no 之前，而且必须在锁里】
+		//
+		// 排在前面：预留失败就整个事务回滚，一条消息都不会落库，重试仍然可用。
+		//
+		// 必须在锁里：advisory lock 是同一个键的两次并发请求唯一的串行化点。
+		// 把幂等检查提到 handler 或中间件里会退化成 TOCTOU——两个并发请求
+		// 同时查到"这个键不存在"，然后各写一轮消息、各调一次模型。功能看起来
+		// 还在，其实完全失效，而且没有任何报错。
+		//
+		// 后到的那个请求在插入时撞主键拿到 23505，而它撞的一定是已经提交的
+		// 那一行（并发未提交的插入只会等待，不冲突），所以裁决是可靠的。
+		if idempotencyKey != "" {
+			if err := u.reserveIdempotencyKey(ctx, q, convID, idempotencyKey, text, assistantMsgID); err != nil {
+				return err
+			}
+		}
+
 		userSeq, err = u.repo.NextSequenceNo(ctx, q, convID)
 		if err != nil {
 			return fmt.Errorf("allocate sequence for user message: %w", err)
@@ -369,6 +471,111 @@ func (u *Usecase) lockAndWriteInitialMessages(ctx context.Context, convID uuid.U
 		return uuid.Nil, 0, fmt.Errorf("write initial messages: %w", err)
 	}
 	return assistantMsgID, userSeq, nil
+}
+
+// reserveIdempotencyKey 在锁内抢一个幂等键。
+//
+// 【调用方必须把返回的 error 原样往上传】撞主键时它带的是
+// platform.ErrIdempotentHit，Send 靠 errors.Is 认出重放；包一层别的错误
+// （比如换成 platform.ErrConflict）会让那条分支永远走不到。
+func (u *Usecase) reserveIdempotencyKey(ctx context.Context, q platform.Querier, convID uuid.UUID, key, text string, assistantMsgID uuid.UUID) error {
+	// 本轮事件的严格下界：此刻该会话已经发到几号。补发从 event_id > 它开始。
+	// 事件号只增不减，所以它一定是本轮事件的合法下界。
+	marker, err := u.repo.LastIssuedEventID(ctx, q, convID)
+	if err != nil {
+		return fmt.Errorf("read event cursor for idempotency key: %w", err)
+	}
+
+	rec := &IdempotencyRecord{
+		Endpoint:           messagesEndpoint(convID),
+		Key:                key,
+		ResourceType:       resourceTypeAssistantMessage,
+		ResourceID:         assistantMsgID,
+		FirstEventID:       marker,
+		RequestFingerprint: fingerprint(text),
+		CreatedAt:          time.Now(),
+	}
+	return u.repo.ReserveIdempotencyKey(ctx, q, rec, time.Now().Add(-idempotencyKeyTTL))
+}
+
+// replayRecordedTurn 把「这一轮已经产生的事件」补发给一个重复请求。
+//
+// 它做三件事：定位本轮事件的起点、把已有的事件按顺序发出去、如果这一轮
+// 还没结束就继续边等边发，直到出现终态事件（done / error）。
+//
+// 【为什么不是重放整个会话】旧文档（docs/sse-protocol.md 的「幂等与断线的
+// 闭环」一节）让客户端用 after_event_id=0 重新订阅，那是错的：event_id 按
+// 会话发号，0 意味着把此前每一轮的 token 全部重发一遍，而客户端会把它们
+// 拼进同一个正在生成的气泡里。所以起点必须来自预留时记下的 first_event_id。
+//
+// 【已知局限，写进文档而不是藏着】同一个会话有两轮在并发（两个标签页用了
+// 不同的键）时，另一轮的事件号会高于本轮的游标，补发可能混入它、并可能
+// 提前停在它的 done 上。这是「事件号按会话发号」这个既有设计的性质，
+// 不是本次引入的。
+func (u *Usecase) replayRecordedTurn(ctx context.Context, convID uuid.UUID, key, text string, sink EventSink) error {
+	rec, err := u.repo.LookupIdempotencyKey(ctx, u.db, messagesEndpoint(convID), key)
+	if err != nil {
+		return fmt.Errorf("lookup idempotency key for replay: %w", err)
+	}
+
+	// 【同键不同正文必须报错，不能静默重放】否则用户新敲的那句话既没落库、
+	// 也不会报错，界面上只是旧答案又出现了一遍——正是本项目最忌讳的那类
+	// 「静默丢数据」。200 已经发出去了，改不了状态码，只能走 error 帧。
+	if rec.RequestFingerprint != fingerprint(strings.TrimSpace(text)) {
+		return fmt.Errorf("idempotency key reused with a different message body: %w", platform.ErrInvalid)
+	}
+
+	cursor := rec.FirstEventID
+	deadline := time.Now().Add(replayTimeout)
+
+	for {
+		select {
+		case <-sink.Done():
+			// 客户端已经走了，没必要继续读库。返回 nil：这不是失败。
+			return nil
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		events, err := u.repo.EventsAfter(ctx, u.db, convID, cursor)
+		if err != nil {
+			return fmt.Errorf("read events for replay: %w", err)
+		}
+
+		// 【只 Emit，绝不 emitEvent】emitEvent 会重新分配 event_id 并把事件
+		// 再写一遍进事件表——补发的是已经持久化的行，用它的原始 id 发出去，
+		// 客户端的续传游标才仍然正确。
+		for _, ev := range events {
+			if err := sink.Emit(ev); err != nil {
+				return fmt.Errorf("replay event %d: %w", ev.ID, err)
+			}
+			// 【游标必须前进】不推进的话每一轮都会把整轮事件重发，
+			// 客户端看到答案重复叠加，开销与事件数成平方关系。
+			cursor = ev.ID
+			if ev.Type == eventDoneName || ev.Type == eventErrorName {
+				return sink.Flush()
+			}
+		}
+
+		if err := sink.Flush(); err != nil {
+			return fmt.Errorf("flush replayed events: %w", err)
+		}
+
+		// 这一轮还没到终态，继续等它。超时必须有明确收场——静默结束响应会
+		// 让客户端拿到一个空流，与"数据库不可用"那次缺陷同形。
+		if time.Now().After(deadline) {
+			return fmt.Errorf("waiting for the in-flight turn to finish timed out: %w", platform.ErrUpstream)
+		}
+
+		select {
+		case <-sink.Done():
+			return nil
+		case <-ctx.Done():
+			return nil
+		case <-time.After(replayPollInterval):
+		}
+	}
 }
 
 // streamToClient 消费 Stream，每收到一个增量就 Emit 一个 token 事件，

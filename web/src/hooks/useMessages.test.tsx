@@ -86,7 +86,7 @@ describe('useSendMessage', () => {
   it('生成失败也要作废消息缓存，重新拉取后用户那条消息仍在', async () => {
     let persisted: Message[] = []
     getMock.mockImplementation(() => Promise.resolve({ data: persisted, error: undefined }))
-    vi.mocked(streamChat).mockImplementation(async (_id, _text, callbacks) => {
+    vi.mocked(streamChat).mockImplementation(async (_id, _text, _key, callbacks) => {
       // 模拟后端：先落库用户消息，再发 error 帧。
       persisted = [persistedUserMessage]
       callbacks.onEvent({
@@ -109,5 +109,30 @@ describe('useSendMessage', () => {
     await waitFor(() =>
       expect(cachedMessages(queryClient).map((m) => m.id)).toEqual([persistedUserMessage.id]),
     )
+  })
+
+  // 幂等键（issue #37）：每一次 send 都要带一个非空的键，且两次 send 的键
+  // 必须不同——键写死的话，第二次提问会命中第一次的记录，服务端不生成新
+  // 回答、直接把上一轮的答案补发回来，用户看到的是"发了消息但答案没变"。
+  it('每次发送都带一个新的、非空的幂等键', async () => {
+    getMock.mockResolvedValue({ data: [], error: undefined })
+    vi.mocked(streamChat).mockImplementation(() => new Promise<void>(() => {}))
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result } = renderChat(queryClient)
+    await waitFor(() => expect(result.current.messages.isSuccess).toBe(true))
+
+    await act(async () => {
+      void result.current.sender.send('第一问')
+      void result.current.sender.send('第二问')
+    })
+
+    const keys = vi.mocked(streamChat).mock.calls.map((c) => c[2])
+    expect(keys).toHaveLength(2)
+    for (const k of keys) {
+      expect(typeof k).toBe('string')
+      expect(k.length).toBeGreaterThan(0)
+    }
+    expect(keys[0]).not.toBe(keys[1])
   })
 })

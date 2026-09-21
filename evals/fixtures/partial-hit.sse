@@ -1,0 +1,24 @@
+id: 1
+event: citation
+data: {"type":"citation","data":{"chunkId":"c0000000-0000-4000-8000-000000000001","documentId":"11111111-1111-4111-8111-111111111111","filename":"03-go-concurrency.md","snippet":"goroutine 是 Go 运行时调度的轻量级执行单元。它的初始栈很小，按需增长，创建和销毁的开销远低于操作系统线程。","score":0.71}}
+
+id: 2
+event: citation
+data: {"type":"citation","data":{"chunkId":"c0000000-0000-4000-8000-000000000002","documentId":"22222222-2222-4222-8222-222222222222","filename":"02-vector-retrieval.md","snippet":"pgvector 是 PostgreSQL 的向量扩展。它给数据库加了向量类型、向量距离运算符和向量索引。","score":0.68}}
+
+id: 3
+event: citation
+data: {"type":"citation","data":{"chunkId":"c0000000-0000-4000-8000-000000000003","documentId":"11111111-1111-4111-8111-111111111111","filename":"02-vector-retrieval.md","snippet":"HNSW 是 pgvector 提供的近似最近邻索引。它把向量组织成多层图，查询时从稀疏的上层快速跳到目标区域附近，再在稠密的下层做局部搜索。","score":0.64}}
+
+id: 4
+event: token
+data: {"type":"token","data":{"text":"HNSW"}}
+
+id: 5
+event: token
+data: {"type":"token","data":{"text":" 把向量组织成多层图来加速近邻搜索。"}}
+
+id: 6
+event: done
+data: {"type":"done","data":{}}
+

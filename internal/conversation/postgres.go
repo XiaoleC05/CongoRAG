@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -322,6 +323,72 @@ func (r *PgRepo) EventsAfter(ctx context.Context, q platform.Querier, convID uui
 		return nil, fmt.Errorf("iterate events: %w", err)
 	}
 	return out, nil
+}
+
+func (r *PgRepo) ReserveIdempotencyKey(ctx context.Context, q platform.Querier, rec *IdempotencyRecord, expiredBefore time.Time) error {
+	// 【清理与插入必须同一次调用】两次并发预留如果各自「先清理、再插入」，
+	// 中间会有一个两边都没覆盖到的窗口。调用方在 WithConversationLock 的
+	// 事务里调这个方法，两者就天然原子。
+	if _, err := q.Exec(ctx,
+		`DELETE FROM idempotency_keys WHERE created_at < $1`, expiredBefore); err != nil {
+		return fmt.Errorf("prune expired idempotency keys: %w", platform.WrapPgErr(err))
+	}
+
+	_, err := q.Exec(ctx,
+		`INSERT INTO idempotency_keys
+		   (endpoint, idempotency_key, resource_type, resource_id,
+		    first_event_id, request_fingerprint, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		rec.Endpoint, rec.Key, rec.ResourceType, rec.ResourceID,
+		rec.FirstEventID, rec.RequestFingerprint, rec.CreatedAt)
+	if err != nil {
+		// 撞主键 = 这个键已经被用掉了，是正常的重放场景，不是错误。
+		// 分流全靠 WrapPgErr 按约束名判断（constraintIdempotencyKey），
+		// 所以这里必须过它——漏了的话 23505 会以原始 pgconn.PgError 冒上去，
+		// errors.Is(err, platform.ErrIdempotentHit) 为假，命中就永远走不到
+		// 补发分支，客户端会收到一条 internal_error 的 error 帧、看不到答案。
+		return fmt.Errorf("reserve idempotency key %s: %w", rec.Key, platform.WrapPgErr(err))
+	}
+	return nil
+}
+
+func (r *PgRepo) LookupIdempotencyKey(ctx context.Context, q platform.Querier, endpoint, key string) (*IdempotencyRecord, error) {
+	rec := &IdempotencyRecord{}
+	err := q.QueryRow(ctx,
+		`SELECT endpoint, idempotency_key, resource_type, resource_id,
+		        first_event_id, request_fingerprint, created_at
+		 FROM idempotency_keys
+		 WHERE endpoint = $1 AND idempotency_key = $2`,
+		endpoint, key,
+	).Scan(&rec.Endpoint, &rec.Key, &rec.ResourceType, &rec.ResourceID,
+		&rec.FirstEventID, &rec.RequestFingerprint, &rec.CreatedAt)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		// 预留之后又被 TTL 清理掉，或键压根没预留成功。两种情况都归成
+		// 「查不到」，由调用方决定怎么收场。
+		return nil, fmt.Errorf("idempotency key %s: %w", key, platform.ErrNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lookup idempotency key %s: %w", key, platform.WrapPgErr(err))
+	}
+	return rec, nil
+}
+
+func (r *PgRepo) LastIssuedEventID(ctx context.Context, q platform.Querier, convID uuid.UUID) (int64, error) {
+	var last int64
+	err := q.QueryRow(ctx,
+		`SELECT next_event_id FROM conversation_counters WHERE conversation_id = $1`, convID,
+	).Scan(&last)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		// 计数器行是 NextEventID 第一次被调用时才 INSERT 的，所以「查不到」
+		// 等于「这个会话还一条事件都没发过」——0 是正确答案，不是错误。
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read last issued event id of conversation %s: %w", convID, platform.WrapPgErr(err))
+	}
+	return last, nil
 }
 
 func (r *PgRepo) GetSummary(ctx context.Context, q platform.Querier, convID uuid.UUID) (*Summary, error) {

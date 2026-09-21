@@ -94,22 +94,35 @@ export type StreamChatCallbacks = {
 /**
  * 发一条消息并消费 SSE 流。
  *
+ * 【idempotencyKey 的作用】同一个会话里带同一个键重复提交时，服务端不会
+ * 重新生成，而是把那一轮已经记录的事件补发一遍——帧类型、真实 event_id
+ * 和顺序都与原请求一致，所以这里的解析逻辑一个字都不用改。
+ *
  * 【为什么不做自动重连】docs/sse-protocol.md 定义的 after_event_id
- * 续传机制在后端已经实现并验证过（GET /conversations/{id}/events）,
- * 但"网络抖动后自动重连"这件事和 M4-B 的幂等键/断线重订阅是同一块——
- * 那块工作范围本身不在这一轮里（见 helperDoc 的范围划分）。这里只做
- * 一次性的流消费：连上、收完、结束；网络失败直接报给调用方，
- * 由用户决定要不要重新发一遍消息。
+ * 续传机制在后端已经实现并验证过（GET /conversations/{id}/events）。
+ * 但"网络抖动后自动重连"是另一件事：它要维护 lastEventId、要判断重连
+ * 是不是还有意义，这个文件只做一次性的流消费——连上、收完、结束；
+ * 网络失败直接报给调用方。幂等键补上的正是那段缺口：用户手动重发时
+ * 带上同一个键，就不会重复扣一次模型调用。
+ *
+ * 【空 key 不发这个头】发一个空字符串会被服务端当成"带了个空键"，
+ * 而正确的语义是"这次请求不做幂等"。后端也是按空串来判的。
  */
 export async function streamChat(
   conversationId: string,
   text: string,
+  idempotencyKey: string,
   callbacks: StreamChatCallbacks,
 ): Promise<void> {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (idempotencyKey) {
+      headers['Idempotency-Key'] = idempotencyKey
+    }
+
     const resp = await fetch(`/api/v1/conversations/${conversationId}/messages`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ text }),
     })
 

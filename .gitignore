@@ -22,6 +22,12 @@ data/
 .env.local
 .env.*.local
 
+# ── eval 的每次运行产物 ──
+# 每次跑 evals/run_eval.mjs 都会往这里写一份带时间戳和 commit 短哈希的
+# 报告。它只对"当时跑的那个人"有意义，不该进仓库；要长期保留的那一份是
+# evals/baseline.json，它是显式 --write-baseline 写出来的、被评审的。
+evals/results/
+
 # ── Go ──
 *.exe
 *.exe~

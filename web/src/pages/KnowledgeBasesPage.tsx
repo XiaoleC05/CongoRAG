@@ -14,15 +14,32 @@ import {
   useKnowledgeBases,
 } from '@/hooks/useKnowledgeBases'
 import { ErrorText } from '@/components/ErrorText'
+import { useErrorToast } from '@/hooks/useErrorToast'
+import { errorPresentation } from '@/lib/errors'
 
 type KnowledgeBase = Schemas['KnowledgeBase']
 
 /** 卡片网格的列宽。和 Dify 数据集列表同一个思路：自适应列数，最小 280px。 */
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3'
 
+/**
+ * 交给弹窗内联显示的那部分错误。
+ *
+ * 【为什么要把一部分拦下来】三个写操作失败后有两个去处：能 toast 的
+ *（internal_error 之类，内容都还在、重试就行）由 useErrorToast 说；
+ * 要用户改东西的（invalid_argument / 重名）必须贴在输入框旁边。
+ * 两份判据方向相反，所以同一条错误永远只出现在一个地方——
+ * 两处都渲染的话，弹窗里和右下角会同时出现两个 role="alert"。
+ * 这里只做判断、不发 toast（副作用在 mutate 的 onError 里），
+ * 所以放在渲染期调用是安全的。
+ */
+const residual = (err: unknown) =>
+  err && errorPresentation(err, 'mutation') !== 'toast' ? err : undefined
+
 export default function KnowledgeBasesPage() {
   const { data, isPending, error } = useKnowledgeBases()
   const { create, rename, remove } = useKnowledgeBaseMutations()
+  const showError = useErrorToast()
 
   // 三个弹窗的开关状态都在页面这一层，卡片和按钮只负责"请求打开"。
   // 让卡片自己持有弹窗状态的话，一张卡一个实例，删完之后状态就乱了。
@@ -98,9 +115,12 @@ export default function KnowledgeBasesPage() {
         description="给它起个名字。上传文档是下一步的事。"
         submitLabel="创建"
         pending={create.isPending}
-        error={create.error}
+        error={residual(create.error)}
         onSubmit={(name) =>
-          create.mutate(name, { onSuccess: () => setCreating(false) })
+          create.mutate(name, {
+            onSuccess: () => setCreating(false),
+            onError: showError,
+          })
         }
       />
 
@@ -112,12 +132,15 @@ export default function KnowledgeBasesPage() {
         submitLabel="保存"
         initialValue={renaming?.name ?? ''}
         pending={rename.isPending}
-        error={rename.error}
+        error={residual(rename.error)}
         onSubmit={(name) => {
           if (!renaming) return
           rename.mutate(
             { id: renaming.id, name },
-            { onSuccess: () => setRenaming(null) },
+            {
+              onSuccess: () => setRenaming(null),
+              onError: showError,
+            },
           )
         }}
       />
@@ -126,10 +149,15 @@ export default function KnowledgeBasesPage() {
         target={deleting}
         onOpenChange={(open) => !open && setDeleting(null)}
         pending={remove.isPending}
-        error={remove.error}
+        error={residual(remove.error)}
         onConfirm={() => {
           if (!deleting) return
-          remove.mutate(deleting.id, { onSuccess: () => setDeleting(null) })
+          remove.mutate(deleting.id, {
+            onSuccess: () => setDeleting(null),
+            // 删失败不能静悄悄留在弹窗里：能重试的那类走 toast 说一声，
+            // 其余的在弹窗内联显示（见 residual）。
+            onError: showError,
+          })
         }}
       />
     </div>
