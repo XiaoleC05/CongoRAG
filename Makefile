@@ -34,12 +34,30 @@ DB_URL := postgres://postgres:postgres@127.0.0.1:5432/congorag?sslmode=disable
 # 这样 cmd 和 bash 都能工作——make 在启动命令之前把变量放进环境里。
 export CONGORAG_DB_URL := $(DB_URL)
 
+# 【两套迁移命令抽成变量】test-integration 也要跑同一套，抄第二份必然漂移。
+# := 是立刻展开，不调 shell。
+MIGRATE_UP_CMD := migrate -path migrations -database "$(DB_URL)" up
+RIVER_MIGRATE_UP_CMD := river migrate-up --database-url "$(DB_URL)" --line main
+
+# 【集成测试用独立的库，不碰开发库】开发库里是真实数据（知识库、文档、
+# 会话），而 internal/llm 的集成测试会 ALTER 向量列类型——直接对着开发库跑
+# 一次就可能把已有向量清成 NULL。这个库每次跑之前重建，跑完保留（便于排查
+# 失败），你的开发库完全不受影响。
+TEST_DB_NAME := congorag_test
+TEST_DB_URL := postgres://postgres:postgres@127.0.0.1:5432/$(TEST_DB_NAME)?sslmode=disable
+
+# 【就绪判据必须按容器名，不能用 compose 派生写法】docker compose ps /
+# compose port 要求容器带 compose 标签；手工用 Docker Desktop 起的同名容器
+# 没有那些标签，用它们会误报"没在跑"，而用户会以为是 Docker 坏了。
+PG_RUNNING = $(shell docker inspect -f "{{.State.Running}}" $(PG_CONTAINER) 2>&1)
+GO_TEST_FLAGS ?=
+
 .PHONY: help up down logs psql \
         migrate-up migrate-down migrate-version migrate-create \
         river-migrate-up river-migrate-down \
         generate generate-go generate-ts \
         dev dev-web dev-worker build build-web build-web-assets build-web-placeholder build-go \
-        test lint tidy fmt vet check
+        test test-integration test-integration-db lint tidy fmt vet check
 
 help:
 	@echo ConGoRAG 开发命令
@@ -56,6 +74,7 @@ help:
 	@echo   make dev                跑 api（:3210）
 	@echo   make dev-web            跑 Vite 开发服务器（:5173，改前端要用这个）
 	@echo   make dev-worker         跑 worker（文档处理的消费端）
+	@echo   make test-integration   跑集成测试（重建独立测试库，不动开发库）
 	@echo   make check              build + vet + test
 	@echo   make fmt                格式化
 	@echo   开发前端要开两个终端：一个 make dev，一个 make dev-web，浏览器开 :5173
@@ -78,7 +97,7 @@ psql:
 ## ── 数据库迁移 ─────────────────────────────────────────
 
 migrate-up:
-	migrate -path migrations -database "$(DB_URL)" up
+	$(MIGRATE_UP_CMD)
 
 # 【注意】裸 `down` 是回退全部，必须写 `down 1` 才是回退一步。
 migrate-down:
@@ -96,7 +115,7 @@ migrate-create:
 # 技术方案 §二明确写了"两套并存"——省下 river 那几张表自己手写迁移的功夫，
 # 代价是要分别跑两次迁移命令，这里各自留一个 target。
 river-migrate-up:
-	river migrate-up --database-url "$(DB_URL)" --line main
+	$(RIVER_MIGRATE_UP_CMD)
 
 river-migrate-down:
 	river migrate-down --database-url "$(DB_URL)" --line main --max-steps 1
@@ -190,6 +209,32 @@ vet:
 test:
 	go test ./...
 	pnpm --filter web test
+
+# ── 集成测试（需要真实 PostgreSQL）────────────────────────────
+#
+# 【为什么需要它】需要真库的测试靠 CONGORAG_TEST_DB_URL 门控，没设就 Skip。
+# 而 v2.0 修的大部分缺陷都在 SQL 里——本地 `make test` 全绿不代表那些 SQL
+# 跑得起来，得等 CI 才知道。这条 target 消掉的就是那个反馈延迟。
+#
+# 【它会动 schema】internal/llm 的集成测试会 ALTER 向量列类型（文件头记录了
+# 一次真实事故）。所以它跑在一个**独立的测试库**上，不是你的开发库。
+
+test-integration-db:
+	$(if $(filter true,$(subst ",,$(strip $(PG_RUNNING)))),,$(error 集成测试需要 PostgreSQL 在跑，但容器 $(PG_CONTAINER) 不是 Running 状态（docker inspect 说：[$(PG_RUNNING)]）。先在 Docker Desktop 的「容器」页里启动它，或者跑 make up))
+	@echo 数据库就绪：$(PG_CONTAINER)
+
+test-integration: export CONGORAG_TEST_DB_URL := $(TEST_DB_URL)
+test-integration: test-integration-db
+	@echo 【注意】这条命令会动 schema：它会重建独立测试库 $(TEST_DB_NAME)
+	@echo         （不是你的开发库），并跑两套迁移 + 全部 Go 测试。
+	@echo         复刻 CI 的 integration job；要在本机也开竞态检测就加
+	@echo         GO_TEST_FLAGS=-race（本机没有 gcc 时 -race 跑不起来）。
+	docker exec $(PG_CONTAINER) psql -U postgres -c "DROP DATABASE IF EXISTS $(TEST_DB_NAME)"
+	docker exec $(PG_CONTAINER) psql -U postgres -c "CREATE DATABASE $(TEST_DB_NAME)"
+	migrate -path migrations -database "$(TEST_DB_URL)" up
+	river migrate-up --database-url "$(TEST_DB_URL)" --line main
+	go test $(GO_TEST_FLAGS) ./...
+	@echo 集成测试跑完了。测试库 $(TEST_DB_NAME) 保留着便于排查，下一次跑会重建它。
 
 # 前端静态检查。src/components/ui/ 和 src/hooks/use-mobile.ts 在
 # .oxlintrc.json 的 ignorePatterns 里——那是 shadcn 生成的代码，改了会被覆盖。

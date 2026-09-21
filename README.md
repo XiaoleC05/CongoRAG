@@ -179,16 +179,32 @@ Go 结构体和 TS 类型一起变。产物要提交进 git，CI 会跑 `make ge
 ## 测试
 
 ```bash
-make test     # 等价于 go test ./...
-make check    # build-go + vet + test + lint
+make test                # 等价于 go test ./... + 前端单测
+make check               # build-go + vet + test + lint
+make test-integration    # 集成测试：需要真实 PostgreSQL，会重建独立测试库
 ```
 
 大部分测试不连数据库。需要真实 PostgreSQL 的集成测试用 `CONGORAG_TEST_DB_URL`
-门控——没设这个变量就跳过：
+门控——没设这个变量就跳过，所以本地 `make test` 全绿**不代表那些 SQL 跑得起来**。
+
+`make test-integration` 消掉的就是这个反馈延迟：它复刻 CI 的 integration job
+（重建测试库 → 跑两套迁移 → 带变量跑全部测试），你可以在提交前在本机把同一批
+测试跑一遍。
+
+**它会动 schema，但动的是独立测试库。** `internal/llm` 的集成测试会
+`ALTER` 向量列类型（那个文件头部记录过一次真实事故：改动全局状态、副作用在
+测试通过之后才暴露）。所以这条 target 跑在**每次重建的 `congorag_test` 库**上，
+你的开发库完全不受影响。测试库跑完保留着便于排查，下一次跑会重建它。
+
+先决条件是 `make up` 起的 PostgreSQL 在跑；没起的话它会给出可操作的报错。
+要在本机也开竞态检测就加 `GO_TEST_FLAGS=-race`——但本机没有 gcc 时
+`-race` 跑不起来（CI 的 ubuntu runner 才有），这是它与 CI 唯一的一处差异。
+
+只想跑单个包时仍然可以手敲：
 
 ```bash
-export CONGORAG_TEST_DB_URL=postgres://postgres:postgres@127.0.0.1:5432/congorag?sslmode=disable
-go test ./internal/llm/... ./internal/platform/...
+export CONGORAG_TEST_DB_URL=postgres://postgres:postgres@127.0.0.1:5432/congorag_test?sslmode=disable
+go test ./internal/llm/...
 ```
 
 CI 里有四个 job：Go 编译与单元测试（带 `-race`）、契约生成物是否最新、前端

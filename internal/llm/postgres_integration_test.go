@@ -293,15 +293,26 @@ func TestIntegration_Bootstrap_EndToEnd(t *testing.T) {
 	for i := range vec {
 		vec[i] = float32(i) / 768
 	}
+	// 【自己造一份知识库，不要借用环境里碰巧存在的那一行】原来这里写的是
+	// `(SELECT id FROM knowledge_bases LIMIT 1)`，空库上会插成 NULL 触发
+	// 23502，然后整段向量验证被 t.Skipf 跳过。那意味着这条测试的覆盖取决于
+	// "跑它的那个库是不是恰好有数据"——而 make test-integration 用的正是一个
+	// 每次重建的干净库，于是这一段永远不会跑。测试依赖环境数据是缺陷，不是特性。
+	kbID := uuid.New()
+	_, err = pool.Exec(ctx,
+		`INSERT INTO knowledge_bases (id, name) VALUES ($1, 'integration-probe')`, kbID)
+	require.NoError(t, err, "建一份探针知识库必须成功")
+	t.Cleanup(func() {
+		// 删知识库会级联删掉它的文档与分块（ON DELETE CASCADE）。
+		_, _ = pool.Exec(context.Background(), `DELETE FROM knowledge_bases WHERE id = $1`, kbID)
+	})
+
 	docID := uuid.New()
 	_, err = pool.Exec(ctx,
 		`INSERT INTO documents (id, knowledge_base_id, filename, storage_key, status)
-		 VALUES ($1, (SELECT id FROM knowledge_bases LIMIT 1), 'probe.txt', $2, 'ready')`,
-		docID, "integration-test-"+docID.String())
-	if err != nil {
-		t.Skipf("跳过向量插入验证：环境里没有可用的 knowledge_bases 行（%v）", err)
-		return
-	}
+		 VALUES ($1, $2, 'probe.txt', $3, 'ready')`,
+		docID, kbID, "integration-test-"+docID.String())
+	require.NoError(t, err, "插入探针文档必须成功——向量验证依赖它，不能靠环境里的数据")
 	t.Cleanup(func() {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM documents WHERE id = $1`, docID)
 	})
