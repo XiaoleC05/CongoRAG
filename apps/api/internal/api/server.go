@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -631,7 +632,11 @@ func (s *Server) SendMessage(c *gin.Context, id openapi_types.UUID, params SendM
 	// 【校验必须在 newSSESink 之前】sink 一构造出来，响应就切进 SSE 模式，
 	// 那时再想返回 400 problem+json 已经来不及了。超长键属于"请求本身不合法"，
 	// 用正常的 400 拒绝比在流里推一条 error 帧更准确。
-	if len(idempotencyKey) > conversation.MaxIdempotencyKeyLen {
+	// 【按字符数算，不能按字节】契约写的是 maxLength: 255，那是字符数。
+	// len(string) 是字节数——一个纯中文的键会在 86 个字符时就被拒掉，
+	// 而它完全合法。仓库里其余长度校验（cleanTitle / maxNameLen 之类）
+	// 也都是按 rune 数算的。
+	if utf8.RuneCountInString(idempotencyKey) > conversation.MaxIdempotencyKeyLen {
 		s.fail(c, fmt.Errorf("Idempotency-Key must not exceed %d characters: %w",
 			conversation.MaxIdempotencyKeyLen, platform.ErrInvalid))
 		return

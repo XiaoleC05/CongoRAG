@@ -25,6 +25,26 @@ export function flattenPages<T>(data: InfiniteData<Page<T>> | undefined): T[] {
 }
 
 /**
+ * 按「越往后越旧」的加载顺序摊平，得到**时间正序**的一维数组。
+ *
+ * 【什么时候用它】会话消息的分页方向是「第一页给最新的 N 条，翻下一页拿更早的」，
+ * 所以 `pages[0]` 是最新的一页、`pages[1]` 更旧。直接 `flatMap` 会让**更早的
+ * 消息排在最新消息的下面**——聊天记录的时间顺序整个反过来，而且不报错。
+ *
+ * 文档列表与运行历史是反过来的（越往后越旧，渲染顺序也是那个方向），它们用
+ * 上面的 flattenPages 就好。
+ *
+ * 【slice() 不能省】reverse() 是原地操作，而 data.pages 是 query 的缓存对象
+ * ——就地反转会把缓存本身改掉。
+ */
+export function flattenPagesChronologically<T>(
+  data: InfiniteData<Page<T>> | undefined,
+): T[] {
+  if (!data) return []
+  return data.pages.slice().reverse().flatMap((page) => page.items)
+}
+
+/**
  * 「还有下一页吗」。
  *
  * useInfiniteQuery 的 hasNextPage 已经能回答这个问题，这个包装只是把

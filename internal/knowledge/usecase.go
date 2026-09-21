@@ -542,9 +542,11 @@ func (u *Usecase) StartReconciler(ctx context.Context) {
 // 而不是悄悄再处理一遍已经完成或已经放弃的文档。
 //
 // 【failed 现在确实等于"已放弃"】终态由最后一次 attempt 落下，之后 River
-// 不再投递，而 HTTP 层只有 GET/DELETE、没有重试入口。所以 document.go 的
-// transitions 里 failed->queued（重试）和 ready->processing（重新索引）这两条
-// 边目前没有任何调用点——不是被忽略了，是留给还没做的重试/重建索引入口的。
+// 不再投递。document.go 的 transitions 里 failed->queued（重试）与
+// ready->queued（重新索引）这两条边现在**有调用点了**（issue #39 的
+// ReindexDocument / ReindexKnowledgeBase / RequeueAllDocuments 走的是它们），
+// 而下面的 switch 额外接受 StatusReady 是给"绕过入队路径直接插任务"和
+// "River 重投"留的安全网。
 func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID, isLastAttempt bool) error {
 	d, err := u.docRepo.ByID(ctx, u.db, docID)
 	if err != nil {

@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { ErrorText } from '@/components/ErrorText'
 import { PageFallback } from '@/components/PageFallback'
+import { RouteErrorBoundary } from '@/components/RouteErrorBoundary'
 import { useProviders } from '@/hooks/useProviders'
 import AppLayout from '@/layouts/AppLayout'
 import KnowledgeBasesPage from '@/pages/KnowledgeBasesPage'
@@ -64,9 +65,15 @@ export function AppRouter() {
         <Route
           path="onboarding"
           element={
-            <Suspense fallback={<PageFallback />}>
-              <OnboardingPage />
-            </Suspense>
+            // 【错误边界也要自己包】AppLayout 里那个 RouteErrorBoundary 是懒加载
+            // chunk 失败时唯一的兜底，而引导页在 AppLayout 之外。"发布后白屏、
+            // 只有一个刷新按钮能救"这条对首跑用户尤其重要——他们看到的正好是
+            // 这一页。
+            <RouteErrorBoundary>
+              <Suspense fallback={<PageFallback />}>
+                <OnboardingPage />
+              </Suspense>
+            </RouteErrorBoundary>
           }
         />
 

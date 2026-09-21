@@ -344,8 +344,11 @@ paths:
                 $ref: '#/components/schemas/Document'
         '404':
           $ref: '#/components/responses/NotFound'
-        # 文档已经在排队、或者正在被处理时，重复点一次没有意义——
-        # 返回 409 而不是静默成功，用户才知道"这次没排新的"。
+        # 【409 只在文档已经"排队中"时出现】判据是 MarkForReindex 的
+        # `WHERE status IN ('ready','failed','processing')`：ready / failed /
+        # processing 三种都接受（processing 的那份会被重排一遍），只有
+        # queued 会 0 行命中 → 409。用户才知道"这次没排新的"。
+        # 404 只在 id 根本不存在、或者文档被并发删掉时出现。
         '409':
           $ref: '#/components/responses/Conflict'
         '500':

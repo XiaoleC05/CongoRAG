@@ -133,9 +133,11 @@ import { ErrorText } from '@/components/ErrorText'
 
 | type | HTTP | 含义 |
 | --- | --- | --- |
-| `invalid_argument` | 400 | 提交的参数不合法（含路径参数格式错、请求体解析失败） |
+| `invalid_argument` | 400 | 提交的参数不合法（含路径参数格式错、请求体解析失败；也含"模型不支持工具调用"这类配置性拒绝） |
 | `not_found` | 404 | 资源不存在，或引用的父资源不存在 |
 | `conflict_duplicate_key` | 409 | 唯一约束冲突 |
+| `conflict` | 409 | 状态冲突：非法的状态迁移、并发修改，以及"重新索引一份已经在排队的文档" |
+| `embedding_change_requires_reindex` | 409 | **换 embedding 模型需要先确认清空重建**——引导页按它弹确认框，用户确认后带 `allowEmbeddingReset` 重发 |
 | `upstream_llm_error` | 502 | 上游模型服务出错 |
 | `context_overflow` | 400 | 上下文超出模型窗口（M3 起） |
 | `internal_error` | 500 | 服务内部错误，详情在服务端日志 |
@@ -287,14 +289,23 @@ npx --yes shadcn@latest add <组件>  # 加 shadcn 组件
 
 ---
 
+## 已经做完的（v3.0）
+
+原来这张表列的四条，v3.0 全做完了，留在这里是为了让后来者知道**判据在哪**：
+
+| 项 | 现在的状态 |
+| --- | --- |
+| 前端自动化测试 | vitest + jsdom + Testing Library，CI 的 web job 会跑 `pnpm --filter web test`。9 个 hook 里 `useTheme` 那条是真回归测试（先红后修）；其余几条是**契约固定测试**，钉的是缓存 key 与响应形状，不是缺陷回归——别把它们当"修复前会失败"的证据 |
+| 写操作的失败提示 | 写操作失败走 **toast**；**查询失败与流式生成失败保留页内 Alert**（前者失败后页面本来就没内容，后者是"这一轮失败了"的持久记录）。判据落在 `lib/errors.ts` 的 `errorPresentation()` 里，不要在页面里自己判断 |
+| 按路由拆包 | 6 个页面 `React.lazy`，另加 `RouteErrorBoundary`（懒加载 chunk 失败时给"刷新页面"按钮，而不是白屏）。落地页与 404 页保持静态导入 |
+| 静态资源缓存头 | `assets/` 下是 immutable，`index.html` 与 favicon 是 `no-cache`，错误响应是 `no-store`（见 `apps/api/internal/api/spa.go`） |
+
 ## 还没做的
 
 | 项 | 说明 |
 | --- | --- |
-| **前端没有自动化测试** | 一个都没有。后端有 31 个测试函数。前端当前的逻辑（校验、错误映射、格式化）都是纯函数，加 Vitest 成本不高，但还没排期 |
-| 写操作没有成功提示 | 目前靠界面自己刷新体现。方案 §2.6 提到 Toast，还没引入 |
-| 没有懒加载 | 整个应用打成一个 463 KB 的包。页面多了之后要按路由拆 |
-| 静态资源没有缓存头 | `http.FileServer` 的默认行为，462 KB 的 JS 每次全量重下 |
+| 无限滚动 | 三个分页列表统一用"加载更多"按钮而不是滚动自动加载。对话页已有"滚到底部"的行为、文档页是表格布局，两处都要重做，收益不抵成本 |
+| 会话列表端点 | 契约里没有 `GET /api/v1/conversations`（只有 `post:`），所以侧栏列不出会话。`useConversations.ts` 的注释里记着这件事 |
 
 ---
 

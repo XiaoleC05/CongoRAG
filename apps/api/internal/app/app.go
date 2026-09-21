@@ -296,6 +296,10 @@ func Run(webFS embed.FS) error {
 
 	// drain 返回时监听已经关闭（Shutdown 或 Close 都保证这一点），
 	// 所以这个接收一定会到，不会挂住。
-	<-serveErr
-	return nil
+	//
+	// 【不能把它的值丢掉】能走到这里的正常情况是 nil（ErrServerClosed 已被
+	// 过滤掉），但如果监听在收到信号的前后刚好以别的原因失败，这里丢掉它
+	// 就等于让 Run 以"成功"返回——进程退出码 0，而实际是启动失败。
+	// 返回它让 log.Fatal 把原因打出来。
+	return <-serveErr
 }

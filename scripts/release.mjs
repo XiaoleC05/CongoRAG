@@ -203,9 +203,14 @@ if (status) {
 const branch = git('rev-parse', '--abbrev-ref', 'HEAD')
 if (branch !== 'main') fail(`当前在 "${branch}" 上，发布必须在 main 上。`)
 
-git('fetch', 'origin', 'main')
-if (git('rev-parse', 'HEAD') !== git('rev-parse', 'origin/main')) {
-  fail('本地 main 与 origin/main 不一致，先 pull 或 push。')
+// 【dry-run 不 fetch】`git fetch` 会联网，而 --dry-run 的承诺是"不碰 git、不联网"
+// （脚本头、`make help`、docs/releasing.md 三处都这么写）。这一条检查挪到
+// dry-run 分支之后——真发布时它必须在，dry-run 时跳过并如实说明。
+if (!dryRun) {
+  git('fetch', 'origin', 'main')
+  if (git('rev-parse', 'HEAD') !== git('rev-parse', 'origin/main')) {
+    fail('本地 main 与 origin/main 不一致，先 pull 或 push。')
+  }
 }
 
 // 4. tag 不能已经存在（--allow-existing-tag 用于补建历史版本的 Release）
@@ -227,6 +232,7 @@ const cred = readToken()
 if (dryRun) {
   console.log(`\n=== dry-run：${tag} ===\n`)
   console.log(`契约版本检查：${gotContract} ✓`)
+  console.log('与 origin/main 是否一致：未检查（dry-run 不联网）')
   console.log(`tag 是否已存在：${tagExists ? '是（将走 PATCH 分支）' : '否（将新建）'}`)
   console.log(`凭据：${cred ? `来自 ${cred.from}` : '未找到（真发布会失败）'}`)
   console.log(`\n--- tag 消息 / Release 正文 ---\n${body}\n--- 正文结束 ---\n`)

@@ -200,9 +200,9 @@ func TestIntegration_Bootstrap_EndToEnd(t *testing.T) {
 	box := testSecretBox(t)
 	txm := platform.NewTxManager(pool)
 	reg := &fakeRegistry{probeDim: 768} // 换一个和其它测试不同的维度,便于确认这次跑的是这次的结果
-	// 第六个参数是重新索引端口（issue #39）。这里传 nil：这个用例只验证
-	// "拒绝"，而拒绝路径根本走不到入队那一步；真要触发重建的用例见文件
-	// 末尾的 TestBootstrap_AllowEmbeddingReset。
+	// 第六/第七个参数是重新索引端口与用量仓库（issue #39 / #47）。这里都传
+	// nil：这个用例只验证"拒绝"，而拒绝路径根本走不到入队那一步，也不关心
+	// 用量。触发重建的用例在 internal/llm/reindex_test.go（纯单测，不连库）。
 	uc := NewUsecase(repo, box, reg, txm, pool, nil, nil)
 
 	req := validBootstrapRequest()

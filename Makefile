@@ -34,8 +34,12 @@ DB_URL := postgres://postgres:postgres@127.0.0.1:5432/congorag?sslmode=disable
 # 这样 cmd 和 bash 都能工作——make 在启动命令之前把变量放进环境里。
 export CONGORAG_DB_URL := $(DB_URL)
 
-# 【两套迁移命令抽成变量】test-integration 也要跑同一套，抄第二份必然漂移。
+# 两条迁移命令在这里写一份，migrate-up / river-migrate-up 引用它们。
 # := 是立刻展开，不调 shell。
+#
+# 【test-integration 不能复用这两个变量】它跑的是**另一个库**（TEST_DB_URL），
+# 而这两个变量把 $(DB_URL) 烤进去了。所以那条 target 里是显式写出的同一组
+# 命令、只是换了 URL——这是有意的重复，不是漏改；改动迁移命令时要记得改两处。
 MIGRATE_UP_CMD := migrate -path migrations -database "$(DB_URL)" up
 RIVER_MIGRATE_UP_CMD := river migrate-up --database-url "$(DB_URL)" --line main
 

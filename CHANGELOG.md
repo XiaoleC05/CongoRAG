@@ -41,7 +41,7 @@
 | **会话消息的第一页是最新的 50 条** | 不是最旧的。翻下一页拿更早的（聊天页打开就该看到最近发生的事） |
 | **`/healthz` 现在只报进程存活** | 新增 `GET /readyz` 探数据库。交付期做健康检查时：**重启策略看 `/healthz`，流量门禁看 `/readyz`**——反过来会让数据库抖动变成一次实例重启 |
 | **首次启动需要能访问一次 `openaipublic.blob.core.windows.net`** | tiktoken 词表现在在启动时预热，失败就**拒绝启动**（而不是起来之后每条消息都报错）。缓存落在 `CONGORAG_TIKTOKEN_CACHE_DIR`（默认 `./data/tiktoken-cache`），只需要成功下载一次；离线环境的报错里带着缓存目录、下载地址和文件名怎么算 |
-| **新增两条迁移** | `0006_idempotency_replay`、`0007_agent_tool_calling`。**升级前必须先跑 `make migrate-up`**——漏跑的直接后果是聊天整条路径 500 |
+| **新增三条迁移** | `0006_idempotency_replay`（幂等键）、`0007_agent_tool_calling`（能力位回填）、`0008_list_pagination_indexes`（分页索引）。**升级前必须先跑 `make migrate-up`**——漏跑 0006 的直接后果是聊天整条路径 500 |
 | **token 用量开始记账** | 每次模型调用写一行 `token_usage`（此前这张表没有任何写入者）。行数 = 调用次数，所以本地库会开始增长 |
 
 ### Added
@@ -121,6 +121,11 @@
 - **完整 eval 不进 CI**：它要打真实的 embedding / chat API、花钱、依赖网络，
   且回答生成没有固定 temperature 所以结果随机——放进 CI 会得到一条随机翻红的
   流水线。只有指标数学的单测进 CI
+- **服务端主动关停时，在途 SSE 收到的错误类型不够诚实**：优雅退出（#40）会让在途的流以一条
+  `type: internal_error`、detail 为 `client disconnected: conflict` 的错误帧收场——原因是
+  关停复用了"客户端断开"那条路径。对本地单机应用影响很小（关停时用户本来就在重启服务），
+  要修得新增一个 `service_unavailable` 错误类型并同步改 `sseerr` / `problem.go` / 前端文案表，
+  **那是一次影响所有错误路径的改动，不放进这一版**
 - **本次提交与 tag 未签名**（本机没有可用的 GPG 私钥）
 
 ## [2.0] - 2026-09-21

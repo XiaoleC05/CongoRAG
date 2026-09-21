@@ -159,6 +159,19 @@ jobs:
       - name: Test
         run: pnpm --filter web test
 
+      # 【为什么只有这一条 eval 相关的门禁】完整的 eval 要打真实的 embedding /
+      # chat API：花钱、依赖网络，而且回答生成没有固定 temperature 所以结果随机
+      # ——放进 push 触发的 CI 会得到一条随机翻红的流水线，那比没有门禁更糟
+      # （它会训练人忽略红色）。这里跑的只有指标数学与 SSE 帧解析的纯函数单测：
+      # 不需要任何外部服务，却覆盖了最容易写错又最难发现的那部分（分母取错、
+      # 名次算错、空 citation 时除零）。
+      #
+      # 【必须显式列文件，不能用目录】node 22 把 --test 后面的位置参数当 glob
+      # 处理，`evals/lib` 匹配到的是那个目录本身，运行时报
+      # ERR_TEST_FAILURE / # pass 0。引号不能省，否则 shell 会自己展开。
+      - name: Eval metric self-test
+        run: node --test "evals/lib/*.test.mjs"
+
       # tsc -b && vite build。类型错误在这里暴露——vite 本身不做类型检查。
       - name: Build web
         run: pnpm --filter web build

@@ -26,8 +26,8 @@ issue 归到**将要发布它的版本**，不是发现它的版本——v1.0 �
    脚本会断言两者一致。这一步是有意的——没有它，契约版本会像 `0.1.0` 那样
    再次腐化（那正是 ADR-002 要消掉的状态）。
 3. **该跑迁移的版本要在 CHANGELOG 里写明。** 比如 v3.0 新增了
-   `0006_idempotency_replay` 与 `0007_agent_tool_calling`，漏跑的直接后果是
-   聊天整条路径 500。
+   `0006_idempotency_replay`、`0007_agent_tool_calling` 与
+   `0008_list_pagination_indexes`，漏跑 0006 的直接后果是聊天整条路径 500。
 4. 跑一遍门禁：`make check`（Go 的 build/vet/test + 前端 lint/test），
    以及 `make test-integration`（需要真库，见 `docs/testing.md`）。
 5. 工作区干净、在 `main` 上、与 `origin/main` 一致——脚本会检查这三条。
@@ -77,7 +77,9 @@ node scripts/release.mjs 1.0 --allow-existing-tag
 ## 发布后核对四件事
 
 1. **Release 正文 == CHANGELOG 小节 + compare 链接**（脚本自动拼）。
-2. **tag 指向的 commit 就是 `main` 顶端**：`git rev-parse v3.0 main` 两行相同。
+2. **tag 指向的 commit 就是 `main` 顶端**：`git rev-parse 'v3.0^{commit}' main` 两行相同。
+   **`^{commit}` 不能省**——两个 tag 都是 annotated，`git rev-parse v3.0` 给的
+   是 tag 对象自己的 sha，不是它指向的 commit，不加会得到两个不同的哈希。
 3. **CI 四个 job 全绿。** 注意 tag push **不触发** CI（工作流的 `on` 只有
    `push[main]` / `pull_request` / `workflow_dispatch`），所以这一条要去看
    `main` 那次 push 的运行结果。

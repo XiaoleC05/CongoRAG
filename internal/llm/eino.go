@@ -359,6 +359,11 @@ func (s *einoStream) Recv() (*Message, error) {
 }
 
 func (s *einoStream) Close() error {
+	// 【Close 也必须兜底记一行】客户端断开时 conversation 的流循环会提前
+	// return，deferred 的 Close 被调用——而 Recv 根本走不到 EOF 那一支。
+	// 不在这里补，那种调用的用量就一行都不留，而契约里写着"行数 = 调用次数"。
+	// reported 保证与 Recv 那条路径不会重复记。
+	s.recordOnce(nil)
 	s.inner.Close()
 	return nil
 }

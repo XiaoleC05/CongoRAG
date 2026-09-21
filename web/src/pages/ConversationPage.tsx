@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useMessages, useSendMessage } from '@/hooks/useMessages'
-import { flattenPages } from '@/lib/pagination'
+import { flattenPagesChronologically } from '@/lib/pagination'
 
 /**
  * 聊天页——ChatGPT 式布局（消息区 + 底部输入框），前端引用方案 §2.2。
@@ -34,7 +34,10 @@ export default function ConversationPage() {
   const { send, isStreaming, streamingContent, pendingCitations, streamError } =
     useSendMessage(conversationId)
 
-  const history = flattenPages(historyPages)
+  // 【必须按页倒着摊平】这个列表的分页方向是"第一页给最新的 N 条、翻下一页
+  // 拿更早的"，所以 pages[0] 最新、pages[1] 更旧。直接摊平会让更早的消息排在
+  // 最新消息的**下面**——整段聊天记录的时间顺序反过来，而且不报错。
+  const history = flattenPagesChronologically(historyPages)
   // 「最后一条」的标识：新消息到达时它才变，加载更早的一页时它不变。
   const lastMessageId = history.at(-1)?.id
 
