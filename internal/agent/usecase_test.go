@@ -29,6 +29,12 @@ type fakeRepo struct {
 	agents      []*Agent
 	runs        []*Run
 	updates     []statusUpdate
+
+	// 分页（issue #45）：记录 ListRunsByAgent 收到的参数，并给出预置的一页。
+	lastRunsCursor  *platform.ListCursor
+	lastRunsLimit   int
+	listRunsErr     error
+	listRunsHasMore bool
 }
 
 // statusUpdate 记一次 UpdateRunStatus 调用，含当时 ctx 是否已被取消。
@@ -72,8 +78,21 @@ func (f *fakeRepo) InsertRun(ctx context.Context, q platform.Querier, r *Run) er
 func (f *fakeRepo) GetRun(ctx context.Context, q platform.Querier, id uuid.UUID) (*Run, error) {
 	panic("not used")
 }
-func (f *fakeRepo) ListRunsByAgent(ctx context.Context, q platform.Querier, agentID uuid.UUID) ([]*Run, error) {
-	panic("not used")
+
+// ListRunsByAgent 记录收到的游标与 limit（供分页测试断言透传），返回预置的一页。
+//
+// 【为什么不沿用 panic("not used")】它现在有一条真实的调用路径了
+// （issue #45 给这个端点加了分页），测试要能同时观察到"参数有没有被原样
+// 传下来"和"结果有没有被正确装进信封"。
+func (f *fakeRepo) ListRunsByAgent(ctx context.Context, q platform.Querier, agentID uuid.UUID, cur *platform.ListCursor, limit int) ([]*Run, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastRunsCursor = cur
+	f.lastRunsLimit = limit
+	if f.listRunsErr != nil {
+		return nil, false, f.listRunsErr
+	}
+	return f.runs, f.listRunsHasMore, nil
 }
 func (f *fakeRepo) UpdateRunStatus(ctx context.Context, q platform.Querier, id uuid.UUID, from, to RunStatus) error {
 	f.mu.Lock()

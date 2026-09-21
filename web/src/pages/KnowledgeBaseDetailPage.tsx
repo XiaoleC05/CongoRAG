@@ -17,6 +17,7 @@ import { useErrorToast } from '@/hooks/useErrorToast'
 import { useKnowledgeBases } from '@/hooks/useKnowledgeBases'
 import { errorPresentation } from '@/lib/errors'
 import { formatByteSize, formatDateTime } from '@/lib/format'
+import { flattenPages } from '@/lib/pagination'
 
 /**
  * 写操作失败在页面上还剩多少要显示。
@@ -50,7 +51,15 @@ export default function KnowledgeBaseDetailPage() {
   const { data: kbs } = useKnowledgeBases()
   const kbName = kbs?.find((kb) => kb.id === kbId)?.name
 
-  const { data: docs, isPending, error } = useDocuments(kbId)
+  const {
+    data: docPages,
+    isPending,
+    error,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useDocuments(kbId)
+  const docs = flattenPages(docPages)
   const { upload, remove, reindex } = useDocumentMutations(kbId)
   const reindexAll = useReindexKnowledgeBase(kbId)
   const createConversation = useCreateConversation()
@@ -202,6 +211,20 @@ export default function KnowledgeBaseDetailPage() {
               ))}
             </tbody>
           </table>
+          {/* 【加载更多放在表格下方】列表按 created_at 倒序，更旧的在下面。
+              hasNextPage 为假时整个不渲染——禁用会让用户以为等一下就有了。 */}
+          {hasNextPage && (
+            <div className="border-border flex justify-center border-t py-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={isFetchingNextPage}
+                onClick={() => void fetchNextPage()}
+              >
+                {isFetchingNextPage ? '加载中…' : '加载更多'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
       <ErrorText error={residual(remove.error)} className="mt-4" />

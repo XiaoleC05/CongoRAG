@@ -41,7 +41,14 @@ type Repo interface {
 
 	InsertRun(ctx context.Context, q platform.Querier, r *Run) error
 	GetRun(ctx context.Context, q platform.Querier, id uuid.UUID) (*Run, error)
-	ListRunsByAgent(ctx context.Context, q platform.Querier, agentID uuid.UUID) ([]*Run, error)
+	// ListRunsByAgent 按 created_at 倒序取一个 Agent 的历史运行，最多 limit 条。
+	//
+	// 【keyset 分页的理由和文档列表一样】agent_runs 没有删除路径，历史会
+	// 一直涨；而前端每 1.5 秒轮询一次这个列表。OFFSET 分页在两次轮询之间
+	// 有新运行插到头部时会让上一页的尾部重复出现，而游标不会。
+	//
+	// cur 为 nil 表示第一页；返回的 bool 是 hasMore（还有没有下一页）。
+	ListRunsByAgent(ctx context.Context, q platform.Querier, agentID uuid.UUID, cur *platform.ListCursor, limit int) ([]*Run, bool, error)
 
 	// UpdateRunStatus 用 CAS（WHERE status = from）——和
 	// knowledge.PgDocRepo.UpdateStatus 同样的模式,防止并发写入把一个

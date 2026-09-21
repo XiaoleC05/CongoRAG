@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +39,12 @@ const maxTitleLen = 200
 // 不同 tokenizer 的"一个 token"实际字节数差异很大，时间间隔对用户体验
 // 的意义更直接（多久能看到内容在动）。
 const checkpointInterval = 500 * time.Millisecond
+
+// searchMessagesLimit 是 conversation_search 工具一次最多看多少条历史。
+//
+// 【为什么不是分页】那个工具要回答"我们之前聊过 X 吗"，按页找会让它只看到
+// 最近一段，给出错误的"没聊过"。上限只是防止一个几万条的会话把内存打满。
+const searchMessagesLimit = 500
 
 // 幂等键重放相关（issue #37）。
 const (
@@ -177,13 +184,43 @@ func (u *Usecase) CreateConversation(ctx context.Context, title string, kbID *uu
 	return c, nil
 }
 
-// ListMessages 给 GET /conversations/{id}/messages 用（前端刷新页面重载历史）。
-func (u *Usecase) ListMessages(ctx context.Context, convID uuid.UUID) ([]*Message, error) {
-	msgs, err := u.repo.ListMessages(ctx, u.db, convID)
+// ListMessages 给 GET /conversations/{id}/messages 用——取一个会话最新的一页
+// 消息，keyset 分页（issue #45）。前端刷新页面重载历史时走它。
+//
+// 第一个返回值按 sequence_no 升序；第二个是更早那一页的游标，
+// 没有更早的消息时为空串。
+func (u *Usecase) ListMessages(ctx context.Context, convID uuid.UUID, rawCursor string, limit int) ([]*Message, string, error) {
+	limit, err := platform.ClampListLimit(limit)
 	if err != nil {
-		return nil, fmt.Errorf("list messages of conversation %s: %w", convID, err)
+		return nil, "", err
 	}
-	return msgs, nil
+
+	// 【游标里装的是 sequence_no，不是时间】这个列表按 sequence_no 排序
+	//（它在会话内由 advisory lock 内分配，天然唯一），所以一个键就够；
+	// 并列键为空。见 platform.ListCursor 的注释。
+	var before int64
+	if rawCursor != "" {
+		cur, err := platform.DecodeCursor(rawCursor)
+		if err != nil {
+			return nil, "", err
+		}
+		before, err = strconv.ParseInt(cur.SortKey, 10, 64)
+		if err != nil {
+			return nil, "", fmt.Errorf("cursor sort key %q is not a sequence number: %w", cur.SortKey, platform.ErrInvalid)
+		}
+	}
+
+	msgs, hasMore, err := u.repo.ListMessagesPage(ctx, u.db, convID, before, limit)
+	if err != nil {
+		return nil, "", fmt.Errorf("list messages of conversation %s: %w", convID, err)
+	}
+
+	// 【下一页从最旧的那条往前】列表是升序的，所以最旧的在第一个位置。
+	next := ""
+	if len(msgs) > 0 {
+		next = platform.EncodeNextCursor(hasMore, strconv.FormatInt(msgs[0].SequenceNo, 10), "")
+	}
+	return msgs, next, nil
 }
 
 // SearchMessages 实现 agent 包声明的 ConversationSearcher port（规则 A）——
@@ -197,7 +234,13 @@ func (u *Usecase) ListMessages(ctx context.Context, convID uuid.UUID) ([]*Messag
 // 检索时再引入,现在子串匹配对"Agent 想回忆一下之前聊过的具体关键词"
 // 这个场景够用。
 func (u *Usecase) SearchMessages(ctx context.Context, convID uuid.UUID, query string) ([]domain.MessageSnippet, error) {
-	msgs, err := u.repo.ListMessages(ctx, u.db, convID)
+	// 【这里刻意给一个大 limit，而不是分页】它的语义是"在这个会话里找提到
+	// 某个关键词的消息"，要的是尽量全的历史；按页找会让 Agent 只看到最近的
+	// 一段，答"我们之前聊过 X 吗"时给出错误的"没聊过"。
+	//
+	// 上限仍然是必要的（防一个几万条的会话把内存打满），500 是"够用且不会
+	// 出问题"的量级——子串匹配本身在几千条上也是毫秒级。
+	msgs, _, err := u.repo.ListMessagesPage(ctx, u.db, convID, 0, searchMessagesLimit)
 	if err != nil {
 		return nil, fmt.Errorf("list messages of conversation %s: %w", convID, err)
 	}

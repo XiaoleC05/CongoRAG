@@ -145,31 +145,83 @@ func (r *PgDocRepo) markForReindexReturningIDs(ctx context.Context, q platform.Q
 	return out, nil
 }
 
-func (r *PgDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID) ([]*Document, error) {
-	rows, err := q.Query(ctx,
-		`SELECT id, knowledge_base_id, filename, storage_key, status, byte_size, created_at, updated_at
-		 FROM documents
-		 WHERE knowledge_base_id = $1
-		 ORDER BY created_at DESC`, kbID)
+// documentsSelectCols 是三个列表查询共用的列（含下面的游标版本），
+// 免得列顺序在几处各写一份、改一处漏一处。
+const documentsSelectCols = `SELECT id, knowledge_base_id, filename, storage_key,
+	        status, byte_size, created_at, updated_at
+	 FROM documents`
+
+// listDocumentsWithCursorSQL 用行值比较做 keyset 分页。
+//
+// 【为什么是 (created_at, id) < ($2, $3) 而不是两个 AND】行值比较是
+// Postgres 里表达「按复合键取更小的一批」的原生写法，而且能和
+// documents_kb_created_id_idx 的列顺序 + 方向逐字对上——写成
+// `created_at < $2 OR (created_at = $2 AND id < $3)` 语义相同，但规划器
+// 不一定能把它推成一次索引范围扫描。
+//
+// 【方向必须和索引一致】索引是 (knowledge_base_id, created_at DESC, id DESC)，
+// ORDER BY 也是 DESC, DESC。不一致的话 Postgres 会退化成「索引扫 + Sort」，
+// 分页的意义就没了。
+const listDocumentsWithCursorSQL = documentsSelectCols + `
+	 WHERE knowledge_base_id = $1 AND (created_at, id) < ($2, $3)
+	 ORDER BY created_at DESC, id DESC
+	 LIMIT $4`
+
+const listDocumentsSQL = documentsSelectCols + `
+	 WHERE knowledge_base_id = $1
+	 ORDER BY created_at DESC, id DESC
+	 LIMIT $2`
+
+func (r *PgDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID, cur *platform.ListCursor, limit int) ([]*Document, bool, error) {
+	// 【为什么取 limit+1 条】多出来的那条不返回，只用来判断"还有没有下一页"。
+	// 先 COUNT(*) 再取一页要在同一张表上扫两遍，而且两次查询之间还会插入新行；
+	// "总是返回游标、让客户端靠空页停"会让"加载更多"永远亮着、点了没反应。
+	// limit+1 让 hasMore 在**同一次查询的同一个快照**里成为事实。
+	sql := listDocumentsSQL
+	args := []any{kbID}
+
+	if cur != nil {
+		// 游标里的排序键是编码时写进去的时间戳字符串；这里把它还原成
+		// time.Time 交给 pgx。解不出来说明这个游标不是我们发的。
+		ts, err := time.Parse(time.RFC3339Nano, cur.SortKey)
+		if err != nil {
+			return nil, false, fmt.Errorf("cursor sort key %q is not a timestamp: %w", cur.SortKey, platform.ErrInvalid)
+		}
+		id, err := uuid.Parse(cur.Tiebreak)
+		if err != nil {
+			return nil, false, fmt.Errorf("cursor tiebreak %q is not a uuid: %w", cur.Tiebreak, platform.ErrInvalid)
+		}
+		sql = listDocumentsWithCursorSQL
+		args = append(args, ts, id)
+	}
+	args = append(args, limit+1)
+
+	rows, err := q.Query(ctx, sql, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list documents of knowledge base %s: %w", kbID, platform.WrapPgErr(err))
+		return nil, false, fmt.Errorf("list documents of knowledge base %s: %w", kbID, platform.WrapPgErr(err))
 	}
 	defer rows.Close()
 
-	var out []*Document
+	out := make([]*Document, 0, limit)
 	for rows.Next() {
 		d := &Document{}
 		var status string
 		if err := rows.Scan(&d.ID, &d.KnowledgeBaseID, &d.Filename, &d.StorageKey, &status, &d.ByteSize, &d.CreatedAt, &d.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan document: %w", err)
+			return nil, false, fmt.Errorf("scan document: %w", err)
 		}
 		d.Status = Status(status)
 		out = append(out, d)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate documents: %w", err)
+		return nil, false, fmt.Errorf("iterate documents: %w", err)
 	}
-	return out, nil
+
+	// 【切片的位置】结果是 DESC 序，多取的那条落在**尾部**，所以先切再返回。
+	hasMore := len(out) > limit
+	if hasMore {
+		out = out[:limit]
+	}
+	return out, hasMore, nil
 }
 
 func (r *PgDocRepo) Delete(ctx context.Context, q platform.Querier, id uuid.UUID) (string, error) {

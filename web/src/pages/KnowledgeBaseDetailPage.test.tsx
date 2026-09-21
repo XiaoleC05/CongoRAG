@@ -92,7 +92,7 @@ describe('KnowledgeBaseDetailPage 的写操作失败', () => {
   it('删除失败时弹出一个 role="alert" 的 toast', async () => {
     getMock.mockImplementation(async (path: string) => {
       if (path === '/api/v1/knowledge-bases') return { data: [kb] }
-      if (path === '/api/v1/knowledge-bases/{id}/documents') return { data: [doc] }
+      if (path === '/api/v1/knowledge-bases/{id}/documents') return { data: { items: [doc], nextCursor: null } }
       throw new Error(`用例没预料到的 GET ${path}`)
     })
     deleteMock.mockResolvedValue({ error: internalError, response: new Response() })
@@ -114,7 +114,7 @@ describe('KnowledgeBaseDetailPage 的写操作失败', () => {
   it('toast 说过的错误不再在页面上内联渲染', async () => {
     getMock.mockImplementation(async (path: string) => {
       if (path === '/api/v1/knowledge-bases') return { data: [kb] }
-      if (path === '/api/v1/knowledge-bases/{id}/documents') return { data: [doc] }
+      if (path === '/api/v1/knowledge-bases/{id}/documents') return { data: { items: [doc], nextCursor: null } }
       throw new Error(`用例没预料到的 GET ${path}`)
     })
     deleteMock.mockResolvedValue({ error: internalError, response: new Response() })
@@ -139,7 +139,7 @@ describe('KnowledgeBaseDetailPage 的写操作失败', () => {
   it('invalid_argument 走内联，不弹 toast', async () => {
     getMock.mockImplementation(async (path: string) => {
       if (path === '/api/v1/knowledge-bases') return { data: [kb] }
-      if (path === '/api/v1/knowledge-bases/{id}/documents') return { data: [doc] }
+      if (path === '/api/v1/knowledge-bases/{id}/documents') return { data: { items: [doc], nextCursor: null } }
       throw new Error(`用例没预料到的 GET ${path}`)
     })
     deleteMock.mockResolvedValue({

@@ -1,8 +1,10 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import type { InfiniteData } from '@tanstack/react-query'
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef, useState } from 'react'
 
 import { api } from '@congorag/api-client'
 import type { Schemas } from '@congorag/api-client'
+import { flattenPages, nextPageParam, type Page } from '@/lib/pagination'
 import { streamChat } from '@/lib/streamChat'
 import { newIdempotencyKey } from '@/lib/uuid'
 
@@ -10,18 +12,42 @@ type Message = Schemas['Message']
 
 export const messagesKey = (conversationId: string) => ['messages', conversationId]
 
-/** 读：一个会话的历史消息（页面刷新重载用）。 */
+/**
+ * 读：一个会话的历史消息（分页，issue #45）。
+ *
+ * 【第一页是最新的 N 条，不是最旧的】聊天页打开就该看到最近发生的事；
+ * 给最旧的 50 条意味着一个几千条的会话要翻几十次才到最新——那是把分页
+ * 做成了功能退化。翻下一页拿的是**更早**的消息。
+ *
+ * 返回值按 sequence_no 升序（服务端已经排好），页面直接按顺序渲染。
+ */
 export function useMessages(conversationId: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: messagesKey(conversationId),
-    queryFn: async () => {
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) => {
       const { data, error } = await api.GET('/api/v1/conversations/{id}/messages', {
-        params: { path: { id: conversationId } },
+        params: { path: { id: conversationId }, query: { cursor: pageParam ?? undefined } },
       })
       if (error) throw error
       return data
     },
+    getNextPageParam: nextPageParam,
   })
+}
+
+/**
+ * 所有已加载消息里最大的 sequence_no；一条都没有时返回 0。
+ *
+ * 【为什么不能只看最后一页】页是按「越往后越旧」加载的，但用户可能先翻到
+ * 更早再回来发消息——只看最后一页会算出比现有消息更小的序号。
+ */
+function lastSequenceNo(data: InfiniteData<Page<Message>> | undefined): number {
+  let max = 0
+  for (const msg of flattenPages(data)) {
+    if (msg.sequenceNo > max) max = msg.sequenceNo
+  }
+  return max
 }
 
 /** 展示层用的引用：从 citation 事件的 payload 摊平出来，配到具体某条消息上。 */
@@ -91,18 +117,30 @@ export function useSendMessage(conversationId: string) {
 
       // 乐观插入：内容、顺序都取自用户刚敲的这一下，不等后端返回 uuid 和
       // sequence_no。随后的作废重取会用数据库里的那一行把它替换掉。
-      queryClient.setQueryData<Message[]>(key, (old) => [
-        ...(old ?? []),
-        {
+      //
+      // 【分页之后要落到最后一页，不是顶层数组】缓存形状是
+      // {pages, pageParams}，而"最后一条"是**所有已加载页**里的最后一条
+      // （不是第一页的最后一条，也不是 pages 数组的最后一项）。
+      queryClient.setQueryData<InfiniteData<Page<Message>>>(key, (old) => {
+        const optimistic: Message = {
           id: nextOptimisticId(),
           conversationId,
           role: 'user',
           content: text,
           status: 'completed',
-          sequenceNo: (old?.[old.length - 1]?.sequenceNo ?? 0) + 1,
+          sequenceNo: lastSequenceNo(old) + 1,
           createdAt: new Date().toISOString(),
-        },
-      ])
+        }
+        if (!old || old.pages.length === 0) {
+          // 还没有任何一页（首屏还在加载）：造一个只含这条乐观消息的页，
+          // 否则用户会看到自己刚敲的字什么都没发生。
+          return { pages: [{ items: [optimistic] }], pageParams: [null] }
+        }
+        const pages = [...old.pages]
+        const last = pages[pages.length - 1]
+        pages[pages.length - 1] = { ...last, items: [...last.items, optimistic] }
+        return { ...old, pages }
+      })
 
       try {
         await streamChat(conversationId, text, idempotencyKey, {

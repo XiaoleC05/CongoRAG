@@ -70,7 +70,21 @@ type DocRepo interface {
 	// 并发保护）。不满足任何一层都返回 platform.ErrConflict。
 	UpdateStatus(ctx context.Context, q platform.Querier, id uuid.UUID, from, to Status) error
 
-	ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID) ([]*Document, error)
+	// ListByKnowledgeBase 按 created_at 倒序取一个知识库下的文档，最多 limit 条。
+	//
+	// 【keyset 分页，不是 offset】游标是第一页最后那一行的 (created_at, id)。
+	// 用 cursor 而不是 OFFSET 的两个理由：文档会被上传（新行插在头部），
+	// OFFSET 分页在插入之后会让第一页的尾部在第二页重复出现；而且这个列表
+	// 被前端每 2 秒轮询一次，OFFSET 每页都要让 Postgres 扫过并丢弃前 m 行。
+	//
+	// 【cur 为 nil 表示第一页】limit 由调用方（usecase）校验过区间。
+	//
+	// 返回值里的 bool 是 hasMore：还有没有下一页。它是**多取一条**得来的，
+	// 不是 COUNT(*)——见实现里的注释。
+	//
+	// 【两个并列键缺一不可】同一毫秒创建的两行 created_at 相同，只按时间
+	// 翻页会稳定地多出或漏掉一行。id 作为第二排序键让它成为严格全序。
+	ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID, cur *platform.ListCursor, limit int) ([]*Document, bool, error)
 
 	// Delete 删除单个文档，返回它的 storage_key（调用方用它异步清理磁盘）。
 	// 找不到时返回 platform.ErrNotFound——和 DeleteByKnowledgeBase 不同，

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { InfiniteData } from '@tanstack/react-query'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -8,6 +9,7 @@ import type { ReactNode } from 'react'
 import { api } from '@congorag/api-client'
 import type { Schemas } from '@congorag/api-client'
 import { documentsKey, useDocumentMutations, useDocuments } from '@/hooks/useDocuments'
+import type { Page } from '@/lib/pagination'
 
 // 网络层换成可控 mock：本文件要验证的是"mutate 成功后文档列表缓存里是不是服务端的新数据"。
 // GET 的返回值由下面的 serverList 决定，相当于一个会在测试中途改变状态的服务端。
@@ -67,8 +69,11 @@ function renderDetail(queryClient: QueryClient) {
   )
 }
 
+// 分页（issue #45）之后缓存形状是 {pages, pageParams}，每一页是
+// {items, nextCursor}。读的时候摊平——断言仍然只看「文档数组」这一件事。
 function cachedDocs(queryClient: QueryClient) {
-  return queryClient.getQueryData<Document[]>(documentsKey(KB_ID)) ?? []
+  const data = queryClient.getQueryData<InfiniteData<Page<Document>>>(documentsKey(KB_ID))
+  return data ? data.pages.flatMap((page) => page.items) : []
 }
 
 /**
@@ -83,7 +88,9 @@ function cachedDocs(queryClient: QueryClient) {
 describe('useDocumentMutations', () => {
   beforeEach(() => {
     serverList = [readyDoc]
-    getMock.mockImplementation(() => Promise.resolve({ data: serverList, error: undefined }))
+    getMock.mockImplementation(() =>
+      Promise.resolve({ data: { items: serverList, nextCursor: null }, error: undefined }),
+    )
   })
 
   afterEach(() => {
@@ -123,5 +130,66 @@ describe('useDocumentMutations', () => {
     })
 
     await waitFor(() => expect(cachedDocs(queryClient)).toEqual([]))
+  })
+})
+
+/**
+ * 分页（issue #45）。
+ *
+ * 【这一组钉的是「能不能继续加载」】分页做错的方式都很安静：nextCursor 永远
+ * 非空会让「加载更多」一直亮着、点了重复拿同一页；永远为空则用户再也看不到
+ * 更早的文档。两种都不报错。
+ */
+describe('useDocuments 分页', () => {
+  afterEach(() => {
+    getMock.mockReset()
+  })
+
+  it('第一页带游标时还能继续加载，取到 null 就到底了', async () => {
+    const calls: string[] = []
+    getMock.mockImplementation(async (_path: string, opts: unknown) => {
+      const cursor = (opts as { params?: { query?: { cursor?: string } } })?.params?.query?.cursor
+      calls.push(cursor ?? '')
+      if (!cursor) {
+        return { data: { items: [readyDoc], nextCursor: 'CURSOR-1' }, error: undefined }
+      }
+      return { data: { items: [failedDoc], nextCursor: null }, error: undefined }
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result } = renderHook(() => useDocuments(KB_ID), { wrapper: makeWrapper(queryClient) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.hasNextPage).toBe(true)
+    expect(cachedDocs(queryClient).map((d) => d.id)).toEqual([readyDoc.id])
+
+    await act(async () => {
+      await result.current.fetchNextPage()
+    })
+
+    // 两页拼起来是完整的列表，且第二页确实带着第一页给的游标去请求。
+    expect(calls).toEqual(['', 'CURSOR-1'])
+
+    // 【为什么要 waitFor 而不是直接断言】缓存更新和组件重渲染是两步：
+    // 缓存里已经是两页了，但 result.current 可能还停在上一帧。
+    await waitFor(() =>
+      expect(cachedDocs(queryClient).map((d) => d.id)).toEqual([readyDoc.id, failedDoc.id]),
+    )
+
+    // nextCursor 为 null → 没有下一页，「加载更多」据此收起来。
+    await waitFor(() => expect(result.current.hasNextPage).toBe(false))
+  })
+
+  it('一次只有一页且 nextCursor 为 null 时，不该有下一页', async () => {
+    getMock.mockImplementation(() =>
+      Promise.resolve({ data: { items: [readyDoc], nextCursor: null }, error: undefined }),
+    )
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result } = renderHook(() => useDocuments(KB_ID), { wrapper: makeWrapper(queryClient) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.hasNextPage).toBe(false)
+    expect(result.current.isFetchingNextPage).toBe(false)
   })
 })

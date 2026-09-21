@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -141,23 +142,46 @@ func (r *PgRepo) RecentMessages(ctx context.Context, q platform.Querier, convID 
 	return msgs, nil
 }
 
-func (r *PgRepo) ListMessages(ctx context.Context, q platform.Querier, convID uuid.UUID) ([]*Message, error) {
+// ListMessagesPage 取一个会话里「比 beforeSequenceNo 更早」的最新 limit 条消息，
+// 按 sequence_no 升序返回（issue #45）。
+//
+// 【为什么是"最新的 limit 条"而不是"最旧的 limit 条"】聊天页打开时应该看到
+// 最近发生的事。给最旧的 50 条意味着一个 5000 条的会话要翻 100 次才到最新
+// ——那是把分页做成了功能退化。翻更多是往**更早**的方向走。
+//
+// 【排序方向陷阱，极易写反】内层必须 DESC 取 limit+1 条，在 DESC 序下切掉
+// 多取的那条（它是最旧的，落在尾部），**然后**才反转成升序返回。
+// 先反转再切的话切掉的是最新的那条，症状是"每翻一页少一条最新消息"，
+// 而且不报错。test 里有一条"两页拼起来恰好等于全量且升序"的断言钉它。
+//
+// 【不用 keyset 的 (created_at, id) 那一套】sequence_no 由 advisory lock 内
+// 分配（见 NextSequenceNo），在会话内天然唯一，一个键就够。
+func (r *PgRepo) ListMessagesPage(ctx context.Context, q platform.Querier, convID uuid.UUID, beforeSequenceNo int64, limit int) ([]*Message, bool, error) {
 	rows, err := q.Query(ctx,
 		`SELECT id, conversation_id, role, content, status, sequence_no, token_usage, created_at
 		 FROM messages
-		 WHERE conversation_id = $1
-		 ORDER BY sequence_no ASC`,
-		convID)
+		 WHERE conversation_id = $1 AND ($2 = 0 OR sequence_no < $2)
+		 ORDER BY sequence_no DESC
+		 LIMIT $3`,
+		convID, beforeSequenceNo, limit+1)
 	if err != nil {
-		return nil, fmt.Errorf("list messages of conversation %s: %w", convID, platform.WrapPgErr(err))
+		return nil, false, fmt.Errorf("list messages of conversation %s: %w", convID, platform.WrapPgErr(err))
 	}
 	defer rows.Close()
 
 	msgs, err := scanMessages(rows)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return msgs, nil
+
+	// 【先切再反转】DESC 序下多取的那条在最尾。
+	hasMore := len(msgs) > limit
+	if hasMore {
+		msgs = msgs[:limit]
+	}
+	slices.Reverse(msgs)
+
+	return msgs, hasMore, nil
 }
 
 func (r *PgRepo) MessagesAfter(ctx context.Context, q platform.Querier, convID uuid.UUID, afterSequenceNo int64, limit int) ([]*Message, error) {

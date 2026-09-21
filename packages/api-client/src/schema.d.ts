@@ -86,7 +86,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 列出这个知识库下的全部文档 */
+        /** 列出这个知识库下的文档（按创建时间倒序，keyset 分页） */
         get: operations["listDocuments"];
         put?: never;
         /** 上传一个文档（异步处理：落盘 + 入队，立即返回） */
@@ -181,7 +181,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 按顺序列出一个会话的全部消息（前端刷新页面重载历史用） */
+        /** 列出一个会话的消息（按 sequence_no 升序，keyset 分页，第一页给最新的） */
         get: operations["listConversationMessages"];
         put?: never;
         /**
@@ -303,7 +303,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 列出一个 Agent 的历史执行记录 */
+        /** 列出一个 Agent 的历史执行记录（按创建时间倒序，keyset 分页） */
         get: operations["listAgentRuns"];
         put?: never;
         /**
@@ -419,6 +419,27 @@ export interface components {
              *     它们本来就会被重新处理一遍。
              */
             enqueued: number;
+        };
+        DocumentPage: {
+            items: components["schemas"]["Document"][];
+            /** @description 下一页的游标；null 表示没有更多了。 */
+            nextCursor?: string | null;
+        };
+        AgentRunPage: {
+            items: components["schemas"]["AgentRun"][];
+            /** @description 下一页的游标；null 表示没有更多了。 */
+            nextCursor?: string | null;
+        };
+        MessagePage: {
+            items: components["schemas"]["Message"][];
+            /**
+             * @description 下一页的游标；null 表示没有更早的消息了。
+             *
+             *     **方向是「更旧」**：会话消息的第一页给的是**最新**的 N 条
+             *     （按 sequence_no 升序返回），翻下一页拿的是更早的。聊天页
+             *     打开就该看到最近发生的事，而不是一年前的那一句。
+             */
+            nextCursor?: string | null;
         };
         CreateKnowledgeBaseRequest: {
             /** @example 我的知识库 */
@@ -660,7 +681,24 @@ export interface components {
             };
         };
     };
-    parameters: never;
+    parameters: {
+        /**
+         * @description 一页最多返回多少条。省略时用 50；允许 1..200，越界返回 400
+         *     （不静默夹取——那会让你以为拿满了，实际少了一半）。
+         */
+        Limit: number;
+        /**
+         * @description 上一页响应里 nextCursor 的值，用来取下一页。第一页省略它。
+         *
+         *     **不透明**：不要解析它的内容、也不要自己构造。它的格式（目前是
+         *     base64）随时可能变，按内容分支的客户端会在某次升级后静默拿到
+         *     错的一页。解不出来时服务端返回 400。
+         *
+         *     方向：nextCursor 的含义是「更旧的一页」（这三个列表都是按时间
+         *     倒序、或按消息序号往回翻），不是「第 N+1 页」。
+         */
+        Cursor: string;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -835,7 +873,24 @@ export interface operations {
     };
     listDocuments: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description 一页最多返回多少条。省略时用 50；允许 1..200，越界返回 400
+                 *     （不静默夹取——那会让你以为拿满了，实际少了一半）。
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description 上一页响应里 nextCursor 的值，用来取下一页。第一页省略它。
+                 *
+                 *     **不透明**：不要解析它的内容、也不要自己构造。它的格式（目前是
+                 *     base64）随时可能变，按内容分支的客户端会在某次升级后静默拿到
+                 *     错的一页。解不出来时服务端返回 400。
+                 *
+                 *     方向：nextCursor 的含义是「更旧的一页」（这三个列表都是按时间
+                 *     倒序、或按消息序号往回翻），不是「第 N+1 页」。
+                 */
+                cursor?: components["parameters"]["Cursor"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -844,15 +899,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 文档列表（按创建时间倒序） */
+            /** @description 一页文档 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Document"][];
+                    "application/json": components["schemas"]["DocumentPage"];
                 };
             };
+            400: components["responses"]["InvalidArgument"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -1012,7 +1068,24 @@ export interface operations {
     };
     listConversationMessages: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description 一页最多返回多少条。省略时用 50；允许 1..200，越界返回 400
+                 *     （不静默夹取——那会让你以为拿满了，实际少了一半）。
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description 上一页响应里 nextCursor 的值，用来取下一页。第一页省略它。
+                 *
+                 *     **不透明**：不要解析它的内容、也不要自己构造。它的格式（目前是
+                 *     base64）随时可能变，按内容分支的客户端会在某次升级后静默拿到
+                 *     错的一页。解不出来时服务端返回 400。
+                 *
+                 *     方向：nextCursor 的含义是「更旧的一页」（这三个列表都是按时间
+                 *     倒序、或按消息序号往回翻），不是「第 N+1 页」。
+                 */
+                cursor?: components["parameters"]["Cursor"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -1021,15 +1094,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 消息列表 */
+            /** @description 一页消息（升序） */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Message"][];
+                    "application/json": components["schemas"]["MessagePage"];
                 };
             };
+            400: components["responses"]["InvalidArgument"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -1255,7 +1329,24 @@ export interface operations {
     };
     listAgentRuns: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description 一页最多返回多少条。省略时用 50；允许 1..200，越界返回 400
+                 *     （不静默夹取——那会让你以为拿满了，实际少了一半）。
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description 上一页响应里 nextCursor 的值，用来取下一页。第一页省略它。
+                 *
+                 *     **不透明**：不要解析它的内容、也不要自己构造。它的格式（目前是
+                 *     base64）随时可能变，按内容分支的客户端会在某次升级后静默拿到
+                 *     错的一页。解不出来时服务端返回 400。
+                 *
+                 *     方向：nextCursor 的含义是「更旧的一页」（这三个列表都是按时间
+                 *     倒序、或按消息序号往回翻），不是「第 N+1 页」。
+                 */
+                cursor?: components["parameters"]["Cursor"];
+            };
             header?: never;
             path: {
                 id: string;
@@ -1264,15 +1355,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Run 列表 */
+            /** @description 一页运行记录 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AgentRun"][];
+                    "application/json": components["schemas"]["AgentRunPage"];
                 };
             };
+            400: components["responses"]["InvalidArgument"];
             500: components["responses"]["InternalError"];
         };
     };

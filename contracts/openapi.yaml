@@ -183,16 +183,19 @@ paths:
 
     get:
       operationId: listDocuments
-      summary: 列出这个知识库下的全部文档
+      summary: 列出这个知识库下的文档（按创建时间倒序，keyset 分页）
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: 文档列表（按创建时间倒序）
+          description: 一页文档
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Document'
+                $ref: '#/components/schemas/DocumentPage'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -380,16 +383,19 @@ paths:
 
     get:
       operationId: listConversationMessages
-      summary: 按顺序列出一个会话的全部消息（前端刷新页面重载历史用）
+      summary: 列出一个会话的消息（按 sequence_no 升序，keyset 分页，第一页给最新的）
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: 消息列表
+          description: 一页消息（升序）
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Message'
+                $ref: '#/components/schemas/MessagePage'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -625,16 +631,19 @@ paths:
 
     get:
       operationId: listAgentRuns
-      summary: 列出一个 Agent 的历史执行记录
+      summary: 列出一个 Agent 的历史执行记录（按创建时间倒序，keyset 分页）
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
       responses:
         '200':
-          description: Run 列表
+          description: 一页运行记录
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/AgentRun'
+                $ref: '#/components/schemas/AgentRunPage'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -832,6 +841,56 @@ components:
           description: |
             本次真的排进队列的文档数。已经在排队或正在处理的文档不计入——
             它们本来就会被重新处理一遍。
+
+    # ── 分页信封 ──────────────────────────────────────────────
+    #
+    # 三个会无界增长的列表用同一形状：items + nextCursor。
+    # nextCursor 为 null 表示「到底了」——前端据此把「加载更多」按钮收起来，
+    # 而不是让它一直亮着、点了没反应。
+
+    DocumentPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Document'
+        nextCursor:
+          type: string
+          nullable: true
+          description: 下一页的游标；null 表示没有更多了。
+
+    AgentRunPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentRun'
+        nextCursor:
+          type: string
+          nullable: true
+          description: 下一页的游标；null 表示没有更多了。
+
+    MessagePage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        nextCursor:
+          type: string
+          nullable: true
+          description: |
+            下一页的游标；null 表示没有更早的消息了。
+
+            **方向是「更旧」**：会话消息的第一页给的是**最新**的 N 条
+            （按 sequence_no 升序返回），翻下一页拿的是更早的。聊天页
+            打开就该看到最近发生的事，而不是一年前的那一句。
 
     # 请求体和响应体是两个 schema，不复用 KnowledgeBase：
     # 创建时客户端只该传 name——id 和两个时间戳由服务端生成。
@@ -1165,6 +1224,46 @@ components:
           type: string
           example: knowledge base 3f2b1c... not found
           description: 具体说明
+
+  # ── 可复用的分页参数 ────────────────────────────────────────
+  #
+  # 【只给会无界增长的接口】判据是「这个集合是否随用户操作单调增长、
+  # 且没有任何删除路径」。会话消息、知识库下的文档、Agent 运行历史三条
+  # 都满足；知识库/Agent/工具目录/provider 都是手工创建的有限集合，
+  # 运行步骤被 maxIterations 硬夹住，它们继续返回裸数组。
+  #
+  # 【响应是信封不是数组】客户端拿不到游标就没法翻页，而让客户端自己从
+  # 最后一条算游标等于把 SQL 的排序键和编码格式泄漏进前端。
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: |
+        一页最多返回多少条。省略时用 50；允许 1..200，越界返回 400
+        （不静默夹取——那会让你以为拿满了，实际少了一半）。
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: |
+        上一页响应里 nextCursor 的值，用来取下一页。第一页省略它。
+
+        **不透明**：不要解析它的内容、也不要自己构造。它的格式（目前是
+        base64）随时可能变，按内容分支的客户端会在某次升级后静默拿到
+        错的一页。解不出来时服务端返回 400。
+
+        方向：nextCursor 的含义是「更旧的一页」（这三个列表都是按时间
+        倒序、或按消息序号往回翻），不是「第 N+1 页」。
+      schema:
+        type: string
+        maxLength: 200
 
   # ── 可复用的响应 ────────────────────────────────────────────
   responses:

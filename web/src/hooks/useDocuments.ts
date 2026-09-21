@@ -1,6 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@congorag/api-client'
+import { flattenPages, nextPageParam } from '@/lib/pagination'
 
 /**
  * 一个知识库下的文档列表在缓存里的 key。
@@ -20,19 +21,30 @@ export const documentsKey = (kbId: string) => ['documents', kbId]
  * 不用一个单独的 useEffect 去启停定时器，TanStack Query 自己管这个生命周期。
  */
 export function useDocuments(kbId: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: documentsKey(kbId),
-    queryFn: async () => {
+    // null 表示"从头开始"（第一页）。用 null 而不是空串是因为它和
+    // nextCursor 的 nullable 语义一致，getNextPageParam 里不必再转换。
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) => {
       const { data, error } = await api.GET('/api/v1/knowledge-bases/{id}/documents', {
-        params: { path: { id: kbId } },
+        params: { path: { id: kbId }, query: { cursor: pageParam ?? undefined } },
       })
       if (error) throw error
       return data
     },
+    getNextPageParam: nextPageParam,
+    // 【轮询在分页之后仍然保留】判据不变（列表里还有非终态的文档就继续轮询），
+    // 只是要在摊平之后的集合上判。
+    //
+    // 【代价要如实记住】v5 的 useInfiniteQuery 没有"只重取第一页"的开关
+    // （refetch 会把已加载的每一页都重取一遍），所以用户点过 N 次「加载更多」
+    // 之后，每次轮询就是 N × 50 行。方向仍然是对的——用户没加载过更多时
+    // 成本不变，而加载过的历史是他自己要看的。
     refetchInterval: (query) => {
-      const docs = query.state.data
-      if (!docs) return false
-      const stillProcessing = docs.some(
+      const data = query.state.data
+      if (!data) return false
+      const stillProcessing = flattenPages(data).some(
         (d) => d.status === 'queued' || d.status === 'processing',
       )
       return stillProcessing ? 2000 : false

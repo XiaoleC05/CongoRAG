@@ -1,7 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@congorag/api-client'
 import type { Schemas } from '@congorag/api-client'
+import { flattenPages, nextPageParam } from '@/lib/pagination'
 
 export type Agent = Schemas['Agent']
 export type AgentRun = Schemas['AgentRun']
@@ -78,20 +79,25 @@ export function useCreateAgent() {
  * 那一刻拉一次——只要还有非终态（pending/running）的 run 就继续轮询。
  */
 export function useAgentRuns(agentId: string) {
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: agentRunsKey(agentId),
-    queryFn: async () => {
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }) => {
       const { data, error } = await api.GET('/api/v1/agents/{id}/runs', {
-        params: { path: { id: agentId } },
+        params: { path: { id: agentId }, query: { cursor: pageParam ?? undefined } },
       })
       if (error) throw error
       return data
     },
+    getNextPageParam: nextPageParam,
     enabled: agentId !== '',
+    // 轮询判据不变，只是要在摊平之后的集合上判（理由同 useDocuments）。
     refetchInterval: (query) => {
-      const runs = query.state.data
-      if (!runs) return false
-      const stillRunning = runs.some((r) => r.status === 'pending' || r.status === 'running')
+      const data = query.state.data
+      if (!data) return false
+      const stillRunning = flattenPages(data).some(
+        (r) => r.status === 'pending' || r.status === 'running',
+      )
       return stillRunning ? 1500 : false
     },
   })

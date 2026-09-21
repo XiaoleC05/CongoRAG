@@ -318,12 +318,32 @@ func (u *Usecase) Upload(ctx context.Context, kbID uuid.UUID, filename string, r
 }
 
 // ListDocuments 返回一个知识库下的全部文档。
-func (u *Usecase) ListDocuments(ctx context.Context, kbID uuid.UUID) ([]*Document, error) {
-	docs, err := u.docRepo.ListByKnowledgeBase(ctx, u.db, kbID)
+// ListDocuments 取一个知识库下的文档，keyset 分页（issue #45）。
+//
+// 第二个返回值是下一页的游标，没有下一页时为空串。
+func (u *Usecase) ListDocuments(ctx context.Context, kbID uuid.UUID, rawCursor string, limit int) ([]*Document, string, error) {
+	limit, err := platform.ClampListLimit(limit)
 	if err != nil {
-		return nil, fmt.Errorf("list documents of knowledge base %s: %w", kbID, err)
+		return nil, "", err
 	}
-	return docs, nil
+	cur, err := platform.ParseCursor(rawCursor)
+	if err != nil {
+		return nil, "", err
+	}
+
+	docs, hasMore, err := u.docRepo.ListByKnowledgeBase(ctx, u.db, kbID, cur, limit)
+	if err != nil {
+		return nil, "", fmt.Errorf("list documents of knowledge base %s: %w", kbID, err)
+	}
+
+	// 下一页从最后一行接着走。列表非空时 hasMore 才可能为真，所以这里
+	// 取末行是安全的。
+	next := ""
+	if len(docs) > 0 {
+		last := docs[len(docs)-1]
+		next = platform.EncodeNextCursor(hasMore, last.CreatedAt.Format(time.RFC3339Nano), last.ID.String())
+	}
+	return docs, next, nil
 }
 
 // ────────────────────────────────────────────────────────────────

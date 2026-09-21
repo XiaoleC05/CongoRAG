@@ -12,6 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAgent, useAgentRuns } from '@/hooks/useAgents'
 import { useStartAgentRun } from '@/hooks/useStartAgentRun'
+import { flattenPages } from '@/lib/pagination'
 import { formatDateTime } from '@/lib/format'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -38,7 +39,9 @@ export default function AgentDetailPage() {
   const agentId = id ?? ''
 
   const { data: agent, isPending, error } = useAgent(agentId)
-  const { data: runs } = useAgentRuns(agentId)
+  const { data: runPages, hasNextPage, fetchNextPage, isFetchingNextPage } =
+    useAgentRuns(agentId)
+  const runs = flattenPages(runPages)
   const { start, isRunning, timeline, runError } = useStartAgentRun(agentId)
   const navigate = useNavigate()
 
@@ -137,7 +140,7 @@ export default function AgentDetailPage() {
             </Button>
           </form>
 
-          {!!runs?.length && (
+          {!!runs.length && (
             <div className="mt-6">
               <h2 className="text-muted-foreground mb-2 text-sm font-medium">历史运行</h2>
               <div className="divide-border divide-y rounded-lg border">
@@ -155,6 +158,19 @@ export default function AgentDetailPage() {
                   </button>
                 ))}
               </div>
+              {/* 运行历史按 created_at 倒序，更旧的在下面。 */}
+              {hasNextPage && (
+                <div className="mt-2 flex justify-center">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={isFetchingNextPage}
+                    onClick={() => void fetchNextPage()}
+                  >
+                    {isFetchingNextPage ? '加载中…' : '加载更多'}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </>

@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { InfiniteData } from '@tanstack/react-query'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +10,7 @@ import { api } from '@congorag/api-client'
 import { useAgentRuns } from '@/hooks/useAgents'
 import type { AgentRun } from '@/hooks/useAgents'
 import { useStartAgentRun } from '@/hooks/useStartAgentRun'
+import type { Page } from '@/lib/pagination'
 import { streamAgentRun } from '@/lib/streamAgentRun'
 
 // 和 useMessages.test.tsx 同样的换法：网络层换成可控 mock，本文件要验证的
@@ -49,8 +51,11 @@ function renderAgent(queryClient: QueryClient) {
   )
 }
 
+// 分页（issue #45）之后缓存形状是 {pages, pageParams}，每一页是
+// {items, nextCursor}。读的时候摊平。
 function cachedRuns(queryClient: QueryClient) {
-  return queryClient.getQueryData<AgentRun[]>(['agent-runs', AGENT_ID]) ?? []
+  const data = queryClient.getQueryData<InfiniteData<Page<AgentRun>>>(['agent-runs', AGENT_ID])
+  return data ? data.pages.flatMap((page) => page.items) : []
 }
 
 describe('useStartAgentRun', () => {
@@ -66,7 +71,9 @@ describe('useStartAgentRun', () => {
   // 却一直空着，只有重新挂载页面才会出现。
   it('运行失败也要作废运行列表缓存，失败的 run 会出现在历史里', async () => {
     let persisted: AgentRun[] = []
-    getMock.mockImplementation(() => Promise.resolve({ data: persisted, error: undefined }))
+    getMock.mockImplementation(() =>
+      Promise.resolve({ data: { items: persisted, nextCursor: null }, error: undefined }),
+    )
     vi.mocked(streamAgentRun).mockImplementation(async (_agentId, _input, callbacks) => {
       // 模拟后端：run 先落库，然后流里发一个 error 帧，没有 done。
       persisted = [failedRun]
@@ -96,7 +103,9 @@ describe('useStartAgentRun', () => {
   // 这是"流没发 done 就断了"的形态，也就是最常见的失败。
   it('连接层直接失败时同样作废运行列表缓存', async () => {
     let persisted: AgentRun[] = []
-    getMock.mockImplementation(() => Promise.resolve({ data: persisted, error: undefined }))
+    getMock.mockImplementation(() =>
+      Promise.resolve({ data: { items: persisted, nextCursor: null }, error: undefined }),
+    )
     vi.mocked(streamAgentRun).mockImplementation(async (_agentId, _input, callbacks) => {
       persisted = [failedRun]
       callbacks.onError(new Error('连接中断'))

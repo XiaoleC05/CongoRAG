@@ -127,6 +127,42 @@ const readinessProbeTimeout = 2 * time.Second
 // 运维只能去翻日志；而且它按 Error 级别记日志，一个几秒一次的探针会把日志
 // 淹掉。这里直接 writeProblem，和 spa.go 的 NoRoute 404 是同一类
 // "不是请求失败，而是状态报告"。
+// parseListParams 把三个分页端点共用的 limit / cursor 解出来（issue #45）。
+//
+// 【为什么在 handler 里校验】"参数越界返回 400"是 HTTP 边界的语义。
+// usecase 里也会再校验一遍（它可能被别的调用方直接调），那是纵深不是重复。
+//
+// 返回的 bool 为 false 表示已经写过响应了，调用方直接 return。
+func (s *Server) parseListParams(c *gin.Context, limit *Limit, cursor *Cursor) (int, string, bool) {
+	n := 0
+	if limit != nil {
+		n = int(*limit)
+	}
+	n, err := platform.ClampListLimit(n)
+	if err != nil {
+		s.fail(c, err)
+		return 0, "", false
+	}
+
+	cur := ""
+	if cursor != nil {
+		cur = strings.TrimSpace(string(*cursor))
+	}
+	return n, cur, true
+}
+
+// nullableCursor 把内部用的空串转成契约里的 null / 缺省。
+//
+// 【空串在内部表示"没有更多"】契约里这个字段是 nullable 的字符串，前端拿
+// 到 null 就该把「加载更多」收起来。用空串表达的话前端要多判一种情况，
+// 而且空串是一个合法的字符串值，语义上区分不干净。
+func nullableCursor(next string) *string {
+	if next == "" {
+		return nil
+	}
+	return &next
+}
+
 func (s *Server) Readyz(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), readinessProbeTimeout)
 	defer cancel()
@@ -235,13 +271,21 @@ func toAPIDocumentList(docs []*knowledge.Document) []Document {
 	return out
 }
 
-func (s *Server) ListDocuments(c *gin.Context, id openapi_types.UUID) {
-	docs, err := s.deps.Knowledge.ListDocuments(c.Request.Context(), id)
+func (s *Server) ListDocuments(c *gin.Context, id openapi_types.UUID, params ListDocumentsParams) {
+	limit, cursor, ok := s.parseListParams(c, params.Limit, params.Cursor)
+	if !ok {
+		return
+	}
+
+	docs, next, err := s.deps.Knowledge.ListDocuments(c.Request.Context(), id, cursor, limit)
 	if err != nil {
 		s.fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, toAPIDocumentList(docs))
+	c.JSON(http.StatusOK, DocumentPage{
+		Items:      toAPIDocumentList(docs),
+		NextCursor: nullableCursor(next),
+	})
 }
 
 // UploadDocument 手动解析 multipart 表单——oapi-codegen 对 multipart
@@ -543,13 +587,21 @@ func (s *Server) CreateConversation(c *gin.Context) {
 	c.JSON(http.StatusCreated, toAPIConversation(conv))
 }
 
-func (s *Server) ListConversationMessages(c *gin.Context, id openapi_types.UUID) {
-	msgs, err := s.deps.Conversation.ListMessages(c.Request.Context(), id)
+func (s *Server) ListConversationMessages(c *gin.Context, id openapi_types.UUID, params ListConversationMessagesParams) {
+	limit, cursor, ok := s.parseListParams(c, params.Limit, params.Cursor)
+	if !ok {
+		return
+	}
+
+	msgs, next, err := s.deps.Conversation.ListMessages(c.Request.Context(), id, cursor, limit)
 	if err != nil {
 		s.fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, toAPIMessageList(msgs))
+	c.JSON(http.StatusOK, MessagePage{
+		Items:      toAPIMessageList(msgs),
+		NextCursor: nullableCursor(next),
+	})
 }
 
 // SendMessage 是全项目唯一一个"成功路径不调用 s.fail"的 handler——
@@ -799,13 +851,21 @@ func (s *Server) GetAgent(c *gin.Context, id openapi_types.UUID) {
 	c.JSON(http.StatusOK, toAPIAgent(a))
 }
 
-func (s *Server) ListAgentRuns(c *gin.Context, id openapi_types.UUID) {
-	runs, err := s.deps.Agent.ListRuns(c.Request.Context(), id)
+func (s *Server) ListAgentRuns(c *gin.Context, id openapi_types.UUID, params ListAgentRunsParams) {
+	limit, cursor, ok := s.parseListParams(c, params.Limit, params.Cursor)
+	if !ok {
+		return
+	}
+
+	runs, next, err := s.deps.Agent.ListRuns(c.Request.Context(), id, cursor, limit)
 	if err != nil {
 		s.fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, toAPIAgentRunList(runs))
+	c.JSON(http.StatusOK, AgentRunPage{
+		Items:      toAPIAgentRunList(runs),
+		NextCursor: nullableCursor(next),
+	})
 }
 
 // StartAgentRun 和 SendMessage 同一个模式：请求体解析失败还能用

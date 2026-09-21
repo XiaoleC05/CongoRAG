@@ -120,8 +120,8 @@ func (noopDocRepo) ByID(ctx context.Context, q platform.Querier, id uuid.UUID) (
 func (noopDocRepo) UpdateStatus(ctx context.Context, q platform.Querier, id uuid.UUID, from, to knowledge.Status) error {
 	return nil
 }
-func (noopDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID) ([]*knowledge.Document, error) {
-	return nil, nil
+func (noopDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID, cur *platform.ListCursor, limit int) ([]*knowledge.Document, bool, error) {
+	return nil, false, nil
 }
 func (noopDocRepo) Delete(ctx context.Context, q platform.Querier, id uuid.UUID) (string, error) {
 	return "", platform.ErrNotFound

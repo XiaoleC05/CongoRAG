@@ -183,12 +183,30 @@ func (u *Usecase) GetRun(ctx context.Context, id uuid.UUID) (*Run, error) {
 	return run, nil
 }
 
-func (u *Usecase) ListRuns(ctx context.Context, agentID uuid.UUID) ([]*Run, error) {
-	runs, err := u.repo.ListRunsByAgent(ctx, u.db, agentID)
+// ListRuns 取一个 Agent 的历史运行，keyset 分页（issue #45）。
+//
+// 第二个返回值是下一页的游标，没有下一页时为空串。
+func (u *Usecase) ListRuns(ctx context.Context, agentID uuid.UUID, rawCursor string, limit int) ([]*Run, string, error) {
+	limit, err := platform.ClampListLimit(limit)
 	if err != nil {
-		return nil, fmt.Errorf("list runs of agent %s: %w", agentID, err)
+		return nil, "", err
 	}
-	return runs, nil
+	cur, err := platform.ParseCursor(rawCursor)
+	if err != nil {
+		return nil, "", err
+	}
+
+	runs, hasMore, err := u.repo.ListRunsByAgent(ctx, u.db, agentID, cur, limit)
+	if err != nil {
+		return nil, "", fmt.Errorf("list runs of agent %s: %w", agentID, err)
+	}
+
+	next := ""
+	if len(runs) > 0 {
+		last := runs[len(runs)-1]
+		next = platform.EncodeNextCursor(hasMore, last.CreatedAt.Format(time.RFC3339Nano), last.ID.String())
+	}
+	return runs, next, nil
 }
 
 func (u *Usecase) ListSteps(ctx context.Context, runID uuid.UUID) ([]*Step, error) {

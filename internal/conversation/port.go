@@ -47,9 +47,17 @@ type Repo interface {
 	// 历史上的一条再回放一遍（问题被送两遍、空占位行也跟着进 prompt）。
 	RecentMessages(ctx context.Context, q platform.Querier, convID uuid.UUID, afterSequenceNo, beforeSequenceNo int64, limit int) ([]*Message, error)
 
-	// ListMessages 按 sequence_no 正序返回一个会话的全部消息，
-	// 供 GET /conversations/{id}/messages 使用（前端刷新页面重载历史）。
-	ListMessages(ctx context.Context, q platform.Querier, convID uuid.UUID) ([]*Message, error)
+	// ListMessagesPage 取一个会话里「比 beforeSequenceNo 更早」的最新 limit 条
+	// 消息，按 sequence_no 正序返回，供 GET /conversations/{id}/messages 使用
+	// （前端刷新页面重载历史）。
+	//
+	// beforeSequenceNo 传 0 表示没有上界（第一页给最新的 limit 条）。
+	// 返回的 bool 是 hasMore：还有没有更早的消息。
+	//
+	// 【它和 RecentMessages 不是一回事，不要合并】RecentMessages 服务的是
+	// 喂给模型的上下文窗口（自带 limit 与摘要水位线），这个服务的是前端
+	// 列表。两者的排序方向、过滤条件、调用点都不同，改一个不要顺手改另一个。
+	ListMessagesPage(ctx context.Context, q platform.Querier, convID uuid.UUID, beforeSequenceNo int64, limit int) ([]*Message, bool, error)
 
 	// MessagesAfter 按 sequence_no 正序取 sequence_no > afterSequenceNo 的
 	// 消息，最多 limit 条——供 MaintainSummary 增量滚动摘要用。正序（旧到新）

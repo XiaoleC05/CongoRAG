@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import type { InfiniteData } from '@tanstack/react-query'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -8,6 +9,7 @@ import type { ReactNode } from 'react'
 import { api } from '@congorag/api-client'
 import { messagesKey, useMessages, useSendMessage } from '@/hooks/useMessages'
 import type { Message } from '@/hooks/useMessages'
+import type { Page } from '@/lib/pagination'
 import { streamChat } from '@/lib/streamChat'
 
 // api 和 streamChat 都换成可控的 mock：本文件要验证的是"什么写进了缓存、
@@ -49,8 +51,11 @@ function renderChat(queryClient: QueryClient) {
   )
 }
 
+// 分页（issue #45）之后缓存形状是 {pages, pageParams}，每一页是
+// {items, nextCursor}。读的时候摊平——断言仍然只看「消息数组」这一件事。
 function cachedMessages(queryClient: QueryClient) {
-  return queryClient.getQueryData<Message[]>(messagesKey(CONVERSATION_ID)) ?? []
+  const data = queryClient.getQueryData<InfiniteData<Page<Message>>>(messagesKey(CONVERSATION_ID))
+  return data ? data.pages.flatMap((page) => page.items) : []
 }
 
 describe('useSendMessage', () => {
@@ -63,7 +68,7 @@ describe('useSendMessage', () => {
   // 生成期间对话区渲染的还是那份没失效的 ['messages', id]，用户刚敲进去的
   // 问题整个流式过程都不在屏幕上。
   it('发送那一刻就把用户消息插进缓存，不等后端确认', async () => {
-    getMock.mockResolvedValue({ data: [], error: undefined })
+    getMock.mockResolvedValue({ data: { items: [], nextCursor: null }, error: undefined })
     // 流不结束：这一段就是"正在生成中"。
     vi.mocked(streamChat).mockImplementation(() => new Promise<void>(() => {}))
 
@@ -85,7 +90,9 @@ describe('useSendMessage', () => {
   // 用户刚说过的话在屏幕上凭空消失、在库里却存在。
   it('生成失败也要作废消息缓存，重新拉取后用户那条消息仍在', async () => {
     let persisted: Message[] = []
-    getMock.mockImplementation(() => Promise.resolve({ data: persisted, error: undefined }))
+    getMock.mockImplementation(() =>
+      Promise.resolve({ data: { items: persisted, nextCursor: null }, error: undefined }),
+    )
     vi.mocked(streamChat).mockImplementation(async (_id, _text, _key, callbacks) => {
       // 模拟后端：先落库用户消息，再发 error 帧。
       persisted = [persistedUserMessage]
@@ -115,7 +122,7 @@ describe('useSendMessage', () => {
   // 必须不同——键写死的话，第二次提问会命中第一次的记录，服务端不生成新
   // 回答、直接把上一轮的答案补发回来，用户看到的是"发了消息但答案没变"。
   it('每次发送都带一个新的、非空的幂等键', async () => {
-    getMock.mockResolvedValue({ data: [], error: undefined })
+    getMock.mockResolvedValue({ data: { items: [], nextCursor: null }, error: undefined })
     vi.mocked(streamChat).mockImplementation(() => new Promise<void>(() => {}))
 
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })

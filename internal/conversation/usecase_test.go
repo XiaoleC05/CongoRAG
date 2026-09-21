@@ -211,13 +211,38 @@ func (f *fakeRepo) UpsertSummary(ctx context.Context, q platform.Querier, s *Sum
 	return nil
 }
 
-func (f *fakeRepo) ListMessages(ctx context.Context, q platform.Querier, convID uuid.UUID) ([]*Message, error) {
-	if f.failOn == "ListMessages" {
-		return nil, f.err
+// ListMessagesPage 复刻真实实现的顺序：内层 DESC 取 limit+1 条 → 在 DESC 序
+// 下切掉多取的那条 → 反转成升序返回。
+//
+// 【顺序不能改】先反转再切会切掉最新的那条，症状是"每翻一页少一条最新消息"
+// 且不报错。分页测试靠这个假实现来钉住真实实现的同一处。
+func (f *fakeRepo) ListMessagesPage(ctx context.Context, q platform.Querier, convID uuid.UUID, beforeSequenceNo int64, limit int) ([]*Message, bool, error) {
+	if f.failOn == "ListMessagesPage" {
+		return nil, false, f.err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]*Message{}, f.messages[convID]...), nil
+
+	candidates := make([]*Message, 0, len(f.messages[convID]))
+	for _, m := range f.messages[convID] {
+		if beforeSequenceNo == 0 || m.SequenceNo < beforeSequenceNo {
+			candidates = append(candidates, m)
+		}
+	}
+	// 内层 DESC。
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].SequenceNo > candidates[j].SequenceNo
+	})
+
+	hasMore := len(candidates) > limit
+	if hasMore {
+		candidates = candidates[:limit]
+	}
+	// 再反转成升序。
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].SequenceNo < candidates[j].SequenceNo
+	})
+	return candidates, hasMore, nil
 }
 
 func (f *fakeRepo) UpdateMessageContent(ctx context.Context, q platform.Querier, id uuid.UUID, content string, status MessageStatus) error {
@@ -1386,9 +1411,9 @@ func TestSend_PromptMessageList_SummaryCoveredHistoryIsNotRepeated(t *testing.T)
 
 func TestListMessages_PropagatesRepoError(t *testing.T) {
 	d := newTestUsecase()
-	d.repo.failOn, d.repo.err = "ListMessages", platform.ErrUpstream
+	d.repo.failOn, d.repo.err = "ListMessagesPage", platform.ErrUpstream
 
-	_, err := d.uc.ListMessages(context.Background(), uuid.New())
+	_, _, err := d.uc.ListMessages(context.Background(), uuid.New(), "", 0)
 
 	assert.ErrorIs(t, err, platform.ErrUpstream)
 }

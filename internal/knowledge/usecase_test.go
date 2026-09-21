@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -149,17 +150,49 @@ func (f *fakeDocRepo) UpdateStatus(ctx context.Context, q platform.Querier, id u
 	return platform.ErrNotFound
 }
 
-func (f *fakeDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID) ([]*Document, error) {
+// ListByKnowledgeBase 复刻真实 SQL 的语义：按 (created_at DESC, id DESC) 排，
+// 按游标过滤，多取一条判 hasMore，再切回 limit 条。
+//
+// 【为什么要复刻到这一步】分页测试要钉的正是"两页拼起来不重不漏"，
+// 假实现如果只是 `return f.docs[:limit]`，那条断言就变成在同义反复。
+func (f *fakeDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID, cur *platform.ListCursor, limit int) ([]*Document, bool, error) {
 	if f.failOn == "ListByKnowledgeBase" {
-		return nil, f.err
+		return nil, false, f.err
 	}
-	var out []*Document
+
+	matched := make([]*Document, 0)
 	for _, d := range f.docs {
 		if d.KnowledgeBaseID == kbID {
-			out = append(out, d)
+			matched = append(matched, d)
 		}
 	}
-	return out, nil
+	sort.SliceStable(matched, func(i, j int) bool {
+		if !matched[i].CreatedAt.Equal(matched[j].CreatedAt) {
+			return matched[i].CreatedAt.After(matched[j].CreatedAt)
+		}
+		return matched[i].ID.String() > matched[j].ID.String()
+	})
+
+	if cur != nil {
+		ts, err := time.Parse(time.RFC3339Nano, cur.SortKey)
+		if err != nil {
+			return nil, false, fmt.Errorf("cursor sort key: %w", platform.ErrInvalid)
+		}
+		kept := matched[:0]
+		for _, d := range matched {
+			// (created_at, id) < (cursorTs, cursorID)
+			if d.CreatedAt.Before(ts) || (d.CreatedAt.Equal(ts) && d.ID.String() < cur.Tiebreak) {
+				kept = append(kept, d)
+			}
+		}
+		matched = kept
+	}
+
+	hasMore := len(matched) > limit
+	if hasMore {
+		matched = matched[:limit]
+	}
+	return matched, hasMore, nil
 }
 
 func (f *fakeDocRepo) Delete(ctx context.Context, q platform.Querier, id uuid.UUID) (string, error) {

@@ -226,6 +226,14 @@ type AgentRun struct {
 // AgentRunStatus defines model for AgentRun.Status.
 type AgentRunStatus string
 
+// AgentRunPage defines model for AgentRunPage.
+type AgentRunPage struct {
+	Items []AgentRun `json:"items"`
+
+	// NextCursor 下一页的游标；null 表示没有更多了。
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
 // AgentRunStep defines model for AgentRunStep.
 type AgentRunStep struct {
 	CreatedAt time.Time          `json:"createdAt"`
@@ -369,6 +377,14 @@ type Document struct {
 // 任意阶段失败进 failed，failed 只能退回 queued 重试。
 type DocumentStatus string
 
+// DocumentPage defines model for DocumentPage.
+type DocumentPage struct {
+	Items []Document `json:"items"`
+
+	// NextCursor 下一页的游标；null 表示没有更多了。
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
 // KnowledgeBase defines model for KnowledgeBase.
 type KnowledgeBase struct {
 	CreatedAt time.Time          `json:"createdAt"`
@@ -393,6 +409,18 @@ type MessageRole string
 
 // MessageStatus defines model for Message.Status.
 type MessageStatus string
+
+// MessagePage defines model for MessagePage.
+type MessagePage struct {
+	Items []Message `json:"items"`
+
+	// NextCursor 下一页的游标；null 表示没有更早的消息了。
+	//
+	// **方向是「更旧」**：会话消息的第一页给的是**最新**的 N 条
+	// （按 sequence_no 升序返回），翻下一页拿的是更早的。聊天页
+	// 打开就该看到最近发生的事，而不是一年前的那一句。
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
 
 // ModelSummary defines model for ModelSummary.
 type ModelSummary struct {
@@ -485,6 +513,12 @@ type ToolCatalogEntry struct {
 // ToolCatalogEntrySideEffectLevel defines model for ToolCatalogEntry.SideEffectLevel.
 type ToolCatalogEntrySideEffectLevel string
 
+// Cursor defines model for Cursor.
+type Cursor = string
+
+// Limit defines model for Limit.
+type Limit = int
+
 // Conflict defines model for Conflict.
 type Conflict = Problem
 
@@ -503,10 +537,44 @@ type NotFound = Problem
 // ServiceUnavailable defines model for ServiceUnavailable.
 type ServiceUnavailable = Problem
 
+// ListAgentRunsParams defines parameters for ListAgentRuns.
+type ListAgentRunsParams struct {
+	// Limit 一页最多返回多少条。省略时用 50；允许 1..200，越界返回 400
+	// （不静默夹取——那会让你以为拿满了，实际少了一半）。
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor 上一页响应里 nextCursor 的值，用来取下一页。第一页省略它。
+	//
+	// **不透明**：不要解析它的内容、也不要自己构造。它的格式（目前是
+	// base64）随时可能变，按内容分支的客户端会在某次升级后静默拿到
+	// 错的一页。解不出来时服务端返回 400。
+	//
+	// 方向：nextCursor 的含义是「更旧的一页」（这三个列表都是按时间
+	// 倒序、或按消息序号往回翻），不是「第 N+1 页」。
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // SubscribeConversationEventsParams defines parameters for SubscribeConversationEvents.
 type SubscribeConversationEventsParams struct {
 	// AfterEventId 只返回这个 id 之后的事件；省略或传 0 表示从头开始
 	AfterEventId *int64 `form:"after_event_id,omitempty" json:"after_event_id,omitempty"`
+}
+
+// ListConversationMessagesParams defines parameters for ListConversationMessages.
+type ListConversationMessagesParams struct {
+	// Limit 一页最多返回多少条。省略时用 50；允许 1..200，越界返回 400
+	// （不静默夹取——那会让你以为拿满了，实际少了一半）。
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor 上一页响应里 nextCursor 的值，用来取下一页。第一页省略它。
+	//
+	// **不透明**：不要解析它的内容、也不要自己构造。它的格式（目前是
+	// base64）随时可能变，按内容分支的客户端会在某次升级后静默拿到
+	// 错的一页。解不出来时服务端返回 400。
+	//
+	// 方向：nextCursor 的含义是「更旧的一页」（这三个列表都是按时间
+	// 倒序、或按消息序号往回翻），不是「第 N+1 页」。
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // SendMessageParams defines parameters for SendMessage.
@@ -519,6 +587,23 @@ type SendMessageParams struct {
 	// 同一个键配不同的正文会返回 invalid_argument 的错误帧，
 	// 而不是把上一轮的回答重放一遍。
 	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// ListDocumentsParams defines parameters for ListDocuments.
+type ListDocumentsParams struct {
+	// Limit 一页最多返回多少条。省略时用 50；允许 1..200，越界返回 400
+	// （不静默夹取——那会让你以为拿满了，实际少了一半）。
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor 上一页响应里 nextCursor 的值，用来取下一页。第一页省略它。
+	//
+	// **不透明**：不要解析它的内容、也不要自己构造。它的格式（目前是
+	// base64）随时可能变，按内容分支的客户端会在某次升级后静默拿到
+	// 错的一页。解不出来时服务端返回 400。
+	//
+	// 方向：nextCursor 的含义是「更旧的一页」（这三个列表都是按时间
+	// 倒序、或按消息序号往回翻），不是「第 N+1 页」。
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // UploadDocumentMultipartBody defines parameters for UploadDocument.
@@ -561,9 +646,9 @@ type ServerInterface interface {
 	// GetAgent 查一个 Agent 的配置
 	// (GET /api/v1/agents/{id})
 	GetAgent(c *gin.Context, id openapi_types.UUID)
-	// ListAgentRuns 列出一个 Agent 的历史执行记录
+	// ListAgentRuns 列出一个 Agent 的历史执行记录（按创建时间倒序，keyset 分页）
 	// (GET /api/v1/agents/{id}/runs)
-	ListAgentRuns(c *gin.Context, id openapi_types.UUID)
+	ListAgentRuns(c *gin.Context, id openapi_types.UUID, params ListAgentRunsParams)
 	// StartAgentRun 启动一次 Agent 执行，响应是 SSE 流（text/event-stream）——
 	// 和 sendMessage 同一个模式,帧格式见 docs/sse-protocol.md。
 	// 这一轮没有 run 维度的断线重订阅（M4-B 才做),这次连接就是
@@ -577,9 +662,9 @@ type ServerInterface interface {
 	// SubscribeConversationEvents 断线续传入口（SSE），docs/sse-protocol.md「断线续传」一节
 	// (GET /api/v1/conversations/{id}/events)
 	SubscribeConversationEvents(c *gin.Context, id openapi_types.UUID, params SubscribeConversationEventsParams)
-	// ListConversationMessages 按顺序列出一个会话的全部消息（前端刷新页面重载历史用）
+	// ListConversationMessages 列出一个会话的消息（按 sequence_no 升序，keyset 分页，第一页给最新的）
 	// (GET /api/v1/conversations/{id}/messages)
-	ListConversationMessages(c *gin.Context, id openapi_types.UUID)
+	ListConversationMessages(c *gin.Context, id openapi_types.UUID, params ListConversationMessagesParams)
 	// SendMessage 发一条消息，响应是 SSE 流（text/event-stream），不是普通 JSON。
 	// 帧格式和事件类型见 docs/sse-protocol.md，那份文档是唯一权威来源，
 	// 这里的 schema 只是占位（OpenAPI 对流式响应体的描述能力有限）。
@@ -616,9 +701,9 @@ type ServerInterface interface {
 	// RenameKnowledgeBase 改知识库的名字
 	// (PATCH /api/v1/knowledge-bases/{id})
 	RenameKnowledgeBase(c *gin.Context, id openapi_types.UUID)
-	// ListDocuments 列出这个知识库下的全部文档
+	// ListDocuments 列出这个知识库下的文档（按创建时间倒序，keyset 分页）
 	// (GET /api/v1/knowledge-bases/{id}/documents)
-	ListDocuments(c *gin.Context, id openapi_types.UUID)
+	ListDocuments(c *gin.Context, id openapi_types.UUID, params ListDocumentsParams)
 	// UploadDocument 上传一个文档（异步处理：落盘 + 入队，立即返回）
 	// (POST /api/v1/knowledge-bases/{id}/documents)
 	UploadDocument(c *gin.Context, id openapi_types.UUID)
@@ -720,6 +805,25 @@ func (siw *ServerInterfaceWrapper) ListAgentRuns(c *gin.Context) {
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAgentRunsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -727,7 +831,7 @@ func (siw *ServerInterfaceWrapper) ListAgentRuns(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListAgentRuns(c, id)
+	siw.Handler.ListAgentRuns(c, id, params)
 }
 
 // StartAgentRun operation middleware
@@ -819,6 +923,25 @@ func (siw *ServerInterfaceWrapper) ListConversationMessages(c *gin.Context) {
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListConversationMessagesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -826,7 +949,7 @@ func (siw *ServerInterfaceWrapper) ListConversationMessages(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListConversationMessages(c, id)
+	siw.Handler.ListConversationMessages(c, id, params)
 }
 
 // SendMessage operation middleware
@@ -1069,6 +1192,25 @@ func (siw *ServerInterfaceWrapper) ListDocuments(c *gin.Context) {
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListDocumentsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -1076,7 +1218,7 @@ func (siw *ServerInterfaceWrapper) ListDocuments(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListDocuments(c, id)
+	siw.Handler.ListDocuments(c, id, params)
 }
 
 // UploadDocument operation middleware

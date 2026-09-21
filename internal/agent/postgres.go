@@ -104,28 +104,64 @@ func (r *PgRepo) GetRun(ctx context.Context, q platform.Querier, id uuid.UUID) (
 	return run, nil
 }
 
-func (r *PgRepo) ListRunsByAgent(ctx context.Context, q platform.Querier, agentID uuid.UUID) ([]*Run, error) {
-	rows, err := q.Query(ctx,
-		`SELECT id, agent_id, status, current_step, input, output,
-		        state_snapshot, state_schema_version, created_at, updated_at
-		 FROM agent_runs WHERE agent_id = $1 ORDER BY created_at DESC`, agentID)
+// agentRunsSelectCols / 两条列表 SQL：见 knowledge 的 documentsSelectCols
+// 同一套写法与理由（keyset 行值比较、方向与索引一致、多取一条判 hasMore）。
+const agentRunsSelectCols = `SELECT id, agent_id, status, current_step, input, output,
+	        state_snapshot, state_schema_version, created_at, updated_at
+	 FROM agent_runs`
+
+const listRunsWithCursorSQL = agentRunsSelectCols + `
+	 WHERE agent_id = $1 AND (created_at, id) < ($2, $3)
+	 ORDER BY created_at DESC, id DESC
+	 LIMIT $4`
+
+const listRunsSQL = agentRunsSelectCols + `
+	 WHERE agent_id = $1
+	 ORDER BY created_at DESC, id DESC
+	 LIMIT $2`
+
+func (r *PgRepo) ListRunsByAgent(ctx context.Context, q platform.Querier, agentID uuid.UUID, cur *platform.ListCursor, limit int) ([]*Run, bool, error) {
+	sql := listRunsSQL
+	args := []any{agentID}
+
+	if cur != nil {
+		ts, err := time.Parse(time.RFC3339Nano, cur.SortKey)
+		if err != nil {
+			return nil, false, fmt.Errorf("cursor sort key %q is not a timestamp: %w", cur.SortKey, platform.ErrInvalid)
+		}
+		id, err := uuid.Parse(cur.Tiebreak)
+		if err != nil {
+			return nil, false, fmt.Errorf("cursor tiebreak %q is not a uuid: %w", cur.Tiebreak, platform.ErrInvalid)
+		}
+		sql = listRunsWithCursorSQL
+		args = append(args, ts, id)
+	}
+	args = append(args, limit+1)
+
+	rows, err := q.Query(ctx, sql, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list runs of agent %s: %w", agentID, platform.WrapPgErr(err))
+		return nil, false, fmt.Errorf("list runs of agent %s: %w", agentID, platform.WrapPgErr(err))
 	}
 	defer rows.Close()
 
-	var out []*Run
+	out := make([]*Run, 0, limit)
 	for rows.Next() {
 		run, err := scanRunRow(rows)
 		if err != nil {
-			return nil, fmt.Errorf("scan run: %w", err)
+			return nil, false, fmt.Errorf("scan run: %w", err)
 		}
 		out = append(out, run)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate runs: %w", err)
+		return nil, false, fmt.Errorf("iterate runs: %w", err)
 	}
-	return out, nil
+
+	// DESC 序，多取的那条在尾部——先切再返回。
+	hasMore := len(out) > limit
+	if hasMore {
+		out = out[:limit]
+	}
+	return out, hasMore, nil
 }
 
 // UpdateRunStatus 用 CAS（WHERE status = $2）——见 port.go 的注释,
