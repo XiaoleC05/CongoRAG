@@ -69,6 +69,22 @@ func (r *PgRepo) GetConversation(ctx context.Context, q platform.Querier, id uui
 	return c, nil
 }
 
+// DeleteConversation 见 port.go 的契约。
+//
+// 【为什么不做软删】技术方案 §9 定的是级联硬删（和删除知识库同一条规则）：
+// 软删会让"删了的会话还在向量/事件表里被查出来"这种事发生，而那种不一致
+// 不报错。要软删就得连检索与补发那两条路径一起改。
+func (r *PgRepo) DeleteConversation(ctx context.Context, q platform.Querier, id uuid.UUID) error {
+	tag, err := q.Exec(ctx, `DELETE FROM conversations WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("delete conversation %s: %w", id, platform.WrapPgErr(err))
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("conversation %s: %w", id, platform.ErrNotFound)
+	}
+	return nil
+}
+
 func (r *PgRepo) TouchConversation(ctx context.Context, q platform.Querier, id uuid.UUID, at time.Time) error {
 	tag, err := q.Exec(ctx,
 		`UPDATE conversations SET updated_at = $2 WHERE id = $1`, id, at)

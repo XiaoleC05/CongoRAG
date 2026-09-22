@@ -39,6 +39,24 @@ func newFakeConfigRepo() *fakeConfigRepo {
 	}
 }
 
+// UpdateModel / DeleteModel 改的是 map 里的那一份（这个假 repo 用 map 存
+// 模型，与另外两个测试文件里的切片版不同）。
+func (f *fakeConfigRepo) UpdateModel(ctx context.Context, q platform.Querier, m *Model) error {
+	if _, ok := f.models[m.ID]; !ok {
+		return fmt.Errorf("model %s: %w", m.ID, platform.ErrNotFound)
+	}
+	f.models[m.ID] = m
+	return nil
+}
+
+func (f *fakeConfigRepo) DeleteModel(ctx context.Context, q platform.Querier, id uuid.UUID) error {
+	if _, ok := f.models[id]; !ok {
+		return fmt.Errorf("model %s: %w", id, platform.ErrNotFound)
+	}
+	delete(f.models, id)
+	return nil
+}
+
 func (f *fakeConfigRepo) UpsertProvider(ctx context.Context, q platform.Querier, p *Provider, keyCiphertext []byte) error {
 	if f.failOn == "UpsertProvider" {
 		return f.err

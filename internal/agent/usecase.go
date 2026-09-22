@@ -174,22 +174,77 @@ func requireToolCapability(m *llm.Model, agentName string, toolNames []string) e
 // 里注册过就拒绝——不允许创建一个引用了不存在工具的 Agent,那种配置
 // 只会在真正执行时才报错,提前挡在创建这一步对用户更友好。
 func (u *Usecase) CreateAgent(ctx context.Context, name, description, instruction string, toolNames []string) (*Agent, error) {
+	name, description, instruction, toolNames, err := u.validateAgentFields(ctx, name, description, instruction, toolNames)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	a := &Agent{
+		ID: uuid.New(), Name: name, Description: description, Instruction: instruction,
+		ToolNames: toolNames, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := u.repo.CreateAgent(ctx, u.db, a); err != nil {
+		return nil, fmt.Errorf("create agent: %w", err)
+	}
+	return a, nil
+}
+
+// UpdateAgent 改一个已存在的 Agent（issue #81）。
+//
+// 【校验与 CreateAgent 共用一份】名称/描述/instruction 的长度上限、工具
+// 必须已注册、工具能力门控——这些判据在两条路径上必须完全一致，各写一遍
+// 的话"建得了改不了"（或者反过来）这种不对称迟早会出现，而且不报错。
+//
+// 【整体替换，不是字段级合并】见契约里那个 operation 的 description：
+// 请求体给的就是改完之后的值。这样"把 system prompt 清空"是可表达的，
+// 而 PATCH 的字段级合并语义会让它表达不出来。
+func (u *Usecase) UpdateAgent(ctx context.Context, id uuid.UUID, name, description, instruction string, toolNames []string) (*Agent, error) {
+	name, description, instruction, toolNames, err := u.validateAgentFields(ctx, name, description, instruction, toolNames)
+	if err != nil {
+		return nil, err
+	}
+
+	a, err := u.repo.GetAgent(ctx, u.db, id)
+	if err != nil {
+		return nil, fmt.Errorf("get agent %s: %w", id, err)
+	}
+
+	a.Name = name
+	a.Description = description
+	a.Instruction = instruction
+	a.ToolNames = toolNames
+	a.UpdatedAt = time.Now()
+
+	if err := u.repo.UpdateAgent(ctx, u.db, a); err != nil {
+		return nil, fmt.Errorf("update agent %s: %w", id, err)
+	}
+	return a, nil
+}
+
+// validateAgentFields 是创建与编辑共用的校验，返回归一化之后的字段。
+//
+// 【为什么要返回归一化后的值而不是就地改】调用方拿到的必须是**能直接落库
+// 的那一份**：nil slice 归一成空数组这件事如果只在校验函数里做了而没传出来，
+// 调用方手里还是那个 nil，接着就会以 23502 的形式炸在 INSERT/UPDATE 上
+// （issue #18 就是这么来的）。
+func (u *Usecase) validateAgentFields(ctx context.Context, name, description, instruction string, toolNames []string) (string, string, string, []string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return nil, fmt.Errorf("agent name must not be empty: %w", platform.ErrInvalid)
+		return "", "", "", nil, fmt.Errorf("agent name must not be empty: %w", platform.ErrInvalid)
 	}
 	if n := len([]rune(name)); n > maxNameLen {
-		return nil, fmt.Errorf("agent name is too long (%d characters, max %d): %w", n, maxNameLen, platform.ErrInvalid)
+		return "", "", "", nil, fmt.Errorf("agent name is too long (%d characters, max %d): %w", n, maxNameLen, platform.ErrInvalid)
 	}
 	if n := len([]rune(description)); n > maxDescriptionLen {
-		return nil, fmt.Errorf("agent description is too long (%d characters, max %d): %w", n, maxDescriptionLen, platform.ErrInvalid)
+		return "", "", "", nil, fmt.Errorf("agent description is too long (%d characters, max %d): %w", n, maxDescriptionLen, platform.ErrInvalid)
 	}
 	if n := len([]rune(instruction)); n > maxInstructionLen {
-		return nil, fmt.Errorf("agent instruction is too long (%d characters, max %d): %w", n, maxInstructionLen, platform.ErrInvalid)
+		return "", "", "", nil, fmt.Errorf("agent instruction is too long (%d characters, max %d): %w", n, maxInstructionLen, platform.ErrInvalid)
 	}
-	for _, name := range toolNames {
-		if _, err := u.tools.Get(name); err != nil {
-			return nil, fmt.Errorf("tool %q is not registered: %w", name, platform.ErrInvalid)
+	for _, tn := range toolNames {
+		if _, err := u.tools.Get(tn); err != nil {
+			return "", "", "", nil, fmt.Errorf("tool %q is not registered: %w", tn, platform.ErrInvalid)
 		}
 	}
 
@@ -202,10 +257,10 @@ func (u *Usecase) CreateAgent(ctx context.Context, name, description, instructio
 		toolNames = []string{}
 	}
 
-	// 创建期门控（issue #38）：让用户在"刚勾上工具"的那一刻就得到反馈，
-	// 而不是等到发起运行时才发现。运行期那一道仍然保留——创建之后用户
-	// 可能换了 chat 模型（当前生效模型由 LatestByKind 按 created_at 决定，
-	// 重跑一次引导页就会换掉），只拦创建挡不住那条路径。
+	// 门控（issue #38）：让用户在"刚勾上工具"的那一刻就得到反馈，而不是
+	// 等到发起运行时才发现。运行期那一道仍然保留——改了之后用户可能换
+	// chat 模型（当前生效模型由 LatestByKind 按 created_at 决定，重跑一次
+	// 引导页就会换掉），只拦这里挡不住那条路径。
 	//
 	// 【零工具 Agent 不需要工具能力】它对模型没有这个要求，而且 ADK 对
 	// 零工具走的是另一条路径。所以判据是"这个 Agent 是否声明了至少一个
@@ -213,22 +268,14 @@ func (u *Usecase) CreateAgent(ctx context.Context, name, description, instructio
 	if len(toolNames) > 0 {
 		m, err := u.registry.ActiveModel(ctx, llm.KindChat)
 		if err != nil {
-			return nil, fmt.Errorf("resolve active chat model: %w", err)
+			return "", "", "", nil, fmt.Errorf("resolve active chat model: %w", err)
 		}
 		if err := requireToolCapability(m, name, toolNames); err != nil {
-			return nil, err
+			return "", "", "", nil, err
 		}
 	}
 
-	now := time.Now()
-	a := &Agent{
-		ID: uuid.New(), Name: name, Description: description, Instruction: instruction,
-		ToolNames: toolNames, CreatedAt: now, UpdatedAt: now,
-	}
-	if err := u.repo.CreateAgent(ctx, u.db, a); err != nil {
-		return nil, fmt.Errorf("create agent: %w", err)
-	}
-	return a, nil
+	return name, description, instruction, toolNames, nil
 }
 
 func (u *Usecase) ListAgents(ctx context.Context) ([]*Agent, error) {

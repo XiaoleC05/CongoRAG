@@ -53,6 +53,26 @@ func (r *PgRepo) GetAgent(ctx context.Context, q platform.Querier, id uuid.UUID)
 	return a, nil
 }
 
+// UpdateAgent 见 port.go 的契约。
+//
+// 【没有把 created_at 也 SET 一遍】它不是配置；跟着改会让"这个 Agent 是
+// 什么时候建的"变成一个会漂的值（而列表按 created_at 排序）。
+func (r *PgRepo) UpdateAgent(ctx context.Context, q platform.Querier, a *Agent) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE agents
+		    SET name = $2, description = $3, instruction = $4, tool_names = $5, updated_at = $6
+		  WHERE id = $1`,
+		a.ID, a.Name, a.Description, a.Instruction, a.ToolNames, a.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("update agent %s: %w", a.ID, platform.WrapPgErr(err))
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("agent %s: %w", a.ID, platform.ErrNotFound)
+	}
+	return nil
+}
+
 func (r *PgRepo) ListAgents(ctx context.Context, q platform.Querier) ([]*Agent, error) {
 	rows, err := q.Query(ctx,
 		`SELECT id, name, description, instruction, tool_names, created_at, updated_at

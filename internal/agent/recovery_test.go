@@ -594,3 +594,61 @@ var _ conversation.EventSink = (*fakeSink)(nil)
 
 // errors 只用于断言链式错误的可读性；保留它避免 import 被误删。
 var _ = errors.Is
+
+// ════════════════════════════════════════════════════════════════
+// issue #81：改一个已存在的 Agent
+// ════════════════════════════════════════════════════════════════
+
+// 能改的那几项真的改了，而且落回了存取层。
+func TestUpdateAgent_UpdatesFields(t *testing.T) {
+	u, _, _, _ := newStartFixture(t)
+	ctx := context.Background()
+
+	ag, err := u.CreateAgent(ctx, "原名", "旧描述", "", []string{"calculator"})
+	require.NoError(t, err)
+
+	updated, err := u.UpdateAgent(ctx, ag.ID, "新名", "新描述", "你是助手", nil)
+	require.NoError(t, err)
+
+	assert.Equal(t, "新名", updated.Name)
+	assert.Equal(t, "新描述", updated.Description)
+	assert.Equal(t, "你是助手", updated.Instruction)
+	assert.Empty(t, updated.ToolNames)
+	assert.NotNil(t, updated.ToolNames, "nil slice 会被 pgx 编码成 SQL NULL，撞上 NOT NULL 列")
+	assert.True(t, updated.UpdatedAt.After(ag.UpdatedAt) || updated.UpdatedAt.Equal(ag.UpdatedAt))
+	assert.Equal(t, ag.CreatedAt, updated.CreatedAt, "created_at 不是配置，不该跟着改")
+}
+
+// 【校验与创建共用一份】建得了改不了的判据必须完全一致——各写一遍的话，
+// 不对称迟早会出现，而且不报错。
+func TestUpdateAgent_SharesValidationWithCreate(t *testing.T) {
+	u, _, _, _ := newStartFixture(t)
+	ctx := context.Background()
+
+	ag, err := u.CreateAgent(ctx, "助手", "", "", nil)
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name        string
+		nameArg     string
+		toolNames   []string
+		instruction string
+	}{
+		{"空名字", "   ", nil, ""},
+		{"名字超长", string(make([]rune, maxNameLen+1)), nil, ""},
+		{"工具没注册", "助手", []string{"no-such-tool"}, ""},
+		{"instruction 超长", "助手", nil, string(make([]rune, maxInstructionLen+1))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := u.UpdateAgent(ctx, ag.ID, tc.nameArg, "", tc.instruction, tc.toolNames)
+			require.ErrorIs(t, err, platform.ErrInvalid)
+		})
+	}
+}
+
+func TestUpdateAgent_NotFound(t *testing.T) {
+	u, _, _, _ := newStartFixture(t)
+
+	_, err := u.UpdateAgent(context.Background(), uuid.New(), "x", "", "", nil)
+	require.ErrorIs(t, err, platform.ErrNotFound)
+}

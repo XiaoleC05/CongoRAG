@@ -585,6 +585,32 @@ type ToolCatalogEntry struct {
 // ToolCatalogEntrySideEffectLevel defines model for ToolCatalogEntry.SideEffectLevel.
 type ToolCatalogEntrySideEffectLevel string
 
+// UpdateAgentRequest defines model for UpdateAgentRequest.
+type UpdateAgentRequest struct {
+	Description string   `json:"description"`
+	Instruction string   `json:"instruction"`
+	Name        string   `json:"name"`
+	ToolNames   []string `json:"toolNames"`
+}
+
+// UpdateModelRequest defines model for UpdateModelRequest.
+type UpdateModelRequest struct {
+	// Capabilities 模型声明支持的能力，全部由用户手动勾选——OpenAI 兼容 API
+	// 不保证能自动查询这些（技术方案 §五）。embedding 这一位不在这里：
+	// 它由服务端根据这个模型是 chatModel 还是 embeddingModel 自动决定，
+	// 不需要用户勾选。
+	Capabilities    Capabilities `json:"capabilities"`
+	ContextWindow   int          `json:"contextWindow"`
+	MaxOutputTokens int          `json:"maxOutputTokens"`
+
+	// ModelId 模型名（比如 `gpt-4o-mini`）。**embedding 模型不能改这一项**——
+	// 见契约里 updateModel 的 description。
+	ModelId string `json:"modelId"`
+
+	// TokenizerType tiktoken 的编码名（比如 `o200k_base`）。取值必须是已认识的类型。
+	TokenizerType string `json:"tokenizerType"`
+}
+
 // UsageByModel defines model for UsageByModel.
 type UsageByModel struct {
 	// Calls 调用次数。**哪怕上游没回 usage 也会计一次**（那一行的 token 记 0）
@@ -762,6 +788,9 @@ type GetUsageSummaryParams struct {
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
 type CreateAgentJSONRequestBody = CreateAgentRequest
 
+// UpdateAgentJSONRequestBody defines body for UpdateAgent for application/json ContentType.
+type UpdateAgentJSONRequestBody = UpdateAgentRequest
+
 // StartAgentRunJSONRequestBody defines body for StartAgentRun for application/json ContentType.
 type StartAgentRunJSONRequestBody = StartAgentRunRequest
 
@@ -783,6 +812,9 @@ type UploadDocumentMultipartRequestBody UploadDocumentMultipartBody
 // SearchKnowledgeBaseJSONRequestBody defines body for SearchKnowledgeBase for application/json ContentType.
 type SearchKnowledgeBaseJSONRequestBody = KnowledgeSearchRequest
 
+// UpdateModelJSONRequestBody defines body for UpdateModel for application/json ContentType.
+type UpdateModelJSONRequestBody = UpdateModelRequest
+
 // CreateProviderJSONRequestBody defines body for CreateProvider for application/json ContentType.
 type CreateProviderJSONRequestBody = CreateProviderRequest
 
@@ -797,6 +829,9 @@ type ServerInterface interface {
 	// GetAgent 查一个 Agent 的配置
 	// (GET /api/v1/agents/{id})
 	GetAgent(c *gin.Context, id openapi_types.UUID)
+	// UpdateAgent 改一个 Agent 的配置（名称 / 描述 / system prompt / 工具集）
+	// (PATCH /api/v1/agents/{id})
+	UpdateAgent(c *gin.Context, id openapi_types.UUID)
 	// ListAgentRuns 列出一个 Agent 的历史执行记录（按创建时间倒序，keyset 分页）
 	// (GET /api/v1/agents/{id}/runs)
 	ListAgentRuns(c *gin.Context, id openapi_types.UUID, params ListAgentRunsParams)
@@ -826,6 +861,9 @@ type ServerInterface interface {
 	// CreateConversation 新建一个会话
 	// (POST /api/v1/conversations)
 	CreateConversation(c *gin.Context)
+	// DeleteConversation 删除一个会话（连带它的消息、事件与摘要）
+	// (DELETE /api/v1/conversations/{id})
+	DeleteConversation(c *gin.Context, id openapi_types.UUID)
 	// SubscribeConversationEvents 断线续传入口（SSE），docs/sse-protocol.md「断线续传」一节
 	// (GET /api/v1/conversations/{id}/events)
 	SubscribeConversationEvents(c *gin.Context, id openapi_types.UUID, params SubscribeConversationEventsParams)
@@ -880,6 +918,12 @@ type ServerInterface interface {
 	// SearchKnowledgeBase 在指定知识库里做一次向量检索，返回命中的分块与相似度
 	// (POST /api/v1/knowledge-bases/{id}/search)
 	SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID)
+	// DeleteModel 删掉一个模型条目
+	// (DELETE /api/v1/models/{id})
+	DeleteModel(c *gin.Context, id openapi_types.UUID)
+	// UpdateModel 改一个模型条目的配置
+	// (PATCH /api/v1/models/{id})
+	UpdateModel(c *gin.Context, id openapi_types.UUID)
 	// ListProviders 列出已配置的模型接入（Key 不会出现在响应里）
 	// (GET /api/v1/providers)
 	ListProviders(c *gin.Context)
@@ -999,6 +1043,31 @@ func (siw *ServerInterfaceWrapper) GetAgent(c *gin.Context) {
 	}
 
 	siw.Handler.GetAgent(c, id)
+}
+
+// UpdateAgent operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAgent(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateAgent(c, id)
 }
 
 // ListAgentRuns operation middleware
@@ -1140,6 +1209,31 @@ func (siw *ServerInterfaceWrapper) CreateConversation(c *gin.Context) {
 	}
 
 	siw.Handler.CreateConversation(c)
+}
+
+// DeleteConversation operation middleware
+func (siw *ServerInterfaceWrapper) DeleteConversation(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteConversation(c, id)
 }
 
 // SubscribeConversationEvents operation middleware
@@ -1566,6 +1660,56 @@ func (siw *ServerInterfaceWrapper) SearchKnowledgeBase(c *gin.Context) {
 	siw.Handler.SearchKnowledgeBase(c, id)
 }
 
+// DeleteModel operation middleware
+func (siw *ServerInterfaceWrapper) DeleteModel(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteModel(c, id)
+}
+
+// UpdateModel operation middleware
+func (siw *ServerInterfaceWrapper) UpdateModel(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.UpdateModel(c, id)
+}
+
 // ListProviders operation middleware
 func (siw *ServerInterfaceWrapper) ListProviders(c *gin.Context) {
 
@@ -1820,16 +1964,20 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/api/v1/documents/:id/reindex", wrapper.ReindexDocument)
 	router.GET(options.BaseURL+"/api/v1/conversations", wrapper.ListConversations)
 	router.POST(options.BaseURL+"/api/v1/conversations", wrapper.CreateConversation)
+	router.DELETE(options.BaseURL+"/api/v1/conversations/:id", wrapper.DeleteConversation)
 	router.GET(options.BaseURL+"/api/v1/conversations/:id/messages", wrapper.ListConversationMessages)
 	router.POST(options.BaseURL+"/api/v1/conversations/:id/messages", wrapper.SendMessage)
 	router.GET(options.BaseURL+"/api/v1/conversations/:id/events", wrapper.SubscribeConversationEvents)
 	router.GET(options.BaseURL+"/api/v1/providers", wrapper.ListProviders)
 	router.POST(options.BaseURL+"/api/v1/providers", wrapper.CreateProvider)
+	router.DELETE(options.BaseURL+"/api/v1/models/:id", wrapper.DeleteModel)
+	router.PATCH(options.BaseURL+"/api/v1/models/:id", wrapper.UpdateModel)
 	router.GET(options.BaseURL+"/api/v1/usage", wrapper.GetUsageSummary)
 	router.GET(options.BaseURL+"/api/v1/tools", wrapper.ListToolCatalog)
 	router.GET(options.BaseURL+"/api/v1/agents", wrapper.ListAgents)
 	router.POST(options.BaseURL+"/api/v1/agents", wrapper.CreateAgent)
 	router.GET(options.BaseURL+"/api/v1/agents/:id", wrapper.GetAgent)
+	router.PATCH(options.BaseURL+"/api/v1/agents/:id", wrapper.UpdateAgent)
 	router.GET(options.BaseURL+"/api/v1/agents/:id/runs", wrapper.ListAgentRuns)
 	router.POST(options.BaseURL+"/api/v1/agents/:id/runs", wrapper.StartAgentRun)
 	router.GET(options.BaseURL+"/api/v1/runs/:runId/events", wrapper.SubscribeRunEvents)

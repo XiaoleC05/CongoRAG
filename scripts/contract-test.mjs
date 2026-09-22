@@ -290,7 +290,10 @@ async function runBattery() {
   await call('GET', '/api/v1/usage', { expect: 200 })
   record('GET /api/v1/usage', 'ok')
 
-  // ── 收尾：把这一轮造的数据删掉 ──
+  // ── 收尾：把这一轮造的数据删掉（顺便把两个删除端点也校验了）──
+  await call('DELETE', `/api/v1/conversations/${convId}`, { expect: 204 })
+  record('DELETE /api/v1/conversations/{id}', 'ok')
+
   await call('DELETE', `/api/v1/knowledge-bases/${kbId}`, { expect: 204 })
   record('DELETE /api/v1/knowledge-bases/{id}', 'ok')
 
@@ -311,6 +314,8 @@ const NOT_COVERED = [
   ['POST /api/v1/documents/{id}/reindex', '需要一份已上传的文档'],
   ['GET /api/v1/documents/{id}', '同上'],
   ['GET/POST /api/v1/providers', '写它会动到本机已配置的模型服务；只读那一侧改由"没有 provider 时仍是空列表"覆盖更有意义，但那个前提在这里不成立（开发机上通常配过）'],
+  ['PATCH /api/v1/agents/{id}', '它要求先建一个 Agent，而**没有删除 Agent 的端点**——每跑一次都会在你的库里留一条。CI 上库是一次性的无所谓，本机会累积，所以这里刻意不测（响应形状与 GET /agents 里那个 Agent 基本重合）'],
+  ['PATCH / DELETE /api/v1/models/{id}', '要动本机已配置的模型条目（删错了会让发消息立刻失败）。它们的业务规则（当前生效的删不掉、embedding 不能改名）在 internal/llm/model_admin_test.go 里测'],
   ['POST /api/v1/agents/{id}/runs', '要打真实模型服务（SSE）'],
   ['GET /api/v1/runs/{runId}/steps', '需要一条已存在的 run'],
   ['GET /api/v1/agents/runs/{runId}/events', '同上（SSE）'],

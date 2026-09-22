@@ -102,6 +102,13 @@ type Repo interface {
 	// 生成的全部内容（不是增量），status 通常是 MsgStreaming 或终态。
 	UpdateMessageContent(ctx context.Context, q platform.Querier, id uuid.UUID, content string, status MessageStatus) error
 
+	// DeleteConversation 删掉一个会话。消息、SSE 事件、计数器、摘要都由
+	// 外键级联带走（见 migrations/0003 的 ON DELETE CASCADE）。
+	//
+	// 找不到（或者已经被删掉）时返回 ErrNotFound——用它当"删成功了没有"
+	// 的判据：RowsAffected == 0 就是没有这一行。
+	DeleteConversation(ctx context.Context, q platform.Querier, id uuid.UUID) error
+
 	// TouchConversation 把会话的 updated_at 推到给定的时刻（issue #78）。
 	//
 	// 【updated_at 在会话表上的含义是"最近活动时间"】它在建会话那一刻写

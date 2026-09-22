@@ -156,6 +156,36 @@ func (r *PgConfigRepo) GetModel(ctx context.Context, q platform.Querier, id uuid
 	return m, nil
 }
 
+// UpdateModel 见 port.go 的契约。
+func (r *PgConfigRepo) UpdateModel(ctx context.Context, q platform.Querier, m *Model) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE llm_models
+		    SET model_id = $2, capabilities = $3, context_window = $4,
+		        max_output_tokens = $5, tokenizer_type = $6
+		  WHERE id = $1`,
+		m.ID, m.ModelID, m.Capabilities.toSlice(),
+		m.ContextWindow, m.MaxOutputTokens, m.TokenizerType)
+	if err != nil {
+		return fmt.Errorf("update model %s: %w", m.ID, platform.WrapPgErr(err))
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("model %s: %w", m.ID, platform.ErrNotFound)
+	}
+	return nil
+}
+
+// DeleteModel 见 port.go 的契约。
+func (r *PgConfigRepo) DeleteModel(ctx context.Context, q platform.Querier, id uuid.UUID) error {
+	tag, err := q.Exec(ctx, `DELETE FROM llm_models WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("delete model %s: %w", id, platform.WrapPgErr(err))
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("model %s: %w", id, platform.ErrNotFound)
+	}
+	return nil
+}
+
 // rowScanner 是 pgx.Row 和 pgx.Rows 的公共子集——两者都有 Scan,
 // 让 scanModel 同时给 ListModels（多行）和 GetModel（单行）复用,
 // 不用把同样的字段列表写两遍。

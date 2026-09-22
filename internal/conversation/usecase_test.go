@@ -82,6 +82,24 @@ func (f *fakeRepo) GetConversation(ctx context.Context, q platform.Querier, id u
 	return c, nil
 }
 
+// DeleteConversation 从内存里删掉（连带它的消息与事件，复刻外键级联）。
+func (f *fakeRepo) DeleteConversation(ctx context.Context, q platform.Querier, id uuid.UUID) error {
+	if f.failOn == "DeleteConversation" {
+		return f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.conversations[id]; !ok {
+		return fmt.Errorf("conversation %s: %w", id, platform.ErrNotFound)
+	}
+	delete(f.conversations, id)
+	delete(f.messages, id)
+	delete(f.events, id)
+	delete(f.nextEventID, id)
+	delete(f.summaries, id)
+	return nil
+}
+
 // TouchConversation 实现"最近活动时间"这一列（issue #78）。它必须真的改动
 // Conversation.UpdatedAt：会话列表按这一列排序，假实现不更新它的话，
 // 列表顺序的测试测的是一份永远不会变的数据。
@@ -597,6 +615,25 @@ type fakeConfigRepo struct {
 	// 也不影响它们（那些路径从不调 ListModels）。
 	models  []*llm.Model
 	listErr error
+}
+
+func (f *fakeConfigRepo) UpdateModel(ctx context.Context, q platform.Querier, m *llm.Model) error {
+	for i, existing := range f.models {
+		if existing.ID == m.ID {
+			f.models[i] = m
+			return nil
+		}
+	}
+	return fmt.Errorf("model %s: %w", m.ID, platform.ErrNotFound)
+}
+func (f *fakeConfigRepo) DeleteModel(ctx context.Context, q platform.Querier, id uuid.UUID) error {
+	for i, existing := range f.models {
+		if existing.ID == id {
+			f.models = append(f.models[:i], f.models[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("model %s: %w", id, platform.ErrNotFound)
 }
 
 func (f *fakeConfigRepo) UpsertProvider(ctx context.Context, q platform.Querier, p *llm.Provider, keyCiphertext []byte) error {
@@ -1498,4 +1535,56 @@ func TestEventsAfter_ReturnsOnlyNewerEvents(t *testing.T) {
 	partial, err := d.uc.EventsAfter(context.Background(), conv.ID, midpoint)
 	require.NoError(t, err)
 	assert.Len(t, partial, len(all)-1)
+}
+
+// ════════════════════════════════════════════════════════════════
+// issue #78：删掉一个会话
+// ════════════════════════════════════════════════════════════════
+
+// 删掉之后那条会话**连带它的消息与事件**都不在了——复刻外键级联。
+// 只删会话行而留下消息的实现也能"通过"一条只查会话的断言，
+// 所以这里三条一起查。
+func TestDeleteConversation_CascadesToMessagesAndEvents(t *testing.T) {
+	d := newTestUsecase()
+	uc, repo := d.uc, d.repo
+	ctx := context.Background()
+
+	conv := d.createConversation(t, nil)
+	require.NoError(t, repo.AppendMessage(ctx, nil, &Message{
+		ID: uuid.New(), ConversationID: conv.ID, Role: domain.RoleUser,
+		Content: "你好", Status: MsgCompleted, SequenceNo: 1, CreatedAt: time.Now(),
+	}))
+	require.NoError(t, repo.AppendEvent(ctx, nil, conv.ID, Event{ID: 1, Type: "token", Payload: []byte(`{}`)}))
+
+	require.NoError(t, uc.DeleteConversation(ctx, conv.ID))
+
+	_, gerr := repo.GetConversation(ctx, nil, conv.ID)
+	require.ErrorIs(t, gerr, platform.ErrNotFound)
+	assert.Empty(t, repo.messages[conv.ID], "消息必须跟着走，否则它们会永远留在库里没人认领")
+	assert.Empty(t, repo.events[conv.ID], "事件同理")
+}
+
+func TestDeleteConversation_NotFound(t *testing.T) {
+	d := newTestUsecase()
+	require.ErrorIs(t, d.uc.DeleteConversation(context.Background(), uuid.New()), platform.ErrNotFound)
+}
+
+// 删一个会话不该动到别的会话。
+func TestDeleteConversation_LeavesOtherConversationsAlone(t *testing.T) {
+	d := newTestUsecase()
+	uc, repo := d.uc, d.repo
+	ctx := context.Background()
+
+	keep := d.createConversation(t, nil)
+	drop := d.createConversation(t, nil)
+	require.NoError(t, repo.AppendMessage(ctx, nil, &Message{
+		ID: uuid.New(), ConversationID: keep.ID, Role: domain.RoleUser,
+		Content: "还在", Status: MsgCompleted, SequenceNo: 1, CreatedAt: time.Now(),
+	}))
+
+	require.NoError(t, uc.DeleteConversation(ctx, drop.ID))
+
+	_, gerr := repo.GetConversation(ctx, nil, keep.ID)
+	require.NoError(t, gerr)
+	assert.Len(t, repo.messages[keep.ID], 1)
 }

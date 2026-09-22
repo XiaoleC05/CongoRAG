@@ -38,6 +38,22 @@ type ConfigRepo interface {
 	ListModels(ctx context.Context, q platform.Querier) ([]*Model, error)
 
 	GetModel(ctx context.Context, q platform.Querier, id uuid.UUID) (*Model, error)
+
+	// UpdateModel 改一个已存在的模型条目的可改字段（模型名、capabilities、
+	// context_window、max_output_tokens、tokenizer_type）。
+	//
+	// 【改不动的那几列】provider_id / kind / embedding_dim / created_at
+	// 都不在 SET 列表里——前两者的语义是"这个模型是什么"，换掉等于换了一个
+	// 模型（该新建一条）；embedding_dim 由引导时的探测决定，且和向量列的
+	// 形状绑着（ADR-004）。找不到返回 ErrNotFound。
+	UpdateModel(ctx context.Context, q platform.Querier, m *Model) error
+
+	// DeleteModel 删掉一个模型条目。找不到返回 ErrNotFound。
+	//
+	// ⚠️ token_usage 那边是 ON DELETE CASCADE（migrations/0003），所以这条
+	// 模型的用量记录会跟着一起消失。**"当前生效的那个不能删"这条业务规则
+	// 在 usecase 里判**，不在 repo 里——repo 只执行。
+	DeleteModel(ctx context.Context, q platform.Querier, id uuid.UUID) error
 }
 
 // ────────────────────────────────────────────────────────────────

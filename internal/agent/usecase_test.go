@@ -71,6 +71,20 @@ func (f *fakeRepo) GetAgent(ctx context.Context, q platform.Querier, id uuid.UUI
 func (f *fakeRepo) ListAgents(ctx context.Context, q platform.Querier) ([]*Agent, error) {
 	panic("not used")
 }
+
+// UpdateAgent 就地改内存里的那份，找不到返回 not_found——真实实现用的是
+// RowsAffected == 0，静默成功会让"改一个不存在的 Agent"这条路径测不到。
+func (f *fakeRepo) UpdateAgent(ctx context.Context, q platform.Querier, a *Agent) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, existing := range f.agents {
+		if existing.ID == a.ID {
+			*existing = *a
+			return nil
+		}
+	}
+	return fmt.Errorf("agent %s: %w", a.ID, platform.ErrNotFound)
+}
 func (f *fakeRepo) InsertRun(ctx context.Context, q platform.Querier, r *Run) error {
 	// 【为什么记录而不是 panic】门控那条测试要断言的正是「InsertRun 没被
 	// 调用」——记录成切片之后失败信息是"期望 0 条，实际 1 条"，而 panic

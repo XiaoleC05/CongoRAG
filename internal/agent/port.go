@@ -40,6 +40,12 @@ type Repo interface {
 	GetAgent(ctx context.Context, q platform.Querier, id uuid.UUID) (*Agent, error)
 	ListAgents(ctx context.Context, q platform.Querier) ([]*Agent, error)
 
+	// UpdateAgent 改一个已存在的 Agent 的可改字段（名称 / 描述 / system
+	// prompt / 工具集）与 updated_at。找不到返回 ErrNotFound。
+	//
+	// 【改不动的那几列】id / created_at 不在 SET 列表里——它们不是"配置"。
+	UpdateAgent(ctx context.Context, q platform.Querier, a *Agent) error
+
 	InsertRun(ctx context.Context, q platform.Querier, r *Run) error
 	GetRun(ctx context.Context, q platform.Querier, id uuid.UUID) (*Run, error)
 	// ListRunsByAgent 按 created_at 倒序取一个 Agent 的历史运行，最多 limit 条。

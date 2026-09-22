@@ -3,6 +3,7 @@ package retrieval
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -171,6 +172,25 @@ var _ llm.ConfigRepo = (*fakeConfigRepo)(nil)
 type fakeConfigRepo struct {
 	models  []*llm.Model
 	failErr error
+}
+
+func (f *fakeConfigRepo) UpdateModel(ctx context.Context, q platform.Querier, m *llm.Model) error {
+	for i, existing := range f.models {
+		if existing.ID == m.ID {
+			f.models[i] = m
+			return nil
+		}
+	}
+	return fmt.Errorf("model %s: %w", m.ID, platform.ErrNotFound)
+}
+func (f *fakeConfigRepo) DeleteModel(ctx context.Context, q platform.Querier, id uuid.UUID) error {
+	for i, existing := range f.models {
+		if existing.ID == id {
+			f.models = append(f.models[:i], f.models[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("model %s: %w", id, platform.ErrNotFound)
 }
 
 func (f *fakeConfigRepo) UpsertProvider(ctx context.Context, q platform.Querier, p *llm.Provider, keyCiphertext []byte) error {

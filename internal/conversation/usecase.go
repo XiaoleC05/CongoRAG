@@ -210,6 +210,19 @@ func (u *Usecase) ListConversations(ctx context.Context, rawCursor string, limit
 	return convs, next, nil
 }
 
+// DeleteConversation 删掉一个会话（issue #78）。
+//
+// 【为什么不做额外的业务校验】没有"正在生成中不能删"这一类判断：生成中的
+// 那一轮挂在一条活的 SSE 请求上，删掉会话之后它的收尾写入会因为外键
+// 找不到行而失败——那是**正确**的结果（这一轮的回答已经无处可写），
+// 而挡在入口反而会让用户在一个已经不需要的东西上被拦住。
+func (u *Usecase) DeleteConversation(ctx context.Context, id uuid.UUID) error {
+	if err := u.repo.DeleteConversation(ctx, u.db, id); err != nil {
+		return fmt.Errorf("delete conversation %s: %w", id, err)
+	}
+	return nil
+}
+
 // ListMessages 给 GET /conversations/{id}/messages 用——取一个会话最新的一页
 // 消息，keyset 分页（issue #45）。前端刷新页面重载历史时走它。
 //

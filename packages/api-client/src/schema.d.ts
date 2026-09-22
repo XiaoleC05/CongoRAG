@@ -202,6 +202,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conversations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 删除一个会话（连带它的消息、事件与摘要）
+         * @description 级联硬删：消息、SSE 事件、计数器、摘要都跟着走。这与删除知识库的
+         *     做法一致——方案定的是级联硬删，不留软删状态（软删会让"删了还在
+         *     被检索到"这种事发生）。
+         *
+         *     删掉之后这条会话的消息再也拉不回来，**包括其中的回答与引用**。
+         */
+        delete: operations["deleteConversation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations/{id}/messages": {
         parameters: {
             query?: never;
@@ -268,6 +294,48 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 删掉一个模型条目
+         * @description **当前生效的那个模型删不掉**（409 conflict）：当前生效模型由
+         *     `LatestByKind` 按创建时间决定，删掉它会让发消息或检索立刻失败，
+         *     而且失败点离用户的操作很远。要换模型，先把新的那条建出来。
+         *
+         *     ⚠️ **它的 token 用量记录会跟着一起删掉。** `token_usage.model_id`
+         *     的外键是 `ON DELETE CASCADE`（migrations/0003），所以这条模型的
+         *     历史用量（`GET /api/v1/usage` 里那些数字）一并消失。**这是既有的
+         *     表结构决定的，不是这次新引入的行为**——前端在确认框里要写明这一点。
+         */
+        delete: operations["deleteModel"];
+        options?: never;
+        head?: never;
+        /**
+         * 改一个模型条目的配置
+         * @description 能改的是：模型名、capabilities、上下文窗口、最大输出、tokenizer 类型。
+         *
+         *     **`kind` 与 provider 改不了**：前者的语义是"这个模型是干什么用的"，
+         *     改它等于换了一个模型（应该新建一条）；后者会让"这个模型名在哪家
+         *     接入点下有效"这件事无从判断。
+         *
+         *     **embedding 模型的模型名也改不了**：向量列的维度是在引导时按那个
+         *     模型探测出来并 `ALTER` 到表上的（见 ADR-004），改名字会让"列里这些
+         *     向量是谁算的"和配置对不上。要换 embedding 模型，走引导页那条会
+         *     清空重建的流程。
+         */
+        patch: operations["updateModel"];
         trace?: never;
     };
     "/api/v1/usage": {
@@ -338,7 +406,18 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * 改一个 Agent 的配置（名称 / 描述 / system prompt / 工具集）
+         * @description **整体替换，不是字段级合并**：请求体里给的字段就是改完之后的值，
+         *     没给的字段按"清空"处理（这与 PATCH 的一般约定不同，是有意的——
+         *     `instruction` 与 `toolNames` 的语义是"这个 Agent 现在是什么"，
+         *     留空本身就表示"没有"；字段级合并会让"想清空 system prompt"
+         *     这件事表达不出来）。
+         *
+         *     `toolNames` 非空时要过两道门：每个工具都必须在注册表里，
+         *     且当前生效的 chat 模型必须声明了工具调用能力（与创建时同一套判据）。
+         */
+        patch: operations["updateAgent"];
         trace?: never;
     };
     "/api/v1/agents/{id}/runs": {
@@ -796,6 +875,24 @@ export interface components {
              *     ]
              */
             toolNames?: string[];
+        };
+        UpdateAgentRequest: {
+            name: string;
+            description: string;
+            instruction: string;
+            toolNames: string[];
+        };
+        UpdateModelRequest: {
+            /**
+             * @description 模型名（比如 `gpt-4o-mini`）。**embedding 模型不能改这一项**——
+             *     见契约里 updateModel 的 description。
+             */
+            modelId: string;
+            capabilities: components["schemas"]["Capabilities"];
+            contextWindow: number;
+            maxOutputTokens: number;
+            /** @description tiktoken 的编码名（比如 `o200k_base`）。取值必须是已认识的类型。 */
+            tokenizerType: string;
         };
         StartAgentRunRequest: {
             /** @example 3 个 128 的和乘以 2 是多少？ */
@@ -1377,6 +1474,28 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
+    deleteConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 删掉了 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
     listConversationMessages: {
         parameters: {
             query?: {
@@ -1546,6 +1665,59 @@ export interface operations {
             };
         };
     };
+    deleteModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 删掉了 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateModelRequest"];
+            };
+        };
+        responses: {
+            /** @description 改好之后的模型条目 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSummary"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
     getUsageSummary: {
         parameters: {
             query?: {
@@ -1661,6 +1833,35 @@ export interface operations {
                     "application/json": components["schemas"]["Agent"];
                 };
             };
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentRequest"];
+            };
+        };
+        responses: {
+            /** @description 改好之后的 Agent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };

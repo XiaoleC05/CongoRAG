@@ -596,6 +596,14 @@ func (s *Server) CreateConversation(c *gin.Context) {
 	c.JSON(http.StatusCreated, toAPIConversation(conv))
 }
 
+func (s *Server) DeleteConversation(c *gin.Context, id openapi_types.UUID) {
+	if err := s.deps.Conversation.DeleteConversation(c.Request.Context(), id); err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (s *Server) ListConversations(c *gin.Context, params ListConversationsParams) {
 	limit, cursor, ok := s.parseListParams(c, params.Limit, params.Cursor)
 	if !ok {
@@ -745,6 +753,40 @@ func (s *Server) SubscribeConversationEvents(c *gin.Context, id openapi_types.UU
 	// 所以这个端点长期持有连接、等待新事件并没有实际意义——这一点
 	// 到 M4-A Agent 引入之后（生成可能跨越更长时间、更需要断线续传）
 	// 需要重新评估要不要在这里加"继续等待"的逻辑。
+}
+
+// UpdateModel / DeleteModel 是设置页管理模型条目用的（issue #83）。
+//
+// 【业务规则在 usecase 里，不在 handler 里】"当前生效的模型删不掉"这条判据
+// 依赖 LatestByKind 那套规则，而它属于业务层；handler 只做契约类型与业务类型
+// 之间的转换（和 toAPIModelSummary 是同一个方向上的另一件事）。
+func (s *Server) UpdateModel(c *gin.Context, id openapi_types.UUID) {
+	var req UpdateModelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+		return
+	}
+
+	m, err := s.deps.LLM.UpdateModel(c.Request.Context(), id, llm.UpdateModelRequest{
+		ModelID:         req.ModelId,
+		Capabilities:    fromAPICapabilities(&req.Capabilities),
+		ContextWindow:   req.ContextWindow,
+		MaxOutputTokens: req.MaxOutputTokens,
+		TokenizerType:   req.TokenizerType,
+	})
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toAPIModelSummary(m))
+}
+
+func (s *Server) DeleteModel(c *gin.Context, id openapi_types.UUID) {
+	if err := s.deps.LLM.DeleteModel(c.Request.Context(), id); err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -913,6 +955,27 @@ func (s *Server) CreateAgent(c *gin.Context) {
 
 func (s *Server) GetAgent(c *gin.Context, id openapi_types.UUID) {
 	a, err := s.deps.Agent.GetAgent(c.Request.Context(), id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toAPIAgent(a))
+}
+
+// UpdateAgent 改一个 Agent 的配置（issue #81）。
+//
+// 【和 CreateAgent 一样是 JSON 端点，不是 SSE】改配置没有流可推。
+// 校验（名称长度、工具已注册、工具能力门控）全在 usecase 里，与创建共用
+// 同一份——见 agent.Usecase.validateAgentFields 的注释。
+func (s *Server) UpdateAgent(c *gin.Context, id openapi_types.UUID) {
+	var req UpdateAgentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+		return
+	}
+
+	a, err := s.deps.Agent.UpdateAgent(c.Request.Context(), id,
+		req.Name, req.Description, req.Instruction, req.ToolNames)
 	if err != nil {
 		s.fail(c, err)
 		return

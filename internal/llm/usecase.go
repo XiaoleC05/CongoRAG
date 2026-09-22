@@ -259,3 +259,105 @@ func (u *Usecase) ListModels(ctx context.Context) ([]*Model, error) {
 	}
 	return models, nil
 }
+
+// UpdateModelRequest 是 UpdateModel 的入参。
+//
+// 【为什么在业务包里再定义一份，而不是直接收契约生成的类型】业务层不认识、
+// 也不该认识 oapi-codegen 生成的结构体——那条边界在 apps/api 的 handler 上
+// （它负责把契约类型转成业务类型，和 toAPIModelSummary 是同一个方向上的
+// 另一件事）。这一份只有 5 个字段，转一次的代价远小于"业务包 import 生成物"。
+type UpdateModelRequest struct {
+	ModelID         string
+	Capabilities    Capabilities
+	ContextWindow   int
+	MaxOutputTokens int
+	TokenizerType   string
+}
+
+// UpdateModel 改一个模型条目（issue #83）。
+//
+// 【哪些改不了，以及为什么】
+//   - `kind`：它的语义是"这个模型是干什么用的"，改它等于换了一个模型。
+//   - provider：会让"这个模型名在哪家接入点下有效"无从判断。
+//   - embedding 模型的**模型名**：向量列的维度是引导时按那个模型探测出来
+//     并 ALTER 到表上的（ADR-004），改名字会让列里那些向量和配置对不上。
+//     要换 embedding 模型，走引导页那条会清空重建的流程——那里有
+//     `allowEmbeddingReset` 那道确认。
+//
+// 【校验与 Bootstrap 用同一批常量】tokenizer_type 必须在 ValidTokenizerTypes
+// 里（理由见 tokenizer.go 那段注释：这一个点不挡，非法值会先落库、之后每条
+// 消息才在聊天路径上失败）。context_window / max_output_tokens 必须为正。
+func (u *Usecase) UpdateModel(ctx context.Context, id uuid.UUID, req UpdateModelRequest) (*Model, error) {
+	m, err := u.repo.GetModel(ctx, u.db, id)
+	if err != nil {
+		return nil, fmt.Errorf("get model %s: %w", id, err)
+	}
+
+	modelID := strings.TrimSpace(req.ModelID)
+	if modelID == "" {
+		return nil, fmt.Errorf("model name must not be empty: %w", platform.ErrInvalid)
+	}
+	if m.Kind == KindEmbedding && modelID != m.ModelID {
+		return nil, fmt.Errorf(
+			"cannot rename an embedding model (%s → %s): the vector column's dimension was probed from %q "+
+				"and altering the name would leave the stored vectors unattributable; "+
+				"use the onboarding flow to switch embedding models: %w",
+			m.ModelID, modelID, m.ModelID, platform.ErrConflict)
+	}
+	if req.ContextWindow <= 0 {
+		return nil, fmt.Errorf("contextWindow must be positive, got %d: %w", req.ContextWindow, platform.ErrInvalid)
+	}
+	if req.MaxOutputTokens <= 0 {
+		return nil, fmt.Errorf("maxOutputTokens must be positive, got %d: %w", req.MaxOutputTokens, platform.ErrInvalid)
+	}
+	tokenizerType := strings.TrimSpace(req.TokenizerType)
+	if !ValidTokenizerTypes[tokenizerType] {
+		return nil, fmt.Errorf(
+			"unknown tokenizerType %q (supported: cl100k_base, o200k_base): %w",
+			tokenizerType, platform.ErrInvalid)
+	}
+
+	m.ModelID = modelID
+	m.Capabilities = Capabilities(req.Capabilities)
+	m.ContextWindow = req.ContextWindow
+	m.MaxOutputTokens = req.MaxOutputTokens
+	m.TokenizerType = tokenizerType
+
+	if err := u.repo.UpdateModel(ctx, u.db, m); err != nil {
+		return nil, fmt.Errorf("update model %s: %w", id, err)
+	}
+	return m, nil
+}
+
+// DeleteModel 删掉一个模型条目（issue #83）。
+//
+// 【当前生效的那个删不掉】当前生效模型由 LatestByKind 按 created_at 决定，
+// 而它是发消息 / 检索 / 跑 Agent 都要用的东西。删掉它之后失败点离用户的
+// 操作很远（发下一条消息时才炸）。判据用**同一条规则**（LatestByKind），
+// 不是另写一个查询——两处规则不一致的话，会出现"以为删的是没在用的那条、
+// 实际删掉了在用的那条"。
+//
+// 【用量记录会跟着消失】token_usage.model_id 的外键是 ON DELETE CASCADE，
+// 这是既有的表结构（migrations/0003）。契约与前端确认框里都写明了这一点。
+func (u *Usecase) DeleteModel(ctx context.Context, id uuid.UUID) error {
+	m, err := u.repo.GetModel(ctx, u.db, id)
+	if err != nil {
+		return fmt.Errorf("get model %s: %w", id, err)
+	}
+
+	models, err := u.repo.ListModels(ctx, u.db)
+	if err != nil {
+		return fmt.Errorf("list models: %w", err)
+	}
+	if active := LatestByKind(models, m.Kind); active != nil && active.ID == m.ID {
+		return fmt.Errorf(
+			"model %s (%s, kind=%s) is the active %s model; deleting it would break every request "+
+				"that needs one — create its replacement first: %w",
+			m.ID, m.ModelID, m.Kind, m.Kind, platform.ErrConflict)
+	}
+
+	if err := u.repo.DeleteModel(ctx, u.db, id); err != nil {
+		return fmt.Errorf("delete model %s: %w", id, err)
+	}
+	return nil
+}
