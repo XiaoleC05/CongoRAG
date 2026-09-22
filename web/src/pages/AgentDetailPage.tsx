@@ -35,8 +35,18 @@ export default function AgentDetailPage() {
   const agentId = id ?? ''
 
   const { data: agent, isPending, error } = useAgent(agentId)
-  const { data: runPages, hasNextPage, fetchNextPage, isFetchingNextPage } =
-    useAgentRuns(agentId)
+  // 【三态都要取】只取 data 的话，加载中与请求失败都会落到"runs.length === 0"
+  // 那一支，于是历史运行区写的是「还没有运行过」——打开这一页时它几乎必然闪一下
+  // （runs 的响应比 agent 大），而请求失败时这句会**一直留着**：一个跑过 30 次
+  // 的 Agent，界面断言它从没跑过，页面上也没有任何"读取失败"的迹象。
+  const {
+    data: runPages,
+    isPending: runsPending,
+    error: runsError,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useAgentRuns(agentId)
   const runs = flattenPages(runPages)
   const { start, cancel, isRunning, isCancelling, timeline, runError, runId, status } =
     useStartAgentRun(agentId)
@@ -199,14 +209,25 @@ export default function AgentDetailPage() {
             )}
           </form>
 
-          {/* 历史运行。三态 + 两种空态（§2/§13/§19）：
+          {/* 历史运行。**三态 + 两种空态**（§2/§13/§19）：
+              - 还在拉 → 骨架（不是"还没有运行过"）
+              - 拉失败 → 页内 Alert（这条是持久记录，不是一闪而过的提示）
               - 一条都没跑过 → RunHistoryEmptyState（引导去下面的输入框）
               - 跑过、但筛完没匹配 → RunNoMatchState（出口是"清除筛选"）
-              两个态是两件事，文案与出口都不一样，所以是两个组件。 */}
+              后两个是两件事，文案与出口都不一样，所以是两个组件。 */}
           <div className="mt-6">
             <h2 className="text-muted-foreground mb-2 text-sm font-medium">历史运行</h2>
 
-            {runs.length === 0 ? (
+            {runsPending ? (
+              <RunListSkeleton />
+            ) : runsError ? (
+              <Alert variant="destructive">
+                <AlertTitle>历史运行加载失败</AlertTitle>
+                <AlertDescription>
+                  <ErrorText error={runsError} />
+                </AlertDescription>
+              </Alert>
+            ) : runs.length === 0 ? (
               <RunHistoryEmptyState />
             ) : (
               <>
@@ -317,6 +338,17 @@ function RunNoMatchState({
       <Button variant="outline" onClick={onClear}>
         清除筛选
       </Button>
+    </div>
+  )
+}
+
+/** 历史运行还在拉。骨架而不是"还没有运行过"——后者是**断言**，而这时还不知道。 */
+function RunListSkeleton() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 3 }, (_, i) => (
+        <Skeleton key={i} className="h-12 rounded-lg" />
+      ))}
     </div>
   )
 }

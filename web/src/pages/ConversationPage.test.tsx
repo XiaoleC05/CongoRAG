@@ -265,3 +265,38 @@ describe('重新生成（issue #90）', () => {
     expect(screen.getByRole('button', { name: '停止生成' })).toBeTruthy()
   })
 })
+
+// 【失败的重新生成不该在旧回答上留下「已被重新生成」】
+//
+// 这个标记原来写在**请求发出之前**：一次根本没到服务端的重新生成（后端没起、
+// 代理断了）会在界面上同时留下红色「生成失败」和旧回答下面的「已被重新生成」
+// ——两句互相矛盾，而那一轮从没被重新生成过、也没有任何新分支。
+describe('重新生成：失败时不改标记（issue #90）', () => {
+  it('请求出错时，旧回答不标「已被重新生成」', async () => {
+    mockHistory([question, answer])
+    // 流没到服务端就报错。
+    //
+    // 【必须走 onError，不能让假实现 throw】`streamChat` 的真实契约是
+    // **自己把错误吃下来交给 onError**（`lib/streamChat.ts` 的 catch：
+    // 没被中止就调 onError），只有中止那一条路不调。用一个会 throw 的假实现
+    // 测出来的是"假实现和真实现不一样"，不是产品行为。
+    // 签名是 (conversationId, text, idempotencyKey, callbacks, signal)——
+    // 少写一个参数的话 `callbacks` 收到的是那个幂等键字符串，`onError` 是
+    // undefined，报出来的是"类型不对"而不是产品行为。
+    vi.mocked(streamChat).mockImplementation(async (_id, _text, _key, callbacks) => {
+      callbacks.onError(new Error('连不上服务端'))
+      return null
+    })
+
+    renderPage()
+    await screen.findByText(answer.content)
+
+    fireEvent.click(screen.getByRole('button', { name: '重新生成' }))
+    await waitFor(() => expect(vi.mocked(streamChat)).toHaveBeenCalledTimes(1))
+
+    // 报错出现了（这一轮确实失败了）。
+    expect(await screen.findByText('生成失败')).toBeTruthy()
+    // 而旧回答**没有**被标成"已被重新生成"——它没有被替代过。
+    expect(screen.queryByText('已被重新生成')).toBeNull()
+  })
+})

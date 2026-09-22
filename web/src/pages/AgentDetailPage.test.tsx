@@ -357,3 +357,44 @@ describe('编辑 Agent 的入口（issue #81）', () => {
     expect(document.body.textContent).toContain('编辑 Agent')
   })
 })
+
+// ════════════════════════════════════════════════════════════════
+// 历史运行的三态（对抗性审查查出：只有两态）
+// ════════════════════════════════════════════════════════════════
+
+// 【这句文案是一个**断言**，而"还在拉"的时候还不知道】只取 `data` 的话，
+// 加载中与请求失败都会落到 `runs.length === 0` 那一支，界面写的是
+// 「还没有运行过」——打开这一页几乎必然闪一下（runs 的响应比 agent 大），
+// 而请求失败时它会**一直留着**：一个跑过 30 次的 Agent，界面断言它从没跑过。
+describe('历史运行的三态', () => {
+  it('还在拉的时候给骨架，不说「还没有运行过」', async () => {
+    // 让 runs 永不 resolve：停在加载态。
+    getMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/agents/{id}') return Promise.resolve({ data: agent, error: undefined })
+      if (path === '/api/v1/agents/{id}/runs') return new Promise(() => {})
+      throw new Error(`用例没预料到的 GET ${path}`)
+    })
+
+    renderPage()
+
+    expect(await screen.findByText(agent.name)).toBeTruthy()
+    await waitFor(() => expect(screen.queryByText(/还没有运行过/)).toBeNull())
+    // 骨架在：它是"还不知道"，不是"没有"。
+    expect(document.querySelectorAll('[data-slot="skeleton"]').length).toBeGreaterThan(0)
+  })
+
+  it('拉失败时给页内报错，不说「还没有运行过」', async () => {
+    getMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/agents/{id}') return Promise.resolve({ data: agent, error: undefined })
+      if (path === '/api/v1/agents/{id}/runs') {
+        return Promise.resolve({ data: undefined, error: { type: 'internal_error' } })
+      }
+      throw new Error(`用例没预料到的 GET ${path}`)
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('历史运行加载失败')).toBeTruthy()
+    expect(screen.queryByText(/还没有运行过/)).toBeNull()
+  })
+})

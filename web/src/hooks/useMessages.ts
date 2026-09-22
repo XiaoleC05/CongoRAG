@@ -172,11 +172,6 @@ export function useSendMessage(conversationId: string) {
       setActiveSource(options.source ?? null)
 
       const source = options.source
-      if (source?.kind === 'regenerate') {
-        setRegeneratedIds((prev) =>
-          prev.includes(source.messageId) ? prev : [...prev, source.messageId],
-        )
-      }
 
       // 【一次用户意图 = 一个键】新按下发送就该是一个新键。
       //
@@ -252,8 +247,10 @@ export function useSendMessage(conversationId: string) {
                   setStreamError(event.data)
                   break
                 case 'done':
+                  // 【不在这里收流】`isStreaming` 控制的是"那条流式气泡还在不在"，
+                  // 而它一关，气泡就没了、历史里又还没有这条回答。收流放在
+                  // finally 的重取之后（见那里的注释）。
                   terminal = 'done'
-                  setIsStreaming(false)
                   break
               }
             },
@@ -276,10 +273,28 @@ export function useSendMessage(conversationId: string) {
         // 正常结束那条路径本来也要作废（技术方案 §三："页面刷新后从数据库
         // 重载历史与未完成状态"的同一个原则，这里是"流刚结束"这一刻就主动
         // 应用，不等用户手动刷新）。
-        setIsStreaming(false)
-        setActiveSource(null)
+        // 【标记"已被重新生成"要等这次请求真的没出错】写在请求发出之前的话，
+        // 一次根本没到服务端的重新生成（后端没起、代理断了）会在界面上同时
+        // 留下红色「生成失败」和旧回答下面的「已被重新生成」——两句互相矛盾，
+        // 而那一轮从没被重新生成过、也没有任何新分支。
+        //
+        // 判据是"没有出错且没有被中止"，而不是 terminal === 'done'：流正常
+        // 结束不一定收到过 done 帧（连接被静默关掉、测试里的假流），把那种
+        // 情况排除掉会让标记在不该缺席的时候缺席。
+        if (terminal !== 'error' && !controller.signal.aborted && source?.kind === 'regenerate') {
+          setRegeneratedIds((prev) =>
+            prev.includes(source.messageId) ? prev : [...prev, source.messageId],
+          )
+        }
+
+        // 【先作废重取，再放开 UI】反过来的话有一段窗口：`isStreaming` 已经
+        // 是 false、流式气泡被卸载，而历史缓存里还没有这条回答（它要等重取
+        // 回来）——屏幕上刚生成好的答案会**消失一下**，要等一次往返才回来，
+        // 而这段时间输入框已经能打字了。
         controllerRef.current = null
         await queryClient.invalidateQueries({ queryKey: key })
+        setIsStreaming(false)
+        setActiveSource(null)
 
         // 【中止之后要认得"被停下来的那条回答"】被中止的那一轮后端会以
         // failed 终态落库，并把已经生成的部分写进 content（failMessage 的

@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   useCreateAgent,
   useToolCatalog,
@@ -99,7 +100,9 @@ const inlineOnly = (err: unknown) =>
  * 显示出来，并指向唯一能改它的地方（设置页）。
  */
 export function AgentFormDialog({ open, onOpenChange, agent }: Props) {
-  const { data: tools } = useToolCatalog()
+  // 【三态都要】只取 data 的话，拉不到工具会渲染成**一片空白**——用户会据此
+// 认为这个平台没有工具可勾（编辑场景里更糟：看不见这个 Agent 已经绑了哪些）。
+const { data: tools, isPending: toolsPending, error: toolsError } = useToolCatalog()
   const { data: providers } = useProviders()
   const create = useCreateAgent()
   const update = useUpdateAgent()
@@ -272,6 +275,25 @@ export function AgentFormDialog({ open, onOpenChange, agent }: Props) {
                   </AlertDescription>
                 </Alert>
               )}
+
+              {toolsPending ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 rounded-md" />
+                  <Skeleton className="h-10 rounded-md" />
+                </div>
+              ) : toolsError ? (
+                <Alert variant="destructive">
+                  <AlertTitle>工具列表加载失败</AlertTitle>
+                  <AlertDescription>
+                    <ErrorText error={toolsError} />
+                  </AlertDescription>
+                </Alert>
+              ) : (tools ?? []).length === 0 ? (
+                // 真的一个工具都没有：这是后端的目录表为空，与"拉不到"是两件事。
+                <p className="text-muted-foreground text-sm">
+                  当前没有任何可用的工具（后端的工具目录是空的）。
+                </p>
+              ) : null}
 
               <div className="space-y-2">
                 {tools?.map((tool) => (

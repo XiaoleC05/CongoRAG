@@ -104,7 +104,10 @@ export default function ConversationPage() {
               <Skeleton className="h-16 w-2/3 rounded-2xl" />
               <Skeleton className="ml-auto h-10 w-1/2 rounded-2xl" />
             </div>
-          ) : error ? (
+          ) : error && history.length === 0 && !isStreaming ? (
+            // 【整屏报错只在"什么都没得显示"时】有历史（或正在流的那一条）
+            // 的时候把整段换掉，会把用户正在看的对话连同刚生成的回答一起
+            // 抹掉——而库里的东西是好好的。那种情况走下面的非破坏性提示。
             <Alert variant="destructive">
               <AlertTitle>加载失败</AlertTitle>
               <AlertDescription>
@@ -113,6 +116,18 @@ export default function ConversationPage() {
             </Alert>
           ) : (
             <>
+              {/* 【刷新失败不清屏】上面那个分支只在没有内容时接管；这里有
+                  内容，所以只提示一句——"刚生成的回答看不见了"比"多了
+                  一条提示"糟得多。 */}
+              {error && (
+                <Alert>
+                  <AlertTitle>刷新失败</AlertTitle>
+                  <AlertDescription>
+                    下面显示的还是上一次拿到的内容。
+                    <ErrorText error={error} />
+                  </AlertDescription>
+                </Alert>
+              )}
               {/* 【「加载更多」在顶部】这个列表是升序的、最新的在底部，所以
                   更早的消息要往上看——按钮放在消息流上方才符合方向直觉。
                   hasNextPage 为假时按钮整个不渲染，而不是禁用它：禁用会让
