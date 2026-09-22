@@ -59,7 +59,13 @@ function MessageBubbleImpl({ role, content, citations, pending }: Props) {
         {isUser ? <User className="size-4" /> : <Bot className="size-4" />}
       </div>
 
-      <div className={cn('min-w-0 max-w-[75%] flex-1', isUser && 'flex flex-col items-end')}>
+      {/* 【窄屏放宽到 85%（issue #86）】75% 是按桌面宽度定的：390px 上气泡只剩
+          约 250px，中文每行十来个字就折，一段答案要占好几屏。窄屏把上限放宽到
+          85%，sm: 以上回到 75%——宽屏上留着那 25% 是为了让左右两侧的发言
+          一眼分得开，这个理由在窄屏上让位给可读性。 */}
+      <div
+        className={cn('min-w-0 max-w-[85%] flex-1 sm:max-w-[75%]', isUser && 'flex flex-col items-end')}
+      >
         <div
           className={cn(
             'rounded-2xl px-4 py-2.5 text-sm',

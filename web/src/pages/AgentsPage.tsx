@@ -10,6 +10,16 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useAgents } from '@/hooks/useAgents'
 import { formatDateTime } from '@/lib/format'
 
+/**
+ * 卡片网格的列宽：自适应列数，最小 280px。
+ *
+ * 【为什么下界写成 min(280px,100%)（issue #86）】硬写 280px 时，容器比它窄的
+ * 那一列仍然按 280px 撑出去：320px 宽上实测，正文只有 272px、轨道是 280px，
+ * 卡片比容器宽 8px。它不会把整个文档撑出横向滚动条（主区域自己会滚），
+ * 所以只有量才知道。`min(280px,100%)` 让下界在窄容器里退化成"占满一行"。
+ */
+const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(min(280px,100%),1fr))] gap-3'
+
 /** Agent 列表页——Dify 数据集列表同一个思路的卡片网格。 */
 export default function AgentsPage() {
   const { data, isPending, error } = useAgents()
@@ -36,7 +46,7 @@ export default function AgentsPage() {
       </header>
 
       {isPending ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
+        <div className={GRID}>
           {Array.from({ length: 3 }, (_, i) => (
             <Skeleton key={i} className="h-32 rounded-xl" />
           ))}
@@ -51,7 +61,7 @@ export default function AgentsPage() {
       ) : data.length === 0 ? (
         <EmptyState onCreate={openCreate} />
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
+        <div className={GRID}>
           {data.map((agent) => (
             <div
               key={agent.id}

@@ -1,6 +1,8 @@
 import { BarChart3 } from 'lucide-react'
 import { useState } from 'react'
 
+import type { Schemas } from '@congorag/api-client'
+
 import { ErrorText } from '@/components/ErrorText'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -123,7 +125,38 @@ export default function UsagePage() {
           <section>
             <h2 className="mb-3 text-base font-semibold">按模型</h2>
             <div className="border-border overflow-hidden rounded-xl border">
-              <table className="w-full text-sm">
+              {/* 【窄屏降级：表格转卡片（issue #86 / §15、§19）】这五列在
+                  390px 上装不下：表格的 min-content 宽度超过容器，最后那一列
+                  "输出 token" 被外层 `overflow-hidden` 整列裁掉——而且
+                  documentElement 的 scrollWidth 看不出来（裁掉的部分不参与
+                  滚动），所以它是一条静默的缺陷：用户以为这一页只有四列。
+                  【阈值与另外两张表一致用 lg（1024）】这张表比它们窄（五列、
+                  数字短），但它和文档列表、模型表是同一类东西，三张表在同一个
+                  宽度上切换比各自算一个阈值更好记；两个档位（卡片 / 表格）也就
+                  不会有"某一张提前变了"的空档。
+                  【为什么成对渲染】理由同知识库详情页：JS 判断断点会在窄屏上
+                  先闪一下宽表格，CSS 判断不会。
+                  【重复的部分是"一行里的数字"】两套外壳（<td> / 卡片里的一行）
+                  不同，能共用的只有类型徽标那一个词。 */}
+              <ul className="divide-border divide-y lg:hidden">
+                {data.byModel.map((row) => (
+                  <li key={row.modelId} className="px-4 py-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium">{row.modelName}</span>
+                      <KindBadge kind={row.kind} />
+                    </div>
+                    {/* 表格有表头，卡片没有：每个数字要自己带名字，
+                        顺序与表格的列一致。 */}
+                    <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                      <span>调用 {formatCount(row.calls)} 次</span>
+                      <span>输入 {formatCount(row.promptTokens)}</span>
+                      <span>输出 {formatCount(row.completionTokens)}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+
+              <table className="hidden w-full text-sm lg:table">
                 <thead className="bg-muted/50 text-muted-foreground text-left">
                   <tr>
                     <th className="px-4 py-2 font-medium">模型</th>
@@ -142,11 +175,7 @@ export default function UsagePage() {
                     <tr key={row.modelId} className="border-border border-t">
                       <td className="px-4 py-2 font-medium">{row.modelName}</td>
                       <td className="px-4 py-2">
-                        {/* 给用户看的是中文而不是 chat / embedding——这一列
-                            是给眼睛看的，契约里的枚举值不是给用户读的。 */}
-                        <Badge variant="outline">
-                          {row.kind === 'embedding' ? '向量化' : '对话'}
-                        </Badge>
+                        <KindBadge kind={row.kind} />
                       </td>
                       <td className="text-muted-foreground px-4 py-2 text-right">
                         {formatCount(row.calls)}
@@ -195,6 +224,16 @@ function sumCalls(rows: { calls: number }[]): number {
  */
 function formatCount(n: number): string {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+/**
+ * 类型徽标。表格与卡片共用一份（issue #86 的成对渲染）。
+ *
+ * 【给用户看的是中文而不是 chat / embedding】这一列是给眼睛看的，
+ * 契约里的枚举值不是给用户读的。
+ */
+function KindBadge({ kind }: { kind: Schemas['UsageByModel']['kind'] }) {
+  return <Badge variant="outline">{kind === 'embedding' ? '向量化' : '对话'}</Badge>
 }
 
 function StatCard({ label, value }: { label: string; value: number }) {

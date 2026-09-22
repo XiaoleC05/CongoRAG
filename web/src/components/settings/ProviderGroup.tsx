@@ -104,83 +104,160 @@ function ProviderBlock({
       {(provider.models ?? []).length === 0 ? (
         <p className="text-muted-foreground px-4 py-3 text-sm">这条接入下没有模型。</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-muted-foreground text-left">
-            <tr>
-              <th className="px-4 py-2 font-medium">模型</th>
-              <th className="px-4 py-2 font-medium">类型</th>
-              <th className="px-4 py-2 text-right font-medium">上下文窗口</th>
-              <th className="px-4 py-2 text-right font-medium">最大输出</th>
-              <th className="px-4 py-2 font-medium">Tokenizer</th>
-              <th className="px-4 py-2">
-                {/* 操作列的表头留空，但读屏软件需要知道这一列是什么。 */}
-                <span className="sr-only">操作</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+        <>
+          {/* 【窄屏降级：表格转卡片（issue #86 / §15、§19）】这张表有六列
+              （模型/类型/上下文窗口/最大输出/Tokenizer/操作），min-content 宽度
+              581px，390px 上被外层 `overflow-hidden` 裁掉，"最大输出"
+              "Tokenizer"和行尾菜单整块看不见——而 documentElement 的
+              scrollWidth 也看不出来，因为裁掉的部分不参与滚动。
+              【阈值为什么是 lg（1024）】581px 之上还要加侧栏（768px 以上展开
+              占 256px）和页面 p-6 的 48px，差不多要 885px 的视口才排得下。
+              640（sm）与 768（md）都不够——768 上实测仍溢出 119px。
+              【为什么成对渲染、不由 JS 判断断点】JS 判断要等 matchMedia 或
+              effect 跑完才能换，窄屏上会先闪一下六列表格。两套都由 CSS 决定
+              谁出现，没有这一帧。重复的内容抽到 ModelCell / ModelRowActions。 */}
+          <ul className="divide-border divide-y lg:hidden">
             {(provider.models ?? []).map((model) => (
-              <tr key={model.id} className="border-border border-t align-top">
-                <td className="px-4 py-2">
-                  <p className="font-medium">{model.modelId}</p>
-                  {/* capabilities 只在 chat 模型上有意义（契约里四个开关的
-                      注释写明了："由服务端根据这个模型是 chatModel 还是
-                      embeddingModel 自动决定"）。embedding 行显示一排灰掉的
-                      开关只会让人以为"这个模型被禁用了工具调用"。 */}
-                  {model.kind === 'chat' && (
-                    <div className="mt-1.5">
-                      <CapabilityBadges capabilities={model.capabilities} />
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-2">
-                  <ModelKindBadge model={model} />
-                </td>
-                <td className="text-muted-foreground px-4 py-2 text-right">
-                  {model.contextWindow}
-                </td>
-                <td className="text-muted-foreground px-4 py-2 text-right">
-                  {model.maxOutputTokens}
-                </td>
-                <td className="text-muted-foreground px-4 py-2 font-mono text-xs">
-                  {model.tokenizerType}
-                </td>
-                <td className="px-4 py-2 text-right">
-                  {/* 【每行最多一个主操作，其余进溢出菜单（§19）】"编辑"是
-                      主操作，破坏性的"删除"收进 `···` 并用 destructive 样式
-                      + 分隔线（形状照 DocumentRowActions）。
-                      【可访问名带上模型名（§14）】表格里一行一个 `···`，
-                      读屏用户听到一串"操作"等于没说。 */}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`${model.modelId} 的操作`}
-                        disabled={actionsDisabled}
-                      >
-                        <MoreHorizontal className="text-muted-foreground" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-40">
-                      <DropdownMenuItem onSelect={() => onEditModel(model)}>
-                        <Pencil />
-                        编辑
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem variant="destructive" onSelect={() => onDeleteModel(model)}>
-                        <Trash2 />
-                        删除
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </td>
-              </tr>
+              <li key={model.id} className="px-4 py-3">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <ModelCell model={model} />
+                  </div>
+                  <ModelRowActions
+                    model={model}
+                    onEdit={onEditModel}
+                    onDelete={onDeleteModel}
+                    disabled={actionsDisabled}
+                  />
+                </div>
+                {/* 表格有表头，卡片没有，所以每个数字要自己带名字。
+                    顺序与表格的列一致，来回切换时不用重新找。
+                    【"类型"这两个字不能省】chat 模型的能力徽标里本来就有一个
+                    "对话"（那是 capabilities.chat），类型徽标又是"对话"——
+                    不带标签地并排，读起来像一个词写了两遍。 */}
+                <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  <span className="flex items-center gap-1.5">
+                    类型
+                    <ModelKindBadge model={model} />
+                  </span>
+                  <span>上下文 {model.contextWindow}</span>
+                  <span>最大输出 {model.maxOutputTokens}</span>
+                  <span className="font-mono">{model.tokenizerType}</span>
+                </div>
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+
+          <table className="hidden w-full text-sm lg:table">
+            <thead className="bg-muted/50 text-muted-foreground text-left">
+              <tr>
+                <th className="px-4 py-2 font-medium">模型</th>
+                <th className="px-4 py-2 font-medium">类型</th>
+                <th className="px-4 py-2 text-right font-medium">上下文窗口</th>
+                <th className="px-4 py-2 text-right font-medium">最大输出</th>
+                <th className="px-4 py-2 font-medium">Tokenizer</th>
+                <th className="px-4 py-2">
+                  {/* 操作列的表头留空，但读屏软件需要知道这一列是什么。 */}
+                  <span className="sr-only">操作</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {(provider.models ?? []).map((model) => (
+                <tr key={model.id} className="border-border border-t align-top">
+                  <td className="px-4 py-2">
+                    <ModelCell model={model} />
+                  </td>
+                  <td className="px-4 py-2">
+                    <ModelKindBadge model={model} />
+                  </td>
+                  <td className="text-muted-foreground px-4 py-2 text-right">
+                    {model.contextWindow}
+                  </td>
+                  <td className="text-muted-foreground px-4 py-2 text-right">
+                    {model.maxOutputTokens}
+                  </td>
+                  <td className="text-muted-foreground px-4 py-2 font-mono text-xs">
+                    {model.tokenizerType}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <ModelRowActions
+                      model={model}
+                      onEdit={onEditModel}
+                      onDelete={onDeleteModel}
+                      disabled={actionsDisabled}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </div>
+  )
+}
+
+/**
+ * 表格与卡片共用的两块内容（issue #86）。
+ *
+ * 【为什么抽到这一层】同一个模型在窄屏是卡片、`lg:` 以上是表格的一行，
+ * 两套外壳里的内容必须是同一份。整段复制的话，改一处忘一处的那一半会
+ * 安静地长歪——两个分支不会同时出现在屏幕上，肉眼看不出来。
+ */
+function ModelCell({ model }: { model: ModelSummary }) {
+  return (
+    <>
+      <p className="font-medium">{model.modelId}</p>
+      {/* capabilities 只在 chat 模型上有意义（契约里四个开关的注释写明了：
+          "由服务端根据这个模型是 chatModel 还是 embeddingModel 自动决定"）。
+          embedding 行显示一排灰掉的开关只会让人以为"这个模型被禁用了工具调用"。 */}
+      {model.kind === 'chat' && (
+        <div className="mt-1.5">
+          <CapabilityBadges capabilities={model.capabilities} />
+        </div>
+      )}
+    </>
+  )
+}
+
+/**
+ * 行尾的溢出菜单：编辑（主操作）与删除（破坏性）。
+ *
+ * 【每行最多一个主操作，其余进溢出菜单（§19）】形态照 DocumentRowActions，
+ * 删除用 destructive 样式加分隔线隔开。
+ * 【可访问名带上模型名（§14）】一屏一串 `···`，读屏用户听到一片"操作"等于没读。
+ */
+function ModelRowActions({
+  model,
+  onEdit,
+  onDelete,
+  disabled,
+}: {
+  model: ModelSummary
+  onEdit: (model: ModelSummary) => void
+  onDelete: (model: ModelSummary) => void
+  disabled: boolean
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label={`${model.modelId} 的操作`} disabled={disabled}>
+          <MoreHorizontal className="text-muted-foreground" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-40">
+        <DropdownMenuItem onSelect={() => onEdit(model)}>
+          <Pencil />
+          编辑
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem variant="destructive" onSelect={() => onDelete(model)}>
+          <Trash2 />
+          删除
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

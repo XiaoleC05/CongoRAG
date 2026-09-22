@@ -19,8 +19,16 @@ import { errorPresentation } from '@/lib/errors'
 
 type KnowledgeBase = Schemas['KnowledgeBase']
 
-/** 卡片网格的列宽。和 Dify 数据集列表同一个思路：自适应列数，最小 280px。 */
-const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3'
+/**
+ * 卡片网格的列宽。和 Dify 数据集列表同一个思路：自适应列数，最小 280px。
+ *
+ * 【为什么写成 minmax(min(280px,100%),1fr)（issue #86）】裸的 `280px` 是一条
+ * 硬下界：容器比它窄时那一列仍然按 280px 撑出去。320px 宽上实测过——正文只有
+ * 272px，旧写法的轨道是 280px，卡片比容器宽 8px。它**不会**把整个文档撑出横向
+ * 滚动条（主区域自己会滚），所以是一条静默的错位，只有量才知道。
+ * `min(280px,100%)` 让下界在窄容器里退化成"占满一行"，宽容器里仍是 280px。
+ */
+const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(min(280px,100%),1fr))] gap-3'
 
 /**
  * 交给弹窗内联显示的那部分错误。

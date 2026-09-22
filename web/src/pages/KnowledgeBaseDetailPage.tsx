@@ -139,9 +139,18 @@ export default function KnowledgeBaseDetailPage() {
         </Button>
       </div>
 
-      <header className="mb-6 flex items-center justify-between">
+      {/* 【标题与按钮分两行，不是把桌面那一行压扁（issue #86）】三个按钮
+          （开始对话 / 重新索引全部 / 上传文档）加上标题要 ~816px 才排得下，
+          挤在一行的结果是最后一个按钮被推出屏幕外（实测 390px 下
+          scrollWidth 492 > 390）。
+
+          【为什么阈值是 lg（1024）而不是 sm（640）】实测出来的：768px 上侧栏
+          展开占 256px、页面 p-6 再吃掉 48px，正文只剩 512px，这一行要 816px
+          ——所以 640 就横排是错的，得等到 lg。flex-wrap 再兜住标题特别长的
+          情况（知识库名字很长时按钮会自己换行，而不是把按钮挤没）。 */}
+      <header className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <h1 className="text-xl font-semibold">{kbName ?? '知识库'}</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
             onClick={handleStartConversation}
@@ -204,76 +213,115 @@ export default function KnowledgeBaseDetailPage() {
                 onClear={() => setFilter('all')}
               />
             ) : (
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-muted-foreground text-left">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">文件名</th>
-                    <th className="px-4 py-2 font-medium">状态</th>
-                    <th className="px-4 py-2 font-medium">分块</th>
-                    <th className="px-4 py-2 font-medium">大小</th>
-                    <th className="px-4 py-2 font-medium">上传时间</th>
-                    <th className="px-4 py-2">
-                      {/* 操作列的表头留空，但读屏软件需要知道这一列是什么。
-                          空表头 + 行内可访问名（"xxx 的操作"）已经够了，
-                          所以这里放 sr-only 而不是可见文字。 */}
-                      <span className="sr-only">操作</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                {/* 【窄屏降级：表格转卡片（issue #86 / §15、§19）】
+                    六列（文件名/状态/分块/大小/上传时间/操作）的 min-content
+                    宽度是 510px：390px 上它被外层 `overflow-hidden` 裁掉——
+                    "大小""上传时间""操作"三列用户根本看不见，而且因为裁掉了，
+                    documentElement 的 scrollWidth 也看不出问题（只有表格自己
+                    知道自己被切了）。
+
+                    【阈值为什么是 lg（1024）】510px 是表格自己的宽度，还要加上
+                    侧栏（768px 以上展开时占 256px）和页面 p-6 的 48px：要
+                    ~814px 的视口才排得下。所以 640（sm）就换成表格是错的，
+                    md（768）也不够——768 上实测仍溢出 48px。1024 起正文有
+                    720px，才真的放得下。
+
+                    【为什么是成对渲染而不是 JS 判断断点】用 matchMedia 在
+                    JS 里选分支的话，首帧必然是"初始状态的那一个"，水合或
+                    effect 跑完才换——窄屏上会先闪一下六列表格。两套 DOM 都
+                    渲染、由 CSS 决定谁出现，就没有这一帧。
+
+                    【重复的部分抽到下面的行内小件里】两个分支只有外壳不同
+                    （一个 <td>、一个卡片里的一行），格子里装的东西是同一批。
+                    整段复制两份的话，改一处忘一处的那一半会安静地长歪——
+                    两个分支永远不会同时出现在屏幕上，看不出来。 */}
+                <ul className="divide-border divide-y lg:hidden">
                   {visible.map((doc) => (
-                    <tr key={doc.id} className="border-border border-t">
-                      <td className="flex items-center gap-2 px-4 py-2">
-                        <FileText className="text-muted-foreground size-4 shrink-0" />
-                        <span className="truncate" title={doc.filename}>
-                          {doc.filename}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
-                        <div className="flex items-center gap-2">
-                          <DocumentStatusBadge status={doc.status} />
-                          {/* 失败的行给一条可见的出路（issue #82 的"可操作的
-                              下一步"）。它指向重新索引，但**不判断"这个状态
-                              能不能重试"**——只是把行尾菜单里的同一个操作搬到
-                              用户正看着的地方；真不允许时后端返 409，
-                              按 conflict 呈现。前端的职责是别让用户猜。 */}
-                          {doc.status === 'failed' && (
-                            <Button
-                              variant="link"
-                              size="sm"
-                              className="h-auto p-0 text-xs"
-                              aria-label={`重新索引 ${doc.filename}`}
-                              disabled={reindex.isPending}
-                              onClick={() => handleReindex(doc)}
-                            >
-                              重新索引
-                            </Button>
-                          )}
+                    <li key={doc.id} className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <FilenameCell doc={doc} />
                         </div>
-                      </td>
-                      {/* 【分块数为什么直接显示数字】契约里它是整数、不是可空：
-                          没处理完就是 0。给 0 加个"—"之类的特判会让"确实切出
-                          0 块"（切分策略有问题）和"还没轮到"看起来一样——
-                          恰恰把 issue #82 要暴露的那个信号盖掉了。 */}
-                      <td className="text-muted-foreground px-4 py-2">{doc.chunkCount}</td>
-                      <td className="text-muted-foreground px-4 py-2">
-                        {formatByteSize(doc.byteSize)}
-                      </td>
-                      <td className="text-muted-foreground px-4 py-2">
-                        {formatDateTime(doc.createdAt)}
-                      </td>
-                      <td className="px-4 py-2 text-right">
                         <DocumentRowActions
                           doc={doc}
                           onReindex={handleReindex}
                           onDelete={openDelete}
                           pending={reindex.isPending || remove.isPending}
                         />
-                      </td>
-                    </tr>
+                      </div>
+                      {/* 【卡片里必须给数字补上名字】表格有表头，卡片没有：
+                          只写一个 "1" 和一串 "1.0 KB"，用户看不出哪个是分块数。
+                          顺序与表格的列一致，来回切换时不用重新找。 */}
+                      <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                        <StatusCell
+                          doc={doc}
+                          onReindex={handleReindex}
+                          reindexPending={reindex.isPending}
+                        />
+                        <span>分块 {doc.chunkCount}</span>
+                        <span>{formatByteSize(doc.byteSize)}</span>
+                        <span>{formatDateTime(doc.createdAt)}</span>
+                      </div>
+                    </li>
                   ))}
-                </tbody>
-              </table>
+                </ul>
+
+                <table className="hidden w-full text-sm lg:table">
+                  <thead className="bg-muted/50 text-muted-foreground text-left">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">文件名</th>
+                      <th className="px-4 py-2 font-medium">状态</th>
+                      <th className="px-4 py-2 font-medium">分块</th>
+                      <th className="px-4 py-2 font-medium">大小</th>
+                      <th className="px-4 py-2 font-medium">上传时间</th>
+                      <th className="px-4 py-2">
+                        {/* 操作列的表头留空，但读屏软件需要知道这一列是什么。
+                            空表头 + 行内可访问名（"xxx 的操作"）已经够了，
+                            所以这里放 sr-only 而不是可见文字。 */}
+                        <span className="sr-only">操作</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map((doc) => (
+                      <tr key={doc.id} className="border-border border-t">
+                        <td className="flex items-center gap-2 px-4 py-2">
+                          <FilenameCell doc={doc} />
+                        </td>
+                        <td className="px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            <StatusCell
+                              doc={doc}
+                              onReindex={handleReindex}
+                              reindexPending={reindex.isPending}
+                            />
+                          </div>
+                        </td>
+                        {/* 【分块数为什么直接显示数字】契约里它是整数、不是可空：
+                            没处理完就是 0。给 0 加个"—"之类的特判会让"确实切出
+                            0 块"（切分策略有问题）和"还没轮到"看起来一样——
+                            恰恰把 issue #82 要暴露的那个信号盖掉了。 */}
+                        <td className="text-muted-foreground px-4 py-2">{doc.chunkCount}</td>
+                        <td className="text-muted-foreground px-4 py-2">
+                          {formatByteSize(doc.byteSize)}
+                        </td>
+                        <td className="text-muted-foreground px-4 py-2">
+                          {formatDateTime(doc.createdAt)}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <DocumentRowActions
+                            doc={doc}
+                            onReindex={handleReindex}
+                            onDelete={openDelete}
+                            pending={reindex.isPending || remove.isPending}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             )}
             {/* 【加载更多放在表格下方】列表按 created_at 倒序，更旧的在下面。
                 hasNextPage 为假时整个不渲染——禁用会让用户以为等一下就有了。
@@ -323,6 +371,60 @@ export default function KnowledgeBaseDetailPage() {
         }}
       />
     </div>
+  )
+}
+
+/**
+ * 表格与卡片共用的两块内容（issue #86）。
+ *
+ * 【为什么抽到这一层】文档列表在窄屏是卡片、`lg:` 以上是表格，两套外壳
+ * 里的内容必须是同一份。这两块是"格子里装的东西"，外壳（`<td>` 还是卡片
+ * 里的一行）留给调用方——表格需要的是 `<td>`，卡片需要的是能换行的一行，
+ * 让函数自己决定外壳反而两边都不合适。
+ */
+function FilenameCell({ doc }: { doc: Document_ }) {
+  return (
+    <>
+      <FileText className="text-muted-foreground size-4 shrink-0" />
+      <span className="truncate" title={doc.filename}>
+        {doc.filename}
+      </span>
+    </>
+  )
+}
+
+/**
+ * 状态徽标 + 失败行的"重新索引"出路（issue #82 的"可操作的下一步"）。
+ *
+ * 【它指向重新索引，但**不判断**"这个状态能不能重试"】只是把行尾菜单里的
+ * 同一个操作搬到用户正看着的地方；真不允许时后端返 409，按 conflict 呈现。
+ * 前端的职责是别让用户猜。
+ */
+function StatusCell({
+  doc,
+  onReindex,
+  reindexPending,
+}: {
+  doc: Document_
+  onReindex: (doc: Document_) => void
+  reindexPending: boolean
+}) {
+  return (
+    <>
+      <DocumentStatusBadge status={doc.status} />
+      {doc.status === 'failed' && (
+        <Button
+          variant="link"
+          size="sm"
+          className="h-auto p-0 text-xs"
+          aria-label={`重新索引 ${doc.filename}`}
+          disabled={reindexPending}
+          onClick={() => onReindex(doc)}
+        >
+          重新索引
+        </Button>
+      )}
+    </>
   )
 }
 

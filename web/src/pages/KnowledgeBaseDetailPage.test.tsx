@@ -119,7 +119,26 @@ function renderPage() {
   )
 }
 
-/** 表格里按行列出文件名，用来断言顺序。表头那一行排掉。 */
+/**
+ * 等文档列表渲染出来。
+ *
+ * 【为什么不能再按"唯一"来找这个文件名（issue #86）】列表现在是**成对渲染**：
+ * 窄屏一份卡片、`sm:` 以上一份表格，由 CSS 决定谁出现（理由见页面里的注释）。
+ * jsdom 不解析 Tailwind 的类名，两份都在 DOM 里，所以 `findByText` 会撞上
+ * 多个匹配直接抛错。这里要回答的问题是"数据到了没有"，不是"只有一个"——
+ * `findAllBy*` 才对得上。
+ */
+async function waitForDocs() {
+  await screen.findAllByText(doc.filename)
+}
+
+/**
+ * 表格里按行列出文件名，用来断言顺序。表头那一行排掉。
+ *
+ * 【卡片分支不进这个函数】卡片用的是 `<li>`，没有 row 角色，所以
+ * `getAllByRole('row')` 天然只拿到表格那一边——排序断言本来就是关于
+ * 表格（桌面）那一套的。
+ */
 function rowFilenames() {
   return screen
     .getAllByRole('row')
@@ -141,7 +160,10 @@ function rowFilenames() {
  * AlertDialog 不受影响（可以反复打开），筛选用的是普通开关按钮，也没有这个问题。
  */
 function openRowMenu(filename: string) {
-  fireEvent.pointerDown(screen.getByRole('button', { name: `${filename} 的操作` }), {
+  // 【限定在表格里】卡片分支有一个可访问名完全相同的菜单触发器（成对渲染，
+  // 见 waitForDocs 的说明）。不限定的话 getByRole 会因为两个匹配而抛错。
+  const table = within(screen.getByRole('table'))
+  fireEvent.pointerDown(table.getByRole('button', { name: `${filename} 的操作` }), {
     button: 0,
   })
 }
@@ -167,7 +189,7 @@ describe('文档行的状态与分块数（issue #82）', () => {
     renderPage()
 
     // 等表格渲染出来再断言——不然看到的是骨架屏
-    await screen.findByText(doc.filename)
+    await waitForDocs()
 
     // 【限定在表格里查】"就绪""失败"这两个词同时也是筛选开关的文案，
     // 不限定的话会遇到两个同名节点
@@ -185,10 +207,13 @@ describe('文档行的状态与分块数（issue #82）', () => {
     mockDocList()
     renderPage()
 
-    await screen.findByText(failedDoc.filename)
+    await waitForDocs()
 
     // 可访问名带文件名（§14）：一串"重新索引"里要能听出是哪一行
-    expect(screen.getByRole('button', { name: `重新索引 ${failedDoc.filename}` })).toBeTruthy()
+    // 【两个分支都要有（issue #86）】表格行与卡片各渲染一份，所以是 2 个。
+    // 只查一个分支的话，另一个分支漏改不会被发现——而用户看到的正是漏改的
+    // 那一个（窄屏看卡片）。这条断言同时钉住了"成对渲染没有只做一半"。
+    expect(screen.getAllByRole('button', { name: `重新索引 ${failedDoc.filename}` })).toHaveLength(2)
     // 就绪的那一行不该有它——这是失败态的"下一步"，不是每行都有的操作
     expect(screen.queryByRole('button', { name: `重新索引 ${doc.filename}` })).toBeNull()
   })
@@ -212,7 +237,7 @@ describe('删除文档（issue #91）', () => {
       .mockResolvedValueOnce({ error: invalidArgument, response: new Response() })
 
     renderPage()
-    await screen.findByText(doc.filename)
+    await waitForDocs()
 
     // §19：不在每行堆按钮——行里没有裸的删除按钮，只有"xxx 的操作"
     expect(screen.queryByRole('button', { name: `删除 ${doc.filename}` })).toBeNull()
@@ -261,7 +286,7 @@ describe('排序与筛选（issue #92）', () => {
   it('筛完没有结果时给的是"没有匹配"，不是"还没有文档"', async () => {
     mockDocList()
     renderPage()
-    await screen.findByText(doc.filename)
+    await waitForDocs()
 
     fireEvent.click(screen.getByRole('button', { name: '处理中' }))
 
@@ -269,7 +294,9 @@ describe('排序与筛选（issue #92）', () => {
     expect(screen.getByText('没有「处理中」的文档')).toBeTruthy()
     expect(screen.queryByText('还没有文档')).toBeNull()
     // 出口是"清除筛选"，不是"上传第一个文档"——而且这个按钮只有一个
-    expect(screen.queryByText(doc.filename)).toBeNull()
+    // 【为什么是 queryAllBy】成对渲染之后同一个文件名在页面上有两个节点
+    //（表格 + 卡片，见 waitForDocs），断言的是"一个都没有"，不是"只有一个"。
+    expect(screen.queryAllByText(doc.filename)).toHaveLength(0)
 
     fireEvent.click(screen.getByRole('button', { name: '清除筛选' }))
     expect(rowFilenames()).toEqual([failedDoc.filename, doc.filename])
@@ -278,7 +305,7 @@ describe('排序与筛选（issue #92）', () => {
   it('筛到有匹配时只留下那一行，开关自己说明当前状态，点回"全部"恢复', async () => {
     mockDocList()
     renderPage()
-    await screen.findByText(doc.filename)
+    await waitForDocs()
 
     const chip = screen.getByRole('button', { name: '失败' })
     expect(chip.getAttribute('aria-pressed')).toBe('false')
@@ -295,7 +322,7 @@ describe('排序与筛选（issue #92）', () => {
   it('换排序会重排已经加载的行，但不重新发请求（游标不动，见 useDocuments 的说明）', async () => {
     mockDocList()
     renderPage()
-    await screen.findByText(doc.filename)
+    await waitForDocs()
 
     // 服务器顺序是上传时间倒序
     expect(rowFilenames()).toEqual([failedDoc.filename, doc.filename])
@@ -326,7 +353,7 @@ describe('检索调试视图（issue #77）', () => {
   }
 
   async function search(query: string, topK?: string) {
-    await screen.findByText(doc.filename)
+    await waitForDocs()
     fireEvent.change(screen.getByLabelText('查询'), { target: { value: query } })
     if (topK !== undefined) {
       fireEvent.change(screen.getByLabelText('返回条数'), { target: { value: topK } })

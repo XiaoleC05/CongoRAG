@@ -85,7 +85,12 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-4xl p-6">
-      <header className="mb-6 flex items-center justify-between gap-4">
+      {/* 【窄屏下按钮让到下一行（issue #86）】这一页的说明文字有三行，390px 上
+          和"新增接入"挤在一行会把说明压成一条窄柱，读起来比多占一行更糟。
+          【阈值是 lg（1024）】和知识库详情页同一个实测结论：768px 上侧栏展开
+          占 256px、p-6 再吃掉 48px，正文只剩 512px，而这一页的说明文字要
+          583px——640（sm）就横排会在平板上溢出（实测 887 > 768）。 */}
+      <header className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-xl font-semibold">设置</h1>
           <p className="text-muted-foreground mt-1 text-sm">
