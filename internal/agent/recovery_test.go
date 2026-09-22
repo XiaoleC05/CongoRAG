@@ -701,3 +701,99 @@ func TestResume_StepNumberingContinuesAfterExistingSteps(t *testing.T) {
 	assert.Contains(t, seqs, 5, "恢复跑出来的那一步要接在已有步骤之后（seq=5），而不是顶掉 seq=1")
 	assert.Len(t, seqs, 5, "不能有重复的 seq——重复的那条会被唯一约束拒掉、静默丢失")
 }
+
+// 【成功优先于取消标志】用户点取消的那一刻运行恰好跑完了——这时真正的
+// 结果是一个完整的回答，把它记成 cancelled 是在说谎（前端会显示「已停止」，
+// 而这条运行的 output 是完整的）。
+//
+// 这条是读 finishRun 时发现的：原来的 switch 把 `st.requested` 放在最前面，
+// 于是 cause == nil（成功）也会被判成 cancelled。
+func TestFinishRun_SuccessWinsOverCancelFlag(t *testing.T) {
+	u, repo := newTestUsecaseForConsumeEvents()
+	run := insertRunningRun(t, repo)
+
+	st := &runningRun{done: make(chan struct{})}
+	st.requested.Store(true) // 用户点了取消，但运行已经跑完了
+
+	got, err := u.finishRun(context.Background(), run, st, nil)
+	require.NoError(t, err, "成功路径不该返回错误")
+	assert.Equal(t, RunCompleted, got.Status,
+		"取消晚到不该把一个已经产生完整回答的运行记成 cancelled")
+	require.Len(t, repo.updates, 1)
+	assert.Equal(t, RunCompleted, repo.updates[0].to)
+}
+
+// 【用户点的取消推 done，不推 error】那条流是按客户端的要求结束的，不是出错。
+// 推 error 帧的话，事后重订阅/重放这条 run 会看到一条 type 为 internal_error
+// 的帧（`context.Canceled` 不在 SSEErrorType 认的三档里），而它要说的事情
+// 其实只是"到此为止"。
+func TestFinishRun_UserCancelEmitsDoneNotError(t *testing.T) {
+	u, repo := newTestUsecaseForConsumeEvents()
+	run := insertRunningRun(t, repo)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	st := &runningRun{done: make(chan struct{})}
+	st.requested.Store(true)
+
+	_, _ = u.finishRun(ctx, run, st, context.Canceled)
+
+	var types []string
+	for _, ev := range repo.runEvents {
+		types = append(types, ev.Type)
+	}
+	assert.Equal(t, []string{"done"}, types,
+		"取消的收尾事件是 done；error 帧会被重放成一个假的「服务内部错误」")
+	require.Len(t, repo.updates, 1)
+	assert.Equal(t, RunCancelled, repo.updates[0].to)
+}
+
+// 中断（客户端断开）与失败仍然推 error 帧——那两种情况客户端确实没有拿到
+// 一个完整的结果。
+func TestFinishRun_InterruptedAndFailedStillEmitError(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		ctx   func() (context.Context, context.CancelFunc)
+		cause error
+		want  RunStatus
+	}{
+		{
+			name:  "客户端断开 → interrupted",
+			ctx:   cancelledCtx,
+			cause: context.Canceled,
+			want:  RunInterrupted,
+		},
+		{
+			name:  "运行期失败 → failed",
+			ctx:   backgroundCtx,
+			cause: errors.New("模型返回了 500"),
+			want:  RunFailed,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			u, repo := newTestUsecaseForConsumeEvents()
+			run := insertRunningRun(t, repo)
+			ctx, cancel := tc.ctx()
+			defer cancel()
+
+			_, _ = u.finishRun(ctx, run, &runningRun{}, tc.cause)
+
+			require.Len(t, repo.runEvents, 1)
+			assert.Equal(t, "error", repo.runEvents[0].Type)
+			require.Len(t, repo.updates, 1)
+			assert.Equal(t, tc.want, repo.updates[0].to)
+		})
+	}
+}
+
+// 两个 ctx 工厂：一个已取消（模拟客户端断开）、一个活着（模拟运行期失败）。
+// 写成函数是为了让每个用例拿到自己的那份，取消不会串味。
+func cancelledCtx() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return ctx, func() {}
+}
+
+func backgroundCtx() (context.Context, context.CancelFunc) {
+	return context.WithCancel(context.Background())
+}

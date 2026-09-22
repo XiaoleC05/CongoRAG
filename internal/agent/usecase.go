@@ -578,18 +578,41 @@ func (u *Usecase) finishRun(ctx context.Context, run *Run, st *runningRun, cause
 	wctx, cancelWrite := detachedWriteCtx(ctx)
 	defer cancelWrite()
 
-	to := RunCompleted
+	// 【成功优先于取消标志】用户点取消的那一刻这次运行恰好跑完了——这时
+	// 真正的结果是一个完整的回答，把它记成 cancelled 是在说谎（前端的
+	// 「已停止」和这条运行的 output 会互相矛盾）。取消标志只在**没有成功**
+	// 的那条路径上决定终态。
+	if cause == nil {
+		to := RunCompleted
+
+		if err := u.repo.UpdateRunStatus(wctx, u.db, run.ID, RunRunning, to); err != nil {
+			return run, fmt.Errorf("mark run %s %s: %w", run.ID, to, err)
+		}
+		run.Status = to
+		u.log(ctx).Info("agent run finished", "status", string(to))
+		return run, nil
+	}
+
+	to := RunFailed
 	switch {
 	case st != nil && st.requested.Load():
 		to = RunCancelled
-	case cause != nil && ctx.Err() != nil:
+	case ctx.Err() != nil:
 		to = RunInterrupted
-	case cause != nil:
-		to = RunFailed
 	}
 
-	if to != RunCompleted {
-		// 失败/中断/取消都要给客户端一条 error 帧——它是最外层能说话的通道。
+	// 【用户点的取消不推 error 帧，推一条 done】那条流是**按客户端的要求**
+	// 结束的，不是出错；推 error 帧的话，事后重订阅或重放这条 run 会看到
+	// 一条 type 为 internal_error 的帧（`context.Canceled` 不在
+	// platform.SSEErrorType 认的三档里），而它要说的事情其实只是"到此为止"。
+	// 真正的终态（cancelled）在 `GET /runs/{runId}` 与取消端点的响应里，
+	// 那是权威来源。
+	//
+	// 中断（客户端断开）与失败仍然推 error 帧：那两种情况客户端确实没有
+	// 得到一个完整的结果。
+	if to == RunCancelled {
+		u.emitRunDone(ctx, run.ID)
+	} else {
 		// type 走全项目共享的那套枚举（platform.SSEErrorType）：空输入是
 		// invalid_argument、agent 不存在是 not_found、上游模型失败是
 		// upstream_llm_error。以前这里硬编码 internal_error，把客户端
@@ -1098,6 +1121,18 @@ func (u *Usecase) emitUnpersisted(sink conversation.EventSink, cause error) {
 	// 返回一个更有价值的错误。
 	_ = sink.Emit(conversation.Event{ID: 0, Type: "error", Payload: body})
 	_ = sink.Flush()
+}
+
+// emitRunDone 往 run 的事件流里落一条 `done`（只持久化，不再往连接上写——
+// 收尾时那条连接可能已经关了，见 nopSink 的注释）。
+//
+// 它与 emitRunError 是同一个形状，差别只在事件类型；两者都走脱离请求的 ctx。
+func (u *Usecase) emitRunDone(ctx context.Context, runID uuid.UUID) {
+	wctx, cancel := detachedWriteCtx(ctx)
+	defer cancel()
+	if _, err := u.emitRunEvent(wctx, runID, nopSink{}, "done", struct{}{}); err != nil {
+		u.log(ctx).Error("failed to record run done event", "run_id", runID, "error", err)
+	}
 }
 
 // emitRunError 把一次失败的收尾告诉客户端（持久化在 run 的事件流里）。
