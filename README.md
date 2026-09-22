@@ -62,9 +62,14 @@ flowchart TB
   解析，不用 `EventSource`，见 [ADR-005](docs/adr/005-sse-over-fetch.md)）
 - **上下文管理**：按 token 预算组装上下文，超预算的历史交给模型压缩
 - **Agent**：工具注册表（计算器、知识库检索、会话检索），每次执行是一条 run，
-  每一步的轨迹单独落库
-- **幂等重放**：`POST /conversations/{id}/messages` 接受 `Idempotency-Key`，同键重发
-  不会重新生成答案，而是把那一轮的事件补发一遍
+  每一步的轨迹单独落库；运行可以**取消**（终态是 `cancelled` 而不是 `failed`），
+  也可以从断点**恢复**（进程被杀之后跳过已完成的步骤，按工具的副作用等级决定
+  能不能重放）
+- **幂等重放**：`POST /conversations/{id}/messages` 与 `POST /agents/{id}/runs` 都接受
+  `Idempotency-Key`，同键重发不会重新执行，而是把那一轮/那条 run 已经记录的事件
+  按原来的 `event_id` 补发一遍
+- **检索调试**：`POST /knowledge-bases/{id}/search` 直接返回命中的分块与相似度——
+  "为什么这个问题答错了"是没检索到、还是排序不对，在这里能当场看出来
 - **重新索引**：单份文档或整个知识库都能重跑（换模型之后、或某一份处理失败时）
 - **BYOK**：provider / model 配置存数据库，API Key 用 AES-GCM 加密后落盘；换
   embedding 模型时可确认「清空并重建」，不必手工清库
@@ -194,9 +199,15 @@ flowchart LR
 - 两个进程各有自己的装配根，重复十几行是正常的，不要为此造共享装配包
 
 设计取舍写在 [`docs/adr/`](docs/adr/) 里（模块化单体、契约版本、两套迁移系统、
-为什么用 halfvec、为什么客户端不用 EventSource）。流式协议的字节格式规范在
-[`docs/sse-protocol.md`](docs/sse-protocol.md)，平台相关行为怎么测在
-[`docs/testing.md`](docs/testing.md)，发布流程在 [`docs/releasing.md`](docs/releasing.md)。
+为什么用 halfvec、为什么客户端不用 EventSource、checkpoint 分层、恢复语义、
+幂等重放窗口）。流式协议的字节格式规范在 [`docs/sse-protocol.md`](docs/sse-protocol.md)，
+平台相关行为怎么测在 [`docs/testing.md`](docs/testing.md)，发布流程在
+[`docs/releasing.md`](docs/releasing.md)，用户视角的升级与回滚在
+[`docs/upgrading.md`](docs/upgrading.md)，契约 lint 的规则与豁免理由在
+[`docs/contract-lint.md`](docs/contract-lint.md)。
+
+不想从源码构建的话，Release 里附带一个**启动包**（compose + `.env.example` +
+镜像 tarball），解压起来就能用，见 [`deployments/startup/`](deployments/startup/)。
 
 ## 配置
 
@@ -236,9 +247,10 @@ TS 的类型都从它生成。下面是端点总览。
 | GET / PATCH / DELETE | `/api/v1/knowledge-bases/{id}` | 详情 / 改名 / 删除 |
 | GET / POST | `/api/v1/knowledge-bases/{id}/documents` | 文档列表（分页）/ 上传 |
 | POST | `/api/v1/knowledge-bases/{id}/reindex` | 重新索引整个知识库 |
+| POST | `/api/v1/knowledge-bases/{id}/search` | 检索调试（Hit Testing）：直接看命中的分块与相似度 |
 | GET / DELETE | `/api/v1/documents/{id}` | 文档详情 / 删除 |
 | POST | `/api/v1/documents/{id}/reindex` | 重新索引单份文档 |
-| POST | `/api/v1/conversations` | 新建会话 |
+| GET / POST | `/api/v1/conversations` | 会话列表（按最近活动时间倒序、分页）/ 新建会话 |
 | GET / POST | `/api/v1/conversations/{id}/messages` | 消息列表 / 发消息 |
 | GET | `/api/v1/conversations/{id}/events` | 补发 `after_event_id` 之后的事件，补完即结束响应（不持有连接） |
 | GET / POST | `/api/v1/providers` | 模型服务配置 |
@@ -246,8 +258,14 @@ TS 的类型都从它生成。下面是端点总览。
 | GET | `/api/v1/tools` | 工具目录 |
 | GET / POST | `/api/v1/agents` | Agent 列表 / 新建 |
 | GET | `/api/v1/agents/{id}` | Agent 详情 |
-| GET / POST | `/api/v1/agents/{id}/runs` | 运行列表（分页）/ 发起运行 |
+| GET / POST | `/api/v1/agents/{id}/runs` | 运行列表（分页）/ 发起运行（接受 `Idempotency-Key`） |
+| GET | `/api/v1/runs/{runId}/events` | 补发这条 run 的事件（run 维度的断线重订阅），补完即结束响应 |
+| POST | `/api/v1/runs/{runId}/cancel` | 取消一次在途运行（终态是 `cancelled` 而不是 `failed`） |
+| POST | `/api/v1/runs/{runId}/resume` | 从断点恢复一次被中断的运行 |
 | GET | `/api/v1/runs/{runId}/steps` | 运行轨迹 |
+
+Agent 那条流的**首帧永远是 `run_started`**（`data: {"runId": ...}`），新建与命中幂等键
+重放都会发——取消、重订阅、跳转运行详情都要用这个 id。
 
 错误响应是 `application/problem+json`，形状见契约里的 `Problem` 定义。
 

@@ -26,6 +26,55 @@
 
 ---
 
+## [Unreleased]
+
+这一版把 v3.0 之后那批 issue（#54–#96）做完：Agent 的运行控制与崩溃恢复、
+检索调试视图、一批前端能力与无障碍，以及发布/交付/升级那条工程链。
+版本号与发布日期由发布时再定——`scripts/release.mjs` 会断言契约的
+`info.version` 与 tag 一致，所以发布前要把它提到同一个数（见 ADR-002）。
+
+### 行为变更
+
+| 变更 | 说明 |
+| --- | --- |
+| **升级前必须先跑 `make migrate-up`** | 新增三条迁移：`0009_run_events`（run 维度的事件表与计数器）、`0010_tool_effect_log`（工具副作用账本）、`0011_conversation_activity`（会话的最近活动时间回填 + 索引）。漏跑的话，跑一次 Agent 会在写事件时失败 |
+| **Agent 的运行流新增首帧 `run_started`** | `POST /api/v1/agents/{id}/runs` 与 `POST /api/v1/runs/{runId}/resume` 的响应流，**第一帧永远是** `event: run_started`、`data: {"runId": "..."}`，新建与幂等重放都会发。此前五种事件里没有任何一种带 run id，客户端因此拿不到"这次运行叫什么"，也就没法调取消端点。**解析器要能容忍这个新的帧类型**（照 `docs/sse-protocol.md` 的帧格式读即可，未知 `event` 类型跳过） |
+| **`POST /api/v1/agents/{id}/runs` 接受 `Idempotency-Key`** | 命中同一个键时不重新执行，而是补发那条 run 已记录的事件（首帧同样是 `run_started`，带的是原来那条 run 的 id）。保留窗口与发消息那条路径共用 24 小时（ADR-008） |
+| **`Document` 的响应多了一个**必填字段 `chunkCount` | 该文档当前的向量分块数，未处理完的文档是 `0`（不是 null）。**直连 API 的调用方**如果按严格 schema 解析，需要跟着改 |
+| **会话的 `updatedAt` 语义变了** | 它现在真的是"最近活动时间"（每次收到消息就更新），会话列表 `GET /api/v1/conversations` 按它倒序。在此之前它只在创建那一刻写过一次——**所以它在旧数据上等于 `createdAt`**，迁移 `0011` 会把已有会话回填成"最后一条消息的时间" |
+| **`GET /api/v1/agents/runs/{runId}/events` 与 `POST .../cancel`、`.../resume`** 见下面的"新增" | run 维度的断线重订阅、取消与断点恢复都在这一版 |
+| **Agent 的 `interrupted` 状态现在真的会被写入** | 两个来源：进程**启动时**的扫描（把上个进程留下的 `running` 运行标成它，见 ADR-007）与客户端中途断开。**只有 `interrupted` 的运行可以恢复**；`completed` / `failed` / `cancelled` 都是终态 |
+| **错误类型新增四个** | `state_schema_version_mismatch`、`tool_effect_already_applied`、`replay_unsafe`（恢复端点，都是 409），以及 Agent 流上的同名 `error` 帧 type。前端按 `type` 分支的映射表要跟着补 |
+| **上游模型服务出错时的归因更准** | 工具自己失败（查不到那一行之类）不再被说成 `upstream_llm_error`——那是前一版就修的方向，这一版把恢复相关的几种也补齐了 |
+
+### 新增
+
+- **端点**：`GET /api/v1/conversations`（按最近活动时间倒序、keyset 分页）、
+  `DELETE /api/v1/conversations/{id}`、`POST /api/v1/knowledge-bases/{id}/search`
+  （检索调试：直接返回命中的分块与相似度）、`GET /api/v1/runs/{runId}/events`、
+  `POST /api/v1/runs/{runId}/cancel`、`POST /api/v1/runs/{runId}/resume`、
+  `PATCH /api/v1/agents/{id}`、`PATCH /api/v1/models/{id}`、`DELETE /api/v1/models/{id}`
+- **SSE 事件类型** `run_started`（见上）
+- **崩溃恢复**：Step 边界的 checkpoint、按 ToolMetadata 决定能不能重放、
+  效果账本（`tool_effect_log`）判读"工具是否被重复执行"，以及终态运行的
+  checkpoint 回收（worker 每小时一次）
+- **取消**：运行可以中断，终态是 `cancelled` 而不是 `failed`
+- **交付**：`.github/workflows/release.yml`（六平台产物）、启动包
+  （compose + `.env.example` + 镜像 tarball 的 zip）、升级与回滚脚本，
+  以及用户视角的 [`docs/upgrading.md`](docs/upgrading.md)
+- **工程**：契约 lint（`make lint-spec`）、契约测试（`make test-contract`，
+  Prism proxy 模式）、集成测试改用 testcontainers（`make test-integration`
+  自己起容器，不再要求开发机上有 PostgreSQL 在跑）、崩溃探针
+  （`make crash-probe`）
+
+### 修复
+
+- `POST /agents/{id}/runs` 的流里此前**不带 run id**，取消端点因此无从下手
+- `StartAgentRun` 缺兜底 error 帧：数据库不可用时客户端会拿到 200 + 空 body，
+  与"空的成功流"完全同形（发消息那条路径早就修过同一个问题）
+- `conversations.updated_at` 一直等于 `createdAt`——接口暴露的 `updatedAt`
+  因此一直在说谎
+
 ## [3.0] - 2026-09-21
 
 这一版是**能力建设**，不是缺陷修复：v2.0 修完了 v1.0 的 36 个缺陷，v3.0 把
