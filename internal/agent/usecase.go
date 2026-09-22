@@ -355,6 +355,7 @@ type runPlan struct {
 	tools     []Tool
 	chatModel *llm.Model
 	input     string
+
 }
 
 // Start 执行一次 Agent 运行,把 Eino ADK 的事件流归一化成 SSE 推给
@@ -710,7 +711,31 @@ type pendingCall struct {
 // 已经发到几号了"——那必须是数据库事实。
 func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, chatModelID string, events <-chan adkEvent, sink conversation.EventSink, st *runningRun) (string, error) {
 	var output strings.Builder
-	seq := 0
+
+	// 【Step 的编号从库里推导，不由调用方传进来】
+	//
+	// 一次恢复是接着一条**已经有步骤**的 run 往下跑：它已经有 seq 1..N 了，
+	// 新落的步骤必须从 N+1 继续。从 1 重来的话，第一条 INSERT 会撞上
+	// agent_run_steps 的 UNIQUE (run_id, seq)，而那个失败只被记成一行日志
+	// （轨迹写入不是致命路径），于是——**恢复跑出来的那几步在轨迹里彻底消失，
+	// current_step 还会被 checkpoint 倒着改回一个更小的数**。
+	//
+	// 这个缺陷是拿崩溃探针做端到端验证时，从 api 日志里那一行
+	// `duplicate key: agent_run_steps_run_seq_unique` 发现的；而它**不会**
+	// 让任何"从头跑一次"的单元测试变红。
+	//
+	// 【为什么是查库而不是让调用方传一个 startSeq 参数】传参的版本我写过一版：
+	// PrepareResume 算好、放进 plan、execute 再转手给 consumeEvents。那条链
+	// 上有三个地方可以漏，而漏掉的表现是**静默的**（就是上面那个缺陷）。
+	// 从数据推导只有一处、也没有"忘传"这回事。代价是一次 MAX 查询。
+	maxSeq, err := u.repo.MaxStepSeq(ctx, u.db, runID)
+	if err != nil {
+		// 读不到就**不要猜着往下跑**：猜小了会撞唯一约束（静默丢轨迹），
+		// 猜大了会留下一个空洞。宁可让这一次运行失败，也不要写出一份
+		// 对不上号的轨迹。
+		return "", fmt.Errorf("read current step number of run %s: %w", runID, err)
+	}
+	seq := maxSeq
 	pending := map[string]*pendingCall{}
 
 	var llmStep *Step

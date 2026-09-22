@@ -516,6 +516,20 @@ func (s *PgIdempotencyStore) LookupIdempotencyKey(ctx context.Context, q platfor
 	return rec, nil
 }
 
+// MaxStepSeq 见 port.go 的契约。
+//
+// 【用 coalesce 而不是在 Go 里判 NULL】没有步骤时 max(seq) 是 NULL，直接
+// Scan 进 int 会报类型错——那是一条只要跑过一次空 run 就会撞上的路径。
+func (r *PgRepo) MaxStepSeq(ctx context.Context, q platform.Querier, runID uuid.UUID) (int, error) {
+	var maxSeq int
+	err := q.QueryRow(ctx,
+		`SELECT coalesce(max(seq), 0) FROM agent_run_steps WHERE run_id = $1`, runID).Scan(&maxSeq)
+	if err != nil {
+		return 0, fmt.Errorf("max step seq of run %s: %w", runID, platform.WrapPgErr(err))
+	}
+	return maxSeq, nil
+}
+
 func (r *PgRepo) ListToolCatalog(ctx context.Context, q platform.Querier) ([]ToolCatalogEntry, error) {
 	rows, err := q.Query(ctx, `SELECT name, description, side_effect_level FROM tools ORDER BY name ASC`)
 	if err != nil {

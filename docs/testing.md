@@ -228,3 +228,94 @@ running"。**A 两次都一样，而 A 才是崩溃的定义。**
 除此之外探针没有别的残留：它只读文件系统、只通过 SSE 读 api，不往 `data/`
 里写任何东西。留在 `agent_runs` 里的那条行是**证据**，不是垃圾——它会被
 恢复入口接管，不需要手工清库。
+
+## 恢复的端到端验证（issue #64）
+
+崩溃探针回答的是"崩了之后库里剩什么"。这一节回答的是它的下一句：
+**那些残留，恢复入口能不能真的接上。**
+
+单元测试做不到这件事——它们构造的正是"你想证明的那个现场"，所以
+issue #64 的验收标准写的是"配合崩溃探针做一次端到端验证（4 步 run 在第 3 步
+被杀 → 重启从第 4 步继续）"。下面是 2026-09-22 真实跑通的一次，命令与输出
+都是原样抄下来的。
+
+### 怎么跑
+
+```bash
+# 1. 起 api（宿主机形态）
+make dev
+# 2. 造一个只用 calculator 的 Agent，然后：
+node scripts/crash-probe.mjs --api http://127.0.0.1:3210 --kill pid:<api进程>
+# 3. 重启 api —— 启动扫描会把留下的 run 标成 interrupted
+# 4. 调恢复
+curl -N -X POST http://127.0.0.1:3210/api/v1/runs/<runId>/resume
+```
+
+### 实测记录
+
+崩溃现场（`--step 2`，真实模型、真实库）：
+
+```text
+run id        89e96dfd-c4bd-4115-a7de-8ac03ff3b1fd
+status        running
+current_step  4
+已落库 step   1/llm/completed  2/tool/completed  3/tool/completed  4/tool/completed  5/llm/running
+在飞的那一步  seq=5 —— 已落库，停在 running
+```
+
+重启之后、恢复之前：
+
+```text
+恢复前: status=interrupted currentStep=4        ← 启动扫描干的（ADR-007 决策二）
+```
+
+调 `resume`（响应是 SSE，第一帧永远是 `run_started`）：
+
+```text
+=== 帧类型 ===
+      1 event: done
+      1 event: run_started
+     49 event: token
+```
+
+恢复之后：
+
+```text
+status=completed currentStep=6 outlen=59
+
+=== steps ===
+1 llm completed
+2 tool completed calculator
+3 tool completed calculator
+4 tool completed calculator
+5 llm interrupted          ← 崩在半途的那一轮，标 interrupted，不假装成功
+6 llm completed            ← 恢复跑出来的那一轮，接在已有编号之后
+
+=== tool_effect_log === 3 行（崩溃前后一样）
+=== 错误日志 === （空——没有 duplicate key，也没有静默失败）
+```
+
+### 这次验证查出的一个真缺陷（已修）
+
+第一次跑的时候，恢复「成功」了（run 进入 `completed`、流也正常收尾），
+但**恢复跑出来的那一步在轨迹里彻底消失**，而且 `current_step` 被倒着改回了 `1`。
+根因写在 api 日志里那一行：
+
+```text
+level=ERROR msg="failed to record agent run step" ... seq=1 type=llm
+  error="insert step 1 of run ...: duplicate key: agent_run_steps_run_seq_unique"
+```
+
+`consumeEvents` 的 Step 编号从 1 开始，而恢复是接着一条**已经有 seq 1..N 的
+run** 往下跑——第一条 INSERT 撞上 `UNIQUE (run_id, seq)`，而轨迹写入不是致命
+路径，那个失败只被记成一行日志。
+
+**它不会让任何单元测试变红**（那些测试都是"从头跑一次"，编号本来就从 1 开始）。
+这正是 issue #64 要求"配合崩溃探针做端到端验证"的原因：单元测试构造不出
+"接着已有的编号往下跑"这个形状。
+
+修法是让编号**从数据里推导**（`Repo.MaxStepSeq`），而不是让调用方算好一路
+当参数传下去——传参的版本有三个地方可以漏，而漏掉的表现恰好是静默的。
+`internal/agent/recovery_test.go` 的
+`TestResume_StepNumberingContinuesAfterExistingSteps` 钉住它，
+并且**做过变异检验**（把 `MaxStepSeq` 改成永远返回 0，那条测试会红）。

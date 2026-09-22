@@ -186,6 +186,20 @@ func (f *fakeRepo) UpdateStep(ctx context.Context, q platform.Querier, s *Step) 
 
 // ── run 维度事件流（issue #54）────────────────────────────────
 
+// MaxStepSeq 从内存里算——Step 的编号要靠它接着已有的往下排
+// （从 1 重来会撞 UNIQUE (run_id, seq)，而那个失败是静默的）。
+func (f *fakeRepo) MaxStepSeq(ctx context.Context, q platform.Querier, runID uuid.UUID) (int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	maxSeq := 0
+	for _, s := range f.steps {
+		if s.RunID == runID && s.Seq > maxSeq {
+			maxSeq = s.Seq
+		}
+	}
+	return maxSeq, nil
+}
+
 func (f *fakeRepo) NextRunEventID(ctx context.Context, q platform.Querier, runID uuid.UUID) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

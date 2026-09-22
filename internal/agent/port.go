@@ -65,6 +65,15 @@ type Repo interface {
 	InsertStep(ctx context.Context, q platform.Querier, s *Step) error
 	StepsByRun(ctx context.Context, q platform.Querier, runID uuid.UUID) ([]*Step, error)
 
+	// MaxStepSeq 返回这条 run 已经用过的最大 seq，没有步骤时返回 0。
+	//
+	// 【为什么它是个独立方法，而不是让调用方从 StepsByRun 里自己算】
+	// Step 的编号必须**接着已有的往下排**（恢复时尤其重要：从 1 重来会撞
+	// UNIQUE (run_id, seq)，而那个失败是静默的）。让唯一需要这个数的地方
+	// 直接从数据里读，比"算好之后一路当参数传下去"少三个可以漏的环节——
+	// 而漏掉的表现恰好是静默的。见 usecase.go 里 consumeEvents 的注释。
+	MaxStepSeq(ctx context.Context, q platform.Querier, runID uuid.UUID) (int, error)
+
 	// UpdateStep 更新一行**已经存在**的 Step。
 	//
 	// 【为什么需要它：工具步骤要在调用之前就落库（issue #64 / ADR-007）】

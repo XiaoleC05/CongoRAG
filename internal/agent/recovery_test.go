@@ -652,3 +652,52 @@ func TestUpdateAgent_NotFound(t *testing.T) {
 	_, err := u.UpdateAgent(context.Background(), uuid.New(), "x", "", "", nil)
 	require.ErrorIs(t, err, platform.ErrNotFound)
 }
+
+// ════════════════════════════════════════════════════════════════
+// 恢复时的 Step 编号（端到端验证发现的缺陷）
+// ════════════════════════════════════════════════════════════════
+
+// 【这个缺陷不会让"从头跑一次"的测试变红】恢复是接着一条已经有步骤的 run
+// 往下跑，如果 consumeEvents 从 1 重新编号，第一条 INSERT 就会撞上
+// agent_run_steps 的 UNIQUE (run_id, seq)——而那个失败只被记成一行日志
+// （轨迹写入不是致命路径），于是恢复跑出来的那几步**在轨迹里彻底消失**，
+// 顺带把 current_step 倒着改回一个更小的数。
+//
+// 它是拿崩溃探针做端到端验证时，从 api 日志里那一行
+// `duplicate key: agent_run_steps_run_seq_unique` 发现的。
+func TestResume_StepNumberingContinuesAfterExistingSteps(t *testing.T) {
+	u, repo, run, _ := newResumeFixture(t, NewCalculator(), CurrentStateSchemaVersion)
+	ctx := context.Background()
+
+	// 再造两步，让这条 run 已经有 seq 1..4。
+	require.NoError(t, repo.InsertStep(ctx, nil, &Step{
+		ID: uuid.New(), RunID: run.ID, Seq: 3, Type: StepTypeTool, Status: StepCompleted,
+		ToolName: "calculator", ToolArgs: json.RawMessage(`{"a":1,"b":1,"operator":"+"}`),
+		ToolResult: json.RawMessage(`{"result":2}`),
+	}))
+	require.NoError(t, repo.InsertStep(ctx, nil, &Step{
+		ID: uuid.New(), RunID: run.ID, Seq: 4, Type: StepTypeTool, Status: StepCompleted,
+		ToolName: "calculator", ToolArgs: json.RawMessage(`{"a":2,"b":2,"operator":"+"}`),
+		ToolResult: json.RawMessage(`{"result":4}`),
+	}))
+
+	// 直接驱动一段事件流（模拟恢复之后模型继续生成）：新落的 llm 步骤必须
+	// 接在 seq 4 之后，而且不撞唯一约束。
+	sink := newFakeSink()
+	events := make(chan adkEvent, 4)
+	events <- adkEvent{kind: adkEventToken, text: "结论"}
+	events <- adkEvent{kind: adkEventDone}
+	close(events)
+
+	_, err := u.consumeEvents(ctx, run.ID, "model-1", events, sink, &runningRun{done: make(chan struct{})})
+	require.NoError(t, err)
+
+	var seqs []int
+	for _, s := range repo.steps {
+		if s.RunID == run.ID {
+			seqs = append(seqs, s.Seq)
+		}
+	}
+	assert.Contains(t, seqs, 5, "恢复跑出来的那一步要接在已有步骤之后（seq=5），而不是顶掉 seq=1")
+	assert.Len(t, seqs, 5, "不能有重复的 seq——重复的那条会被唯一约束拒掉、静默丢失")
+}
