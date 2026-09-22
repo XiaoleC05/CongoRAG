@@ -2,14 +2,53 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@congorag/api-client'
 import type { Schemas } from '@congorag/api-client'
+import { USAGE_KEY } from '@/hooks/useUsage'
 
 type ProviderWithModels = Schemas['ProviderWithModels']
+type ModelSummary = Schemas['ModelSummary']
 
 /**
  * Provider 列表在缓存里的 key。同一份写法见 useKnowledgeBases.ts 的注释：
  * 读和写两处必须用同一个常量，拼错一处不会报错，只会让界面"点了没反应"。
  */
 export const PROVIDERS_KEY = ['providers']
+
+/**
+ * 找出「当前生效的 embedding 模型」——`lib/activeModel.ts` 里
+ * `latestChatModel` 的对称项，判据同 `internal/llm/model.go` 的
+ * `LatestByKind`：同 kind 里 `createdAt` 最新的那一个。
+ *
+ * 【为什么它是单独一个函数，而不是把 latestChatModel 泛化一下】那个函数
+ * 在 `lib/activeModel.ts`，而本批次只允许改 hooks/ 下这三个文件。搬家会
+ * 同时动两个不在清单里的文件，所以先在这里放一份对称实现，并在注释里
+ * 指向它——改动 `LatestByKind` 的判据时**两处都要跟**（不跟的后果是设置页
+ * 显示一个过期的模型名和维度；不会报错，只是信息是假的）。
+ *
+ * 【为什么维度只看 embedding 模型】契约里 `ModelSummary.embeddingDim` 对
+ * chat 模型恒为 0（注释写明），拿 chat 模型的 0 去显示"当前向量维度 0"
+ * 是纯误导，所以这里只遍历 kind === 'embedding'。
+ */
+export function latestEmbeddingModel(
+  providers: ProviderWithModels[],
+): ModelSummary | null {
+  let latest: ModelSummary | null = null
+
+  for (const provider of providers) {
+    for (const model of provider.models ?? []) {
+      if (model.kind !== 'embedding') continue
+      // 比时间戳而不是比字符串：createdAt 是带时区偏移的 RFC3339 串，
+      // 字符串比较只在同一个偏移下碰巧成立（§11 是同一类坑）。
+      if (
+        latest === null ||
+        new Date(model.createdAt).getTime() > new Date(latest.createdAt).getTime()
+      ) {
+        latest = model
+      }
+    }
+  }
+
+  return latest
+}
 
 /**
  * 读：已配置的模型接入列表（不含明文 Key）。
@@ -101,3 +140,66 @@ export function useCreateProvider() {
     },
   })
 }
+
+/**
+ * 改一个模型条目时要提交的东西。
+ *
+ * 【为什么分成 `id` 和 `body` 两层，而不是拉平成一个对象】契约里
+ * `UpdateModelRequest.modelId` 是**模型名**（`gpt-4o-mini` 那种），而路径里的
+ * `{id}` 是 `llm_models` 的主键。两者都叫 "id"，拉平成一个对象就必须重名，
+ * 类型也拦不住写错。分开之后 `id` 永远是主键、`body` 永远是那份整体替换的
+ * 请求体，调用点不可能搞混。
+ */
+export type UpdateModelInput = {
+  /** llm_models 的主键，走路径参数 */
+  id: string
+  body: Schemas['UpdateModelRequest']
+}
+
+/**
+ * 写：改 / 删一个模型条目（issue #83 的"编辑 / 删除模型"）。
+ *
+ * 【为什么在 models/{id} 上，而不是 providers/{id}】契约里 provider 本身
+ * 只有 get / post——**没有 PATCH、没有 DELETE**。能改能删的粒度是"模型条目"。
+ * 编辑/删除 provider 这一层（换 Base URL、换 Key、整个删掉）没有端点，
+ * 所以设置页上也不给这两个入口：界面上的每个按钮背后都必须有一个真实
+ * 存在的端点，做一个点了没反应的按钮，用户只会以为是自己点错了。
+ *
+ * 【两个操作都作废整个 provider 列表】`PROVIDERS_KEY` 是前缀失效，
+ * 模型是 provider 的子结构，列表是唯一的读点，没有单条缓存要单独处理。
+ */
+export function useModelMutations() {
+  const queryClient = useQueryClient()
+
+  const update = useMutation({
+    mutationFn: async (input: UpdateModelInput) => {
+      const { data, error } = await api.PATCH('/api/v1/models/{id}', {
+        params: { path: { id: input.id } },
+        body: input.body,
+      })
+      if (error) throw error
+      return data
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: PROVIDERS_KEY }),
+  })
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await api.DELETE('/api/v1/models/{id}', {
+        params: { path: { id } },
+      })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      // 【为什么这里要多作废一次用量缓存】`token_usage.model_id` 的外键是
+      // ON DELETE CASCADE（migrations/0003），删掉一个模型会把它历史上的
+      // 用量行一起删掉。不作废的话，用量页上的数字还是删之前那一份——
+      // 数据已经变了、页面没刷新，而且不报错（§3 说的正是这种坏法）。
+      void queryClient.invalidateQueries({ queryKey: USAGE_KEY })
+      return queryClient.invalidateQueries({ queryKey: PROVIDERS_KEY })
+    },
+  })
+
+  return { update, remove }
+}
+

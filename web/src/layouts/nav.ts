@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, Bot, MessagesSquare } from 'lucide-react'
+import { BarChart3, BookOpen, Bot, MessagesSquare, Settings } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 /**
@@ -32,8 +32,15 @@ export const NAV: NavItem[] = [
   { to: '/knowledge-bases', label: '知识库', icon: BookOpen },
   { to: '/conversations', label: '对话', icon: MessagesSquare },
   { to: '/agents', label: 'Agent', icon: Bot },
-  // 用量页确实还没做（后端 GET /api/v1/usage 已可用，见 issue #76）。
-  // 它的归属不是 M5——M5 在项目文档里是质量里程碑，跟"界面补齐"不是一回事，
-  // 写上只会让后来者顺着一条查不到出处的线索找过去。
-  { to: '/usage', label: '用量', icon: BarChart3, soon: '尚未实现' },
+  // 【这里的 soon 是 2026-09-22 摘掉的（issue #76）】它原来写着
+  // soon: '尚未实现'，理由写的是"顺手实现它会让那条 issue 的验收无处可查"。
+  // 现在 UsagePage 落地了，占位反而变成了假信息——README 的「新增一个页面」
+  // 第 4 步与 AppLayout.test.tsx 的"标了 soon 的模块确实没有页面文件"
+  // 一起钉着这件事：页面在，soon 就必须摘。
+  { to: '/usage', label: '用量', icon: BarChart3 },
+  // 【设置为什么在这里，而不在侧栏底部】侧栏底部原来是 AppLayout.tsx 里
+  // 写死的一个禁用占位，它的注释把归属指向 issue #83。本批次落地了
+  // SettingsPage，所以入口挪进这张表——**但底部那个占位不归本批次删**
+  // （AppLayout.tsx 在改动清单之外），所以两个入口会并存一段时间。
+  { to: '/settings', label: '设置', icon: Settings },
 ]

@@ -32,10 +32,13 @@ import NotFoundPage from '@/pages/NotFoundPage'
 // 只有几百字节，单独成 chunk 是净亏。
 const OnboardingPage = lazy(() => import('@/pages/OnboardingPage'))
 const KnowledgeBaseDetailPage = lazy(() => import('@/pages/KnowledgeBaseDetailPage'))
+const ConversationsPage = lazy(() => import('@/pages/ConversationsPage'))
 const ConversationPage = lazy(() => import('@/pages/ConversationPage'))
 const AgentsPage = lazy(() => import('@/pages/AgentsPage'))
 const AgentDetailPage = lazy(() => import('@/pages/AgentDetailPage'))
 const RunTracePage = lazy(() => import('@/pages/RunTracePage'))
+const UsagePage = lazy(() => import('@/pages/UsagePage'))
+const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 
 /**
  * 路由表。
@@ -82,10 +85,17 @@ export function AppRouter() {
             <Route index element={<Navigate to="/knowledge-bases" replace />} />
             <Route path="knowledge-bases" element={<KnowledgeBasesPage />} />
             <Route path="knowledge-bases/:id" element={<KnowledgeBaseDetailPage />} />
+            {/* 【conversations 这条为什么是新增的（issue #78）】在这之前
+                路由表里只有 conversations/:id。侧栏「对话」那一项指向的是
+                /conversations，于是点它落到 `*` 上——用户看到的是 404。
+                会话列表页落地之后这一条才有内容，顺带把那个 404 修掉了。 */}
+            <Route path="conversations" element={<ConversationsPage />} />
             <Route path="conversations/:id" element={<ConversationPage />} />
             <Route path="agents" element={<AgentsPage />} />
             <Route path="agents/:id" element={<AgentDetailPage />} />
             <Route path="agents/:agentId/runs/:runId" element={<RunTracePage />} />
+            <Route path="usage" element={<UsagePage />} />
+            <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Route>

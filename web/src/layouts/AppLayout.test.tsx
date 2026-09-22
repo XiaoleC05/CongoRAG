@@ -139,11 +139,15 @@ describe('侧栏导航项与已实现模块的一致性', () => {
     expect(screen.getByRole('link', { name: '知识库' }).getAttribute('data-active')).toBe('false')
   })
 
-  it('未实现的模块仍然是禁用占位（用量）', () => {
+  // 【这条原来是"用量仍然是禁用占位"，2026-09-22 随 issue #76 反转】
+  // UsagePage 落地之后，nav.ts 里 /usage 那一项的 soon 摘掉了，于是它从
+  // 禁用项变回一个真实的链接。上面「对话」那条钉的是同一个规则的两个实例：
+  // **页面在，入口就不能还是禁用占位**。所以这条改成和它对称的写法，
+  // 而不是删掉——删掉的话，"用量又变回占位"就没人拦得住了。
+  it('用量是可点的链接，不是禁用占位', () => {
     renderInAppLayout()
 
-    expect(screen.queryByRole('link', { name: '用量' })).toBeNull()
-    expect(screen.getByRole('button', { name: '用量' }).hasAttribute('disabled')).toBe(true)
+    expect(screen.getByRole('link', { name: '用量' }).getAttribute('href')).toBe('/usage')
   })
 
   // 上面两条钉的是今天的状态，这一条钉的是规则本身：**NAV 里标了 soon 的模块，
