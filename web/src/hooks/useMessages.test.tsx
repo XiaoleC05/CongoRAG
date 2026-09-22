@@ -70,7 +70,7 @@ describe('useSendMessage', () => {
   it('发送那一刻就把用户消息插进缓存，不等后端确认', async () => {
     getMock.mockResolvedValue({ data: { items: [], nextCursor: null }, error: undefined })
     // 流不结束：这一段就是"正在生成中"。
-    vi.mocked(streamChat).mockImplementation(() => new Promise<void>(() => {}))
+    vi.mocked(streamChat).mockImplementation(() => new Promise<number | null>(() => {}))
 
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { result } = renderChat(queryClient)
@@ -95,12 +95,15 @@ describe('useSendMessage', () => {
     )
     vi.mocked(streamChat).mockImplementation(async (_id, _text, _key, callbacks) => {
       // 模拟后端：先落库用户消息，再发 error 帧。
+      // 那一帧没有 id——它对应的失败发生在"分配 event_id"之前，
+      // 正是 ADR-005 说的那条路径。
       persisted = [persistedUserMessage]
       callbacks.onEvent({
         type: 'error',
-        id: 1,
+        id: null,
         data: { type: 'upstream_llm_error', detail: '模型调用失败' },
       })
+      return null
     })
 
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -121,9 +124,41 @@ describe('useSendMessage', () => {
   // 幂等键（issue #37）：每一次 send 都要带一个非空的键，且两次 send 的键
   // 必须不同——键写死的话，第二次提问会命中第一次的记录，服务端不生成新
   // 回答、直接把上一轮的答案补发回来，用户看到的是"发了消息但答案没变"。
+  //
+  // 【两次发送要一次一次来，不能并发】hook 里加了一道"同时只允许一条流"的
+  // 闸（issue #90 的防重复触发）：两条流并发会共用同一份 streamingContent /
+  // isStreaming，互相覆盖之后界面只是"答案看起来串了"，不报错。原来这条
+  // 用例在同一个 act 里连发两次，第二次现在会被那道闸挡掉——所以改成
+  // 前一次结束之后再发下一条。断言本身一个字没动。
   it('每次发送都带一个新的、非空的幂等键', async () => {
     getMock.mockResolvedValue({ data: { items: [], nextCursor: null }, error: undefined })
-    vi.mocked(streamChat).mockImplementation(() => new Promise<void>(() => {}))
+    vi.mocked(streamChat).mockResolvedValue(null)
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result } = renderChat(queryClient)
+    await waitFor(() => expect(result.current.messages.isSuccess).toBe(true))
+
+    await act(async () => {
+      await result.current.sender.send('第一问')
+      await result.current.sender.send('第二问')
+    })
+
+    const keys = vi.mocked(streamChat).mock.calls.map((c) => c[2])
+    expect(keys).toHaveLength(2)
+    for (const k of keys) {
+      expect(typeof k).toBe('string')
+      expect(k.length).toBeGreaterThan(0)
+    }
+    expect(keys[0]).not.toBe(keys[1])
+  })
+
+  // 【这条闸是 issue #90 的"请求进行中不可重复触发"在数据层的落地】UI 已经把
+  // 按钮禁用了，但按钮之外还有别的入口（输入框回车的提交、以及程序化调用）。
+  // 两道防线都要有：只靠 disabled 的话，任何一处忘了禁用就会并发两条流。
+  it('流还在跑的时候再调 send 不会起第二条流', async () => {
+    getMock.mockResolvedValue({ data: { items: [], nextCursor: null }, error: undefined })
+    // 第一条流不结束。
+    vi.mocked(streamChat).mockImplementation(() => new Promise<number | null>(() => {}))
 
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { result } = renderChat(queryClient)
@@ -134,12 +169,7 @@ describe('useSendMessage', () => {
       void result.current.sender.send('第二问')
     })
 
-    const keys = vi.mocked(streamChat).mock.calls.map((c) => c[2])
-    expect(keys).toHaveLength(2)
-    for (const k of keys) {
-      expect(typeof k).toBe('string')
-      expect(k.length).toBeGreaterThan(0)
-    }
-    expect(keys[0]).not.toBe(keys[1])
+    expect(vi.mocked(streamChat)).toHaveBeenCalledTimes(1)
+    expect(result.current.sender.isStreaming).toBe(true)
   })
 })

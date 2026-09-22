@@ -1,8 +1,9 @@
-import { ArrowLeft, Send } from 'lucide-react'
+import { ArrowLeft, Loader2, Send, Square } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 
 import { ErrorText } from '@/components/ErrorText'
+import { RunStatusBadge } from '@/components/agent/RunStatusBadge'
 import { ToolCallCard } from '@/components/agent/ToolCallCard'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -15,15 +16,6 @@ import { useStartAgentRun } from '@/hooks/useStartAgentRun'
 import { flattenPages } from '@/lib/pagination'
 import { formatDateTime } from '@/lib/format'
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: '排队中',
-  running: '运行中',
-  completed: '已完成',
-  failed: '失败',
-  cancelled: '已取消',
-  interrupted: '已中断',
-}
-
 /**
  * Agent 详情页：运行输入框 + 当前这次运行的流式时间线 + 历史运行列表。
  *
@@ -33,6 +25,7 @@ const STATUS_LABEL: Record<string, string> = {
  * 两者故意不合并成一个组件：当前运行结束后,历史列表会通过 query
  * 失效自动出现这次运行,用户想回看时走的是同一条"查历史"路径,
  * 不需要为"这次刚跑完的" 特殊处理。
+ * （工具卡片本身是共用的——同一批步骤在两边都该长成同一张卡。）
  */
 export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -42,7 +35,8 @@ export default function AgentDetailPage() {
   const { data: runPages, hasNextPage, fetchNextPage, isFetchingNextPage } =
     useAgentRuns(agentId)
   const runs = flattenPages(runPages)
-  const { start, isRunning, timeline, runError } = useStartAgentRun(agentId)
+  const { start, cancel, isRunning, isCancelling, timeline, runError, runId, status } =
+    useStartAgentRun(agentId)
   const navigate = useNavigate()
 
   const [input, setInput] = useState('')
@@ -101,6 +95,15 @@ export default function AgentDetailPage() {
 
           <ScrollArea className="flex-1">
             <div className="space-y-3 pr-4">
+              {/* 本次运行的状态徽章。它只在这次页面会话里存在过运行时有意义
+                  ——没跑过任何一次时不渲染，免得留一个空的"本次运行"标头。 */}
+              {status !== null && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-muted-foreground">本次运行</span>
+                  <RunStatusBadge status={status} />
+                </div>
+              )}
+
               {timeline.map((item, i) =>
                 item.kind === 'text' ? (
                   <div key={i} className="bg-muted rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap">
@@ -110,6 +113,7 @@ export default function AgentDetailPage() {
                     )}
                   </div>
                 ) : (
+                  // 工具调用折叠卡片（issue #80）：工具名、参数、结果，默认收起。
                   <ToolCallCard key={i} name={item.name} args={item.args} result={item.result} />
                 ),
               )}
@@ -135,9 +139,35 @@ export default function AgentDetailPage() {
               disabled={isRunning}
               autoFocus
             />
-            <Button type="submit" disabled={isRunning || !input.trim()}>
-              <Send />
-            </Button>
+            {/* 【取消不是"停止看"，是"别跑了"】一次 run 会串起多步工具调用和
+                多次模型调用，每一个 token 都在花用户自己配的额度，所以这里
+                接的是后端的 cancel 端点，而不是像对话页那样只掐掉本地连接：
+                本地掐断在服务端留下的是 interrupted（连接没了），用户按的是
+                "我不要了"，那该是 cancelled。两者的区别后端也是显式做的。
+
+                【拿不到 runId 时按钮是禁用的】runId 只来自流的首帧
+                run_started。首帧还没到的那一帧里没有 id 可发，禁用比发一个
+                假请求或静默失败都诚实——而这个窗口只有一帧。首帧永远不来
+                只有一种情况：这次运行根本没开始（空输入、Agent 不存在、
+                没有可用模型），那时也没有东西需要取消，页面上给的是错误
+                提示而不是取消按钮。
+
+                【图标按钮要有可访问名】README §14。 */}
+            {isRunning ? (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void cancel()}
+                disabled={runId === null || isCancelling}
+                aria-label="取消运行"
+              >
+                {isCancelling ? <Loader2 className="animate-spin" /> : <Square />}
+              </Button>
+            ) : (
+              <Button type="submit" disabled={!input.trim()} aria-label="运行">
+                <Send />
+              </Button>
+            )}
           </form>
 
           {!!runs.length && (
@@ -152,8 +182,10 @@ export default function AgentDetailPage() {
                     className="hover:bg-accent/40 flex w-full items-center justify-between px-3 py-2 text-left text-sm"
                   >
                     <span className="min-w-0 flex-1 truncate">{run.input}</span>
-                    <span className="text-muted-foreground ml-3 shrink-0 text-xs">
-                      {STATUS_LABEL[run.status] ?? run.status} · {formatDateTime(run.createdAt)}
+                    <span className="text-muted-foreground ml-3 flex shrink-0 items-center gap-2 text-xs">
+                      {formatDateTime(run.createdAt)}
+                      {/* 六态都在这里出现（含 v4.0 起真的会写入的 interrupted）。 */}
+                      <RunStatusBadge status={run.status} />
                     </span>
                   </button>
                 ))}
