@@ -34,6 +34,7 @@ const readyDoc: Document = {
   filename: '手册.md',
   status: 'ready',
   byteSize: 2048,
+  chunkCount: 12,
   createdAt: '2026-09-21T00:00:00Z',
   updatedAt: '2026-09-21T00:00:05Z',
 }
@@ -44,6 +45,7 @@ const failedDoc: Document = {
   filename: '坏文件.txt',
   status: 'failed',
   byteSize: 128,
+  chunkCount: 3,
   createdAt: '2026-09-21T00:00:01Z',
   updatedAt: '2026-09-21T00:00:06Z',
 }

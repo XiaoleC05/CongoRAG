@@ -135,4 +135,77 @@
   html:not(.dark) {
     color-scheme: light;
     }
+
+  /* 路由切换后 AppLayout 会把焦点搬到页面主内容上（见 layouts/AppLayout.tsx
+     的 RouteFocus）。落点用 tabindex="-1" 标出来：不进 Tab 序列，只能被脚本
+     聚焦。既然键盘用户走不到它，给它画聚焦框就没有意义——只会让人以为
+     "这里能按"。用透明描边而不是 outline:none，是为了在强制高对比度模式
+     （Windows 高对比度等）下仍留一个可见的框，那类模式下透明会被换成实际颜色。 */
+  [tabindex='-1']:focus {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+  }
+}
+
+/*
+ * 减弱动态效果（prefers-reduced-motion，issue #93）
+ *
+ * 【为什么不放进 @layer base】Tailwind 把工具类放在 @layer utilities 里。
+ * 分层样式之间比的是"层"而不是选择器优先级：@layer base 里的规则永远输给
+ * utilities 里的 .animate-pulse。这条规则要能压住工具类，就必须留在层外
+ * （未分层的样式优先级高于任何分层样式），再配合 !important 压 inline 之外
+ * 的一切。别顺手把它挪进 @layer base，那样它会静默失效。
+ *
+ * 【为什么是全局一条，而不是逐个组件关动画】
+ *   - 业务代码只用了 animate-spin / animate-pulse / transition-*，一条全局规则全覆盖；
+ *   - shadcn 组件的进出场动画来自 tw-animate-css：它定义 --animate-in / --animate-out
+ *     两个主题变量（动画名 enter / exit，时长取 var(--tw-duration)），再由
+ *     .animate-in / .animate-out 工具类写成 animation 属性。它们同样是 animation，
+ *     所以同样被这条规则压住——不需要去改 src/components/ui/ 下的生成代码
+ *     （改了也会被下次 shadcn 生成覆盖）。
+ *
+ * 【为什么压时长而不是写 animation: none】两个原因：
+ *   1. Radix 的 Presence（弹窗、下拉、tooltip 什么时候真正卸载）是听 animationend
+ *      决定的。没有动画名它只能立刻卸载——功能上不算错，但等于让"有动画"和
+ *      "没动画"走两条不同的代码路径，以后踩坑只会踩在其中一条上。
+ *   2. 0.01ms 的动画仍然会走完一遍，元素最后停在【终态】。终态就是状态本身：
+ *      弹窗在、toast 在、光标在。"点了没反应"恰恰是把动画直接删掉的结果。
+ *   用 0.01ms 而不是 0s：时长为 0 的动画在部分浏览器里不触发 animation 事件，
+ *   那等于把上面第 1 条的好处丢掉了（这也是社区里那条"0.01ms"写法的由来）。
+ *
+ * 【animation-iteration-count: 1 是必需的】spinner（animate-spin）和骨架屏
+ * （animate-pulse）都是 infinite。只压时长的话它们会以极高的频率反复重放，
+ * 看起来静止、实际一直在跑，白烧 CPU。
+ *
+ * 【压停之后状态还看得见吗】逐项检查过，结论记在 web/README.md 的规范 §21：
+ *   - 弹窗 / 抽屉 / 下拉：瞬间出现、瞬间消失，仍然"出现了"；
+ *   - toast：sonner 自己带 prefers-reduced-motion 规则（对 toast 直接
+ *     animation/transition: none），它自己处理，这里不重复；
+ *   - 旋转的 Loader2：旁边都有文字（"处理中""运行中…"），状态由文字承担；
+ *   - 骨架屏：静止的灰块，仍然是"这里是空的"；
+ *   - 流式光标：见下面那条单独规则，压停后停在实心块上；
+ *   - 侧栏折叠、hover 变色：过渡瞬间完成，颜色照样变。
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    /* 平滑滚动也是一类动态效果，而且是最容易引起前庭不适的那一类 */
+    scroll-behavior: auto !important;
+  }
+
+  /* 【流式光标必须有兜底】它是"这一轮还在生成"的唯一标志：消息气泡末尾
+     （components/conversation/MessageBubble.tsx）和 Agent 时间线末尾
+     （pages/AgentDetailPage.tsx）那个 `h-4 w-1.5` 的方块。
+     上面那条规则会把它停在第 100% 帧，这里写死是为了不依赖关键帧的终态：
+     光标必须是一个看得见的实心块，不能因为"没有动画"就变成看不见。 */
+  .animate-pulse {
+    animation: none !important;
+    opacity: 1;
+  }
 }

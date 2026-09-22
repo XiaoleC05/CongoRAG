@@ -111,7 +111,19 @@ export default function OnboardingPage() {
     <div className="mx-auto flex min-h-screen max-w-xl items-center p-6">
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>配置模型接入</CardTitle>
+          {/* 【h1 为什么嵌在 CardTitle 里面（issue #95）】CardTitle 渲染的是一个
+              div——它是排版用的容器，不是标题标签。这一页没有第二个标题，
+              这张卡片的标题就是页面的主标题，所以真正的 <h1> 放在它里面。
+              不写样式类：Tailwind 的 preflight 把 h1 的 font-size / font-weight
+              重置成 inherit，字号字重直接从 CardTitle 继承下来，视觉上完全一样。
+              反过来，用一个大字号的 div 去"看起来像标题"才是要避免的那种写法——
+              读屏软件的大纲里会缺一层，用户按标题跳转时跳不到这一页。
+
+              页内两个 section 标题（聊天模型 / Embedding 模型）是 h2：
+              它们挂在 h1 下面，大纲是连续的，没有断层。 */}
+          <CardTitle>
+            <h1>配置模型接入</h1>
+          </CardTitle>
           <CardDescription>
             填入你的 OpenAI 兼容端点信息。保存时会用这些信息发一次真实请求，
             探测出 embedding 模型的输出维度，用来建向量索引——这一步需要几秒钟。
@@ -149,7 +161,10 @@ export default function OnboardingPage() {
             </section>
 
             <section className="space-y-3 border-t pt-4">
-              <h3 className="text-sm font-medium">聊天模型</h3>
+              {/* h2 而不是 h3：上面那张卡片标题现在是 h1，这两个分组标题是它
+                  的直接下级。层级用标签表达，字号（text-sm）是它自己的排版决定，
+                  两者不必一致——"看起来比 h1 小"跟"在大纲里挂在哪一层"是两件事。 */}
+              <h2 className="text-sm font-medium">聊天模型</h2>
               <div className="space-y-1.5">
                 <Label htmlFor="chatModelId">模型名</Label>
                 <Input
@@ -226,7 +241,7 @@ export default function OnboardingPage() {
             </section>
 
             <section className="space-y-3 border-t pt-4">
-              <h3 className="text-sm font-medium">Embedding 模型</h3>
+              <h2 className="text-sm font-medium">Embedding 模型</h2>
               <div className="space-y-1.5">
                 <Label htmlFor="embeddingModelId">模型名</Label>
                 <Input

@@ -20,7 +20,7 @@ import NotFoundPage from '@/pages/NotFoundPage'
 // 表现为"切个路由回来，我刚打的东西没了"——看起来像玄学。
 // lazy() 的结果必须跨渲染稳定，所以只能在模块作用域算这一次。
 //
-// 【Suspense 边界放在哪】主界面那几条路由的边界在 AppLayout 的 <main> 里面
+// 【Suspense 边界放在哪】主界面那几条路由的边界在 AppLayout 的内容容器里面
 // （见 layouts/AppLayout.tsx），不是包在 <Routes> 外面：包在外面的话，
 // 页面 chunk 没到时连侧栏一起消失，整屏变骨架——那看起来像应用崩了。
 // OnboardingPage 是挂在 AppLayout 之外的独立路由（它没有侧栏），

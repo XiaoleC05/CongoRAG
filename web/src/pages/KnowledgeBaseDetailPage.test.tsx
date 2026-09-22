@@ -41,6 +41,7 @@ const doc: Document = {
   // 测试里那是没必要的不确定因素
   status: 'ready',
   byteSize: 1024,
+  chunkCount: 8,
   createdAt: '2026-09-21T00:00:00Z',
   updatedAt: '2026-09-21T00:00:00Z',
 }

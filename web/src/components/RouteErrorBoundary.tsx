@@ -19,7 +19,7 @@ type State = { error: Error | null }
  * 没有边界时 React 会把【整棵树】卸载 → 白屏。控制台只有一行
  * "Failed to fetch dynamically imported module"，比一次普通崩溃更难查：
  * 页面全白，没有 stack 指向任何一处业务代码。有了边界，
- * 至少侧栏和顶栏还在（它挂在 AppLayout 的 <main> 里），
+ * 至少侧栏和顶栏还在（它挂在 AppLayout 的内容容器里），
  * 用户看到的是一句能读懂的说明 + 一个能自救的按钮。
  *
  * 【为什么必须给"刷新页面"按钮】React 会把 lazy 的失败结果缓存住，

@@ -39,8 +39,8 @@ web/
     ├── main.tsx            入口：Provider 链
     ├── router.tsx          路由表
     ├── index.css           Tailwind 入口 + 主题令牌（shadcn 生成，可改）
-    ├── layouts/            布局路由的组件（AppLayout）
-    ├── pages/              一个路由一个文件，默认导出
+    ├── layouts/            布局路由的组件（AppLayout）+ 侧栏导航表（nav.ts）
+    ├── pages/              一个路由一个文件，默认导出（每个页面要有 h1，见 §12）
     ├── components/
     │   ├── ui/             shadcn 生成，不要手改
     │   ├── <域>/           业务组件，如 knowledge/
@@ -57,6 +57,7 @@ web/
 | 无副作用的纯函数 | `lib/` |
 | 一个路由的入口，默认导出 | `pages/` |
 | 布局路由用的壳 | `layouts/` |
+| 布局专用的常量（导航表之类） | `layouts/` 下的独立 `.ts`——和组件放同一个文件会打断 Fast Refresh |
 | 业务组件（某个域专用） | `components/<域>/` |
 | 跨域通用组件 | `components/` 根下 |
 | 图片等不经构建的静态文件 | `public/` |
@@ -230,12 +231,131 @@ formatDateTime(kb.updatedAt)
 
 ---
 
+### 12. 一个页面一个 `h1`，标题层级不许跳
+
+- 页面有且只有一个 `h1`，它就是页面的主标题；下面的分组标题依次 `h2` / `h3`，不跳级。
+- **不许用样式类伪造层级**。`<div className="text-xl font-semibold">` 不会出现在读屏软件的大纲里——很多用户靠快捷键在标题之间跳转，跳级和缺级都会让大纲断层。层级是标签的事，字号是排版的事，两者不必一致：引导页的 `h2` 字号比 `h1` 小，这是允许的。
+- 例外只有一个：**对话页（`ConversationPage.tsx`）有意不设标题**。它主体是一列消息，页面没有"这一页叫什么"这个信息（契约里会话没有标题字段），而且进来就该在输入框里打字。**加例外之前先问：是真的不需要，还是忘了写。**
+- 404 页的 `404` 那一行保持 `<p>`：它是状态码不是标题，做成标题只会让大纲里冒出两个同级标题。
+- 判据：`src/pages/headingStructure.test.ts` 读 `src/pages/*.tsx` 检查这件事，例外清单在那个文件里；清单和现实对不上（页面补了 `h1` 却没从清单里删掉）也会红。
+
+### 13. 状态变了要有人播报
+
+三层分工，选错的表现是"读屏用户什么都没听到"或者"同一句话说两遍"：
+
+| 场景 | 用什么 | 先例 |
+| --- | --- | --- |
+| 出错，必须立刻打断 | `role="alert"`（隐含 assertive），**不要再写 `aria-live`** | `ErrorToast.tsx` |
+| 加载 / 进行中，可以等当前这句念完 | `role="status"`（或 `aria-live="polite"`）+ `aria-busy` | `PageFallback.tsx` |
+| 用户自己点的、界面上本来就看得见的变化（列表刷新、按钮文案变成"上传中…"） | 不用 live region | — |
+
+- 只有骨架、没有可见文字的加载态，把文字放 `sr-only`：界面上不需要"加载中…"这种废话，读屏用户需要。
+- 判据：凡是"界面自己变了"的东西（加载完了、失败了、流式在追加），要么有一句会被念出来的话，要么变化就写在用户刚点的那个按钮上。
+
+### 14. 键盘与焦点
+
+- 交互元素必须是真控件（`button` / `a` / Radix 组件）。可点击的 `div` 要配齐 `role`、`tabIndex={0}` 和 `onKeyDown`（先例：`KnowledgeCard.tsx`）。
+- 只有图标的按钮必须有可访问名，而且带上对象名——`aria-label="删除 报告.md"`，而不是 `aria-label="删除"`（读屏软件念一串"删除"等于没说）。
+- **路由切换后把焦点搬到新页面**：`AppLayout.tsx` 的 `RouteFocus` 在页面内容挂载后聚焦页面的 `h1`（页面没有 `h1` 时聚焦那个内容容器——它是 `div[tabindex="-1"]`）。它挂在 `<Suspense>` **里面**，chunk 没到就不会挂载——所以焦点不会先落在骨架上、再也没机会播报标题。
+- 焦点落点用 `tabIndex={-1}`（只能被脚本聚焦，不进 Tab 序列），聚焦框由 `index.css` 里那条 `[tabindex='-1']:focus` 去掉。**不要给可操作元素写 `outline-none`**：那会违反"焦点必须可见"。
+- **不抢用户已经拿到的焦点**：页面自己 `autoFocus` 的元素（对话页、Agent 详情页的输入框）优先，`RouteFocus` 会跳过。
+- 页面抛错时走 `RouteErrorBoundary`，那一帧 `RouteFocus` 已经不在了（连页面一起被换掉），播报靠报错 `Alert` 自己的 `role="alert"`——这条路径不需要焦点管理，别去给它补。
+- **加载态也要有 `h1`**：焦点是在页面挂载那一刻找标题的，标题还没渲染出来就只能落在内容容器上（Agent 详情页就是这样——它的标题是 agent 的名字，名字还没拉回来）。这不是缺陷，但新页面尽量先把标题渲染出来（静态文案，或者像知识库详情页那样用占位），播报才稳定。
+- **整页只有一个 `main` 地标**：shadcn 的 `SidebarInset` 自己就是 `<main>`，所以 `AppLayout` 里的滚动容器是 `div`——再套一个就有两个 main，读屏软件按地标跳转的人会撞见两个"主要内容区"（这个重复是 issue #94 顺手修掉的，`AppLayout.test.tsx` 有断言钉住）。
+- 判据：`AppLayout.test.tsx` 的焦点用例有三条（进入页面、切换路由、不抢输入框焦点）。手工验收：Tab 到侧栏 → 回车 → 下一次 Tab 应该从新页面的内容开始。
+
+### 15. 响应式：每一页都要显式决定窄屏行为
+
+- 逐页决定"什么消失、什么折叠、什么变成抽屉、什么从表格变卡片"，并且写下来。**反对把桌面布局直接缩小**——那既不是设计，窄屏上也不可用。
+- 不要用文本长度决定布局，不要魔法像素值。
+- **悬停交互必须有手指的等价物**：鼠标能悬停看到的东西，触屏上要能点开或长按。
+- 现状（**未达标，issue #86**）：8 个页面目前没有任何断点类，引用展开只有 `HoverCard`。这一节是给 #86 留的位置，动手时按它验收，不要以为已经做过。
+
+### 16. 每个异步动作都要有完整反馈
+
+§2 讲的是页面渲染哪几种状态，这一条讲"用户怎么知道事情在发生"：
+
+- **加载**：按钮要 `disabled` 并改文案（"保存并开始" → "探测中…"），防重复提交；列表区放骨架，不要留白。
+- **成功**：下一步要能看见结果——写操作靠 `invalidateQueries`（§3），别只弹一个 toast 报喜。
+- **失败**：形式由 `lib/errors.ts` 的 `errorPresentation()` 决定，**不要在页面里自己判断**。写操作失败走 toast（`useErrorToast`），查询失败留在页内 `Alert`。
+- **空**：和加载态分开（§2）。
+- 「加载更多」在没有下一页时**整个不渲染**，不要渲染成禁用——禁用会让人以为等一下就有了。
+- 判据：任何一个返回 Promise 的操作，界面上都找得到"正在做 / 做完了 / 失败了"三种可见证据。
+
+### 17. AI / Agent 界面要暴露什么
+
+- run 状态（`pending / running / completed / failed / cancelled / interrupted`）要有**统一的中文映射表**，不要在每个组件里各写一份（先例：`AgentDetailPage.tsx` 的 `STATUS_LABEL`）。
+- 流式过程中必须看得见"还在生成"：正文末尾的光标块（`MessageBubble.tsx` 的 `pending`）。
+- 工具调用要显示工具名 + 在跑还是跑完了；参数与结果默认收起（`ToolCallCard.tsx`）。
+- 失败要说清是**哪一轮**失败，"这一轮"的记录留在页面上（流式失败不 toast，理由在「已经做完的」一节）。
+- 现状：停止按钮（#79）、轨迹页的工具折叠卡片（#80）、Markdown（#87）、复制（#89）、重试（#90）都还没有。**别因为这一节就把它们当成已实现。**
+
+### 18. RAG 界面的文档状态
+
+- 文档行要能回答三个问题：它是什么（文件名）、它现在怎么了（状态）、我能做什么（重新索引 / 删除）。
+- 状态与后端的文档状态机一一对应（`queued / processing / ready / failed`），前端**不自己发明状态**，也不自己判断"这个状态能不能重试"。
+- 「处理中」必须有"还在动"的指示（旋转图标 + 文字，见 `DocumentStatusBadge.tsx`），只给一个图标等于没说。
+- 换 embedding 模型这类会清空向量的操作，用确认框解释代价（`OnboardingPage` 的 `AlertDialog`），不要做成一条红字报错——前者是"请你确认"，后者是"你做错了"。
+- 判据：新增一个文档状态时，`DocumentStatusBadge` 是唯一要改的地方。
+
+### 19. 表格与列表
+
+- 表头写清列名；每行的操作按钮要有可访问名，并且带上对象名。
+- 每行最多一个主操作，其余进溢出菜单——**不要在每行堆一排按钮**（文档行的"重新索引 / 删除"已经是上限）。
+- 分页统一用「加载更多」按钮，不做滚动自动加载（结论见「还没做的」）。
+- 排序与过滤（#92）还没有；做的时候要连带给出"筛完没有结果"的空态——它和"这里本来就没有东西"不是同一个空态。
+- 窄屏下表格要有降级路径（表格转卡片），见 §15。
+
+### 20. 弹窗、抽屉、页面：选哪个
+
+- **破坏性 / 不可逆** → `AlertDialog`（`role="alertdialog"`，默认聚焦在取消上）。先例：`DeleteKnowledgeDialog.tsx`，文件注释里写了为什么不是 `Dialog`。
+- **需要填字段** → `Dialog`。
+- **侧边的次要内容** → `Sheet`（抽屉）。移动端导航用它，不要把桌面侧栏硬缩成一条。
+- 弹窗里的表单靠**换 `key`** 重置（§8）；字段级的失败文案贴在字段旁（`errorPresentation` 返回 `inline` 的那种）。
+- 判据：破坏性操作永远不用 `Dialog`；弹窗的第一行必须是标题（`AlertDialogTitle` / `DialogTitle`），不能只有描述。
+
+### 21. 动画与减弱动态
+
+- 动画只用来表达"状态变了"（进出场、进行中、追加中），不做装饰性动效。
+- **必须尊重系统的「减弱动态效果」**：`src/index.css` 里那条 `@media (prefers-reduced-motion: reduce)` 是全局的，`animation-duration` 压到 0.01ms 且只跑一遍。它**必须留在 `@layer` 外面**——Tailwind 的工具类在 `@layer utilities` 里，分层样式比的是层不是选择器优先级，放进 `@layer base` 会被工具类压住、静默失效。
+- **压停不等于删掉**，状态必须静止可辨。逐条判据：
+  - 靠旋转图标表达"进行中"的，旁边必须有文字（"处理中""运行中…"）——图标停住、文字还在；
+  - 流式光标是唯一"只靠动画表达"的元素，压停后停在**实心块**上（`.animate-pulse` 那条单独规则）；
+  - 骨架屏压停后是静止的灰块，仍然看得出"这里是空的"；
+  - 弹窗 / 抽屉 / 下拉靠 `animationend` 卸载（Radix 的 Presence），所以只能压时长、**不能写 `animation: none`**；
+  - toast 的降级由 sonner 自己处理（它对 toast 直接 `animation/transition: none`）。
+- 新增任何"用动画表达状态"的元素时，回到上面这几条问一句：**把动画关掉之后，状态还在不在。**
+- 工具上怎么确认：`tw-animate-css` 的 `.animate-in` / `.animate-out` 最终写的是 `animation` 属性，主题变量在 `node_modules/tw-animate-css/dist/tw-animate.css`。读它，别凭记忆——shadcn 的弹窗、抽屉、下拉全都靠它。
+- 手工验收不用改系统设置：Chrome DevTools → Rendering → **Emulate CSS media feature `prefers-reduced-motion`** 选 `reduce`，然后过一遍主要交互（开弹窗、删知识库、发一条消息、等文档从"处理中"变"就绪"），逐条对上面的判据看状态是不是还认得出来。
+
+### 已达标项（判据在这里，别再重复审计）
+
+| 项 | 判据 | 怎么复核 |
+| --- | --- | --- |
+| 零硬编码颜色 | 业务代码里没有 `#hex` / `rgb()` / `hsl()` 字面量，颜色只用语义 token（`bg-background` / `text-muted-foreground` …）或带 `dark:` 变体的调色板类 | 在 `web/src` 里搜色值字面量（`#` 开头、`rgb(`、`hsl(`），排除 `components/ui/`——目前只剩 `DocumentStatusBadge` 的 `text-emerald-600 dark:text-emerald-400` 一处调色板类（不是色值字面量） |
+| 破坏性操作走 `AlertDialog` | 知识库删除是 `AlertDialog`，注释写明为什么不是 `Dialog` | `components/knowledge/DeleteKnowledgeDialog.tsx` |
+| `role="alert"` 与 `aria-live` 的分工 | `ErrorToast` 用 `role="alert"` 且**不**同时写 `aria-live`；`PageFallback` 用 `role="status"` + `aria-busy` | `ErrorToast.test.tsx` 有断言，两个组件都有注释 |
+| `<html lang="zh-CN">` 与深色优先 | `index.html` 写死 `lang="zh-CN"` + `class="dark"`，防闪白脚本同步执行、排在 `main.tsx` 之前 | 读 `web/index.html` 与 §10 |
+| 路由切换后的焦点管理 | `RouteFocus` 聚焦新页面的 `h1`，落点不进 Tab 序列、没有聚焦框，且不抢 `autoFocus` | `AppLayout.test.tsx` 的四条焦点用例 |
+| 整页只有一个 `main` 地标 | 内容容器是 `div[tabindex="-1"]`，唯一的 `<main>` 来自 `SidebarInset` | `AppLayout.test.tsx` 的"整页只有一个 main 地标" |
+| 减弱动态效果 | 全局 `prefers-reduced-motion` 规则 + 流式光标兜底 | 系统里打开"减弱动态效果"，逐条对 §21 |
+| 文档状态只有一个映射点 | `DocumentStatusBadge` 的四态与后端状态机一一对应 | `components/knowledge/DocumentStatusBadge.tsx` |
+
+**审计发现、但本批次不修的缺口**（记在这里，免得下一轮重新发现一遍）：
+
+- `ConversationPage` / `AgentDetailPage` 的发送按钮只有图标、没有 `aria-label`；
+- 文档行上的删除按钮直接执行，没有确认框（属 issue #91）；
+- 引用展开只有悬停，触屏上没有等价交互（属 issue #86）；
+- 页面级断点全站为空（属 issue #86）。
+
+---
+
 ## 新增一个页面
 
-1. `src/pages/XxxPage.tsx` — 默认导出
+1. `src/pages/XxxPage.tsx` — 默认导出，页面里要有且只有一个 `h1`（§12；`headingStructure.test.ts` 会检查，真要例外就把它写进那个文件的清单并说明理由）
 2. 在 `src/hooks/` 加数据 hook（不要直接在页面里调 `api.*`）
 3. 在 `src/router.tsx` 的布局路由下加一条 `<Route path="xxx" element={<XxxPage />} />`
-4. 在 `src/layouts/AppLayout.tsx` 的 `NAV` 里加入口；还没实现的模块加 `soon: 'Mx'`，会渲染成禁用项
+4. 在 `src/layouts/nav.ts` 的 `NAV` 里加入口；还没实现的模块加 `soon: '尚未实现'`，会渲染成禁用项（**写事实，不要写里程碑编号**——编号会过期，见 `nav.ts` 里的注释）
 5. 接口变了先改 `contracts/openapi.yaml` 再 `make generate`
 6. `make check` 确认类型、构建、lint 都过
 
@@ -306,6 +426,9 @@ npx --yes shadcn@latest add <组件>  # 加 shadcn 组件
 | --- | --- |
 | 无限滚动 | 三个分页列表统一用"加载更多"按钮而不是滚动自动加载。对话页已有"滚到底部"的行为、文档页是表格布局，两处都要重做，收益不抵成本 |
 | 会话列表端点 | 契约里没有 `GET /api/v1/conversations`（只有 `post:`），所以侧栏列不出会话。`useConversations.ts` 的注释里记着这件事 |
+| 用量页 | 后端 `GET /api/v1/usage` 已经可用，界面还没做（**归 issue #76**）。侧栏那一项保持禁用占位，理由写在 `nav.ts` 的注释里——顺手实现它会让那条 issue 的验收无处可查 |
+| **设置页** | 侧栏底部有一个**禁用**的「设置」占位，它由 issue #83（provider / 模型管理）实现。本批次刻意**不加**可用入口与路由：设置页还没有，加了只能指向死链接或 404。等 #83 落地时把那个占位换成 `NavLink`，并把它挪进 `nav.ts` 的 `NAV` |
+| 响应式 | 页面级断点全站为空（issue #86），规范写在 §15 |
 
 ---
 
