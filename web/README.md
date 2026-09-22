@@ -138,10 +138,22 @@ import { ErrorText } from '@/components/ErrorText'
 | `not_found` | 404 | 资源不存在，或引用的父资源不存在 |
 | `conflict_duplicate_key` | 409 | 唯一约束冲突 |
 | `conflict` | 409 | 状态冲突：非法的状态迁移、并发修改，以及"重新索引一份已经在排队的文档" |
-| `embedding_change_requires_reindex` | 409 | **换 embedding 模型需要先确认清空重建**——引导页按它弹确认框，用户确认后带 `allowEmbeddingReset` 重发 |
+| `embedding_change_requires_reindex` | 409 | **换 embedding 模型需要先确认清空重建**——引导页与设置页按它弹确认框，用户确认后带 `allowEmbeddingReset` 重发 |
+| `state_schema_version_mismatch` | 409 | **这条 run 的快照是旧版本的代码写的**——恢复被明确拒绝，提示重新发起（issue #65） |
+| `tool_effect_already_applied` | 409 | **这一步的副作用可能已经生效**，平台不能替你决定重不重放（issue #63 / ADR-007） |
+| `replay_unsafe` | 409 | **这一步的工具不允许被自动重放**（`WRITE_NON_IDEMPOTENT` 或 `retry_policy = never`） |
 | `upstream_llm_error` | 502 | 上游模型服务出错 |
 | `context_overflow` | 400 | 上下文超出模型窗口（M3 起） |
 | `internal_error` | 500 | 服务内部错误，详情在服务端日志 |
+
+**后三个是 v4.0 新加的，而且它们只在恢复路径上出现**（`POST /api/v1/runs/{runId}/resume`）。
+恢复端点把校验放在**开流之前**，所以它们是正常的 409 Problem；写成流里一帧
+error 的话，客户端只能拿到一个笼统的 type（这一条在设计上是有意的，
+见 `internal/agent/usecase.go` 里 `ResumePlan` 的注释）。
+
+**它们也会出现在 SSE 的 error 帧上**（比如恢复跑到一半才失败），
+所以 `platform.SSEErrorType` 里同样有这三档——`lib/errors.ts` 的 `MESSAGES`
+要能认它们，否则会落到兜底分支显示后端原文。
 
 **这张表和 `apps/api/internal/api/problem.go` 的 `classify()` 一一对应。** 那边加一条 sentinel，这边要跟着补；漏了不会报错，只会落到兜底分支显示后端原文。
 
@@ -269,7 +281,11 @@ formatDateTime(kb.updatedAt)
 - 逐页决定"什么消失、什么折叠、什么变成抽屉、什么从表格变卡片"，并且写下来。**反对把桌面布局直接缩小**——那既不是设计，窄屏上也不可用。
 - 不要用文本长度决定布局，不要魔法像素值。
 - **悬停交互必须有手指的等价物**：鼠标能悬停看到的东西，触屏上要能点开或长按。
-- 现状（**未达标，issue #86**）：8 个页面目前没有任何断点类，引用展开只有 `HoverCard`。这一节是给 #86 留的位置，动手时按它验收，不要以为已经做过。
+- 现状（**仍未达标，issue #86**）：**页面级**断点基本还是空的。v4.0 之后有几个页面
+  局部用上了 `sm:`（用量页的时间窗、设置页与知识库详情页的表单行、搜索面板的
+  三字段一行），但**逐页的窄屏策略没有定过**，侧栏的移动端形态没实测，
+  表格也还没有降级路径。引用展开仍然只有 `HoverCard`（触屏没有等价交互）。
+  这一节是给 #86 留的位置，动手时按它验收，不要以为已经做过。
 
 ### 16. 每个异步动作都要有完整反馈
 
@@ -332,7 +348,7 @@ formatDateTime(kb.updatedAt)
 
 | 项 | 判据 | 怎么复核 |
 | --- | --- | --- |
-| 零硬编码颜色 | 业务代码里没有 `#hex` / `rgb()` / `hsl()` 字面量，颜色只用语义 token（`bg-background` / `text-muted-foreground` …）或带 `dark:` 变体的调色板类 | 在 `web/src` 里搜色值字面量（`#` 开头、`rgb(`、`hsl(`），排除 `components/ui/`——目前只剩 `DocumentStatusBadge` 的 `text-emerald-600 dark:text-emerald-400` 一处调色板类（不是色值字面量） |
+| 零硬编码颜色 | 业务代码里没有 `#hex` / `rgb()` / `hsl()` 字面量，颜色只用语义 token（`bg-background` / `text-muted-foreground` …）或带 `dark:` 变体的调色板类 | 在 `web/src` 里搜色值字面量（`#` 开头、`rgb(`、`hsl(`），排除 `components/ui/`——**字面量为零**；非语义 token 的调色板类有两处（`DocumentStatusBadge` 的 `emerald`/`sky`，都带 `dark:` 变体）。新代码请用语义 token，别再加第三处 |
 | 破坏性操作走 `AlertDialog` | 知识库删除是 `AlertDialog`，注释写明为什么不是 `Dialog` | `components/knowledge/DeleteKnowledgeDialog.tsx` |
 | `role="alert"` 与 `aria-live` 的分工 | `ErrorToast` 用 `role="alert"` 且**不**同时写 `aria-live`；`PageFallback` 用 `role="status"` + `aria-busy` | `ErrorToast.test.tsx` 有断言，两个组件都有注释 |
 | `<html lang="zh-CN">` 与深色优先 | `index.html` 写死 `lang="zh-CN"` + `class="dark"`，防闪白脚本同步执行、排在 `main.tsx` 之前 | 读 `web/index.html` 与 §10 |
@@ -424,11 +440,11 @@ npx --yes shadcn@latest add <组件>  # 加 shadcn 组件
 
 | 项 | 说明 |
 | --- | --- |
-| 无限滚动 | 三个分页列表统一用"加载更多"按钮而不是滚动自动加载。对话页已有"滚到底部"的行为、文档页是表格布局，两处都要重做，收益不抵成本 |
-| 会话列表端点 | 契约里没有 `GET /api/v1/conversations`（只有 `post:`），所以侧栏列不出会话。`useConversations.ts` 的注释里记着这件事 |
-| 用量页 | 后端 `GET /api/v1/usage` 已经可用，界面还没做（**归 issue #76**）。侧栏那一项保持禁用占位，理由写在 `nav.ts` 的注释里——顺手实现它会让那条 issue 的验收无处可查 |
-| **设置页** | 侧栏底部有一个**禁用**的「设置」占位，它由 issue #83（provider / 模型管理）实现。本批次刻意**不加**可用入口与路由：设置页还没有，加了只能指向死链接或 404。等 #83 落地时把那个占位换成 `NavLink`，并把它挪进 `nav.ts` 的 `NAV` |
-| 响应式 | 页面级断点全站为空（issue #86），规范写在 §15 |
+| 无限滚动 | 三个分页列表统一用"加载更多"按钮而不是滚动自动加载。**v4.0 重估过一次**，结论与理由见 `web/README.md` 这一行的历史（issue #84） |
+| 响应式 | 逐页的窄屏策略还没定过（issue #86），规范写在 §15 |
+| 会话列表的「当前会话高亮」 | `/conversations` 是一页独立列表，列表里没有"正在看的那一个"。要做到得给 `conversations/:id` 套一层"左列表 + `<Outlet/>`"的布局壳——那会动 `AppLayout`/路由结构，当时没做（issue #78 的验收里这一条未达成） |
+| Agent 的「绑定模型」 | 后端**没有** per-agent 的模型绑定：一次运行用的是全局当前生效的 chat 模型（`LatestByKind` 决定）。设置页只读展示它，表单里没有这一项（issue #81） |
+| provider 的编辑 / 删除 | 契约里 `/api/v1/providers` 只有 `GET` / `POST`——换 Key 用 `POST` 覆盖即可，"删掉一个接入点"会连带删掉它下面的模型与用量记录，所以没有提供（issue #83） |
 
 ---
 

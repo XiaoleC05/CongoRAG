@@ -1,4 +1,4 @@
-import { Moon, Settings, Sun } from 'lucide-react'
+import { Moon, Sun } from 'lucide-react'
 import { Suspense, useEffect, useRef } from 'react'
 import type { RefObject } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
@@ -81,22 +81,6 @@ export default function AppLayout() {
 
         <SidebarFooter>
           <SidebarMenu>
-            <SidebarMenuItem>
-              {/* 【这一项刻意保持禁用，不要顺手给它接页面】设置页属于
-                  「provider / 模型管理」那条线（issue #83），本批次不实现。
-                  原来的 tooltip 写的是"设置（M1 引导页实现）"——引导页不是设置，
-                  那是一句假信息。现在写事实：还没有。
-                  留着一个禁用的占位是为了让用户知道"这里以后会有东西"，
-                  而不是留一个点了没反应、或者跳 404 的死链接。 */}
-              <SidebarMenuButton
-                disabled
-                tooltip="设置（尚未实现）"
-                className="group-data-[collapsible=icon]:justify-center"
-              >
-                <Settings />
-                <span>设置</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton onClick={toggle} tooltip={theme === 'dark' ? '切到浅色' : '切到深色'}>
                 {theme === 'dark' ? <Sun /> : <Moon />}
