@@ -1,0 +1,80 @@
+# ConGoRAG 契约 lint 规则集（issue #68）
+#
+# 【这份文件是规则集，不是配置片段】`make lint-spec` 只跑一条命令：
+#   spectral lint contracts/openapi.yaml --ruleset .spectral.yaml --fail-severity=warn
+# 规则、豁免、豁免理由全在这里，不散在 Makefile 和 CI 里。
+#
+# 【为什么以官方 oas 规则集起步，而不是自己写一套】
+# contracts/openapi.yaml 是唯一真相——Go 的接口（oapi-codegen）和 TS 的类型
+# （openapi-typescript）都从它生成，一份不规范的契约会**同时**污染两端。
+# 这个文件的注释密度已经很高，说明它被反复手工推敲过；但手工推敲拦不住
+# 「新加的参数忘了写 description」「枚举漏了一项」「example 和 schema 对不上」
+# 这类遗漏——它们的共同点是**只在对的地方看一眼才发现**，而没有人会每次
+# 都完整看一遍 1431 行。oas 规则集覆盖的正是这些结构层面的东西，维护成本为零。
+#
+# 【只关三条，每条都写清理由】关掉的三条有一个共同点：它们的**唯一消费者是
+# 文档站**（Swagger UI / Redoc 渲染出来的那套页面）。本项目没有文档站，也不打算
+# 有——契约的读者是两端生成器和 internal/ 下的实现，人的文档是 CLAUDE 里那套
+# docs/ 与契约里的注释。为不存在的读者写字段，只会让契约多出 27 段重复文案。
+#
+# 【什么时候该回来重开这几条】如果哪天要发布 API 文档站（或把契约交给外部
+# 消费者阅读），这三条就该打开，并按下面的注释补齐字段——那不是"规则变严了"，
+# 是读者变了。
+#
+# 【最后一条规则】`--fail-severity=warn`：oas 规则集里绝大多数检查是 warning，
+# spectral 默认只在 error 上返回非零。不显式提这一档的话，这个 job 会对所有
+# 真正有价值的问题保持绿色——等于加了个只看不说的门禁。
+
+extends:
+  - spectral:oas
+
+rules:
+  # ── 豁免 1：operation-description ─────────────────────────────
+  #
+  # 规则要求每个 operation 同时有 summary 和 description。
+  #
+  # 【为什么关掉】契约里 27 个 operation **全部**已经写了 summary
+  #（`grep -c "summary:" contracts/openapi.yaml` = 27，
+  #  `grep -c "operationId:"` 也是 27，一一对应）。summary 是短标题，
+  # description 是长描述，两者分开是因为文档站把它们渲染在不同位置
+  #（标题下面 vs 详情区）。没有文档站时，description 只会退化成把
+  # summary 重写一遍——27 段重复文案，而每一段都要在下一次改接口时
+  # 跟着改，是纯粹的维护负担。
+  #
+  # 【真正该补的不是 description，是把话说在需要的地方】这个契约把解释
+  # 写在**字段旁边**的 YAML 注释里（`【必须加引号】`、`【兼容性承诺的边界
+  # 是 /api/v1】`那一类），那是给人读的、给生成器忽略的，位置比 description
+  # 更贴近被解释的字段。
+  operation-description: off
+
+  # ── 豁免 2：operation-tags ───────────────────────────────────
+  #
+  # 规则要求每个 operation 有非空的 tags 数组。
+  #
+  # 【为什么关掉】tags 的唯一作用是文档站里的分组导航。这份契约的
+  # 「分组」由两样东西承担，而且都已经有了：
+  #   · URL 前缀——/api/v1/agents、/api/v1/runs、/api/v1/knowledge-bases，
+  #     路径本身就是分组；
+  #   · 契约里的注释分隔条——`# ── 存活检查 ──` 那一类。
+  # 加上 tags 之后，同一个分组信息会存在三处（路径、注释、tags），
+  # 而只有 tags 那一处会被生成器忽略、被文档站读取——没有文档站时它
+  # 就是一份没人读的重复数据。
+  #
+  # 【注意 oas 规则集里还有一条 operation-tag-defined】它检查 tags 里的
+  # 每一项都在根级 tags 里声明过。这里没有 tags，它自然不会触发，不需要
+  # 单独关。同理 operation-singular-tag 也不需要。
+  operation-tags: off
+
+  # ── 豁免 3：info-contact ─────────────────────────────────────
+  #
+  # 规则要求 info 块里有 contact（name / url / email 至少一项）。
+  #
+  # 【为什么关掉】contact 的用途是"API 的消费者遇到问题该找谁"。这个
+  # 项目是本地优先的单机应用（方案 §1 的部署边界），契约描述的服务跑在
+  # 用户自己的机器上，不存在一个"对外提供 API 的服务方"，也就没有一个
+  # 可以被联系的对象。填进去的只会是一个要么空着、要么指向仓库地址的
+  # 空壳字段。
+  #
+  # 归属与许可写在仓库根的 LICENSE，找人的入口是仓库的 issue 页——
+  # 这两样都在契约之外，且都是活的（不会随契约版本腐化）。
+  info-contact: off

@@ -13,7 +13,6 @@ package conversation
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
@@ -23,22 +22,18 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
+	"github.com/XiaoleC05/CongoRAG/internal/testdb"
 )
 
 // requireTestDB 跳过测试,除非 CONGORAG_TEST_DB_URL 设置了。
+// requireTestDB 返回一个 schema 已就绪的测试库（issue #70）。
+//
+// 具体从哪来由 internal/testdb 决定：设了 CONGORAG_TEST_DB_URL 就用它
+// （并校验 schema 在不在），没设就自己起一个容器。这个函数只剩一行委托——
+// 在此之前四个包各抄了一份门控逻辑，而"测试库该长什么样"因此有四个副本。
 func requireTestDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dbURL := os.Getenv("CONGORAG_TEST_DB_URL")
-	if dbURL == "" {
-		t.Skip("CONGORAG_TEST_DB_URL 未设置,跳过需要真实 Postgres 的集成测试")
-	}
-
-	pool, err := pgxpool.New(context.Background(), dbURL)
-	require.NoError(t, err)
-	t.Cleanup(pool.Close)
-
-	require.NoError(t, pool.Ping(context.Background()), "连不上测试数据库")
-	return pool
+	return testdb.Require(t)
 }
 
 // 一次两轮对话在库里的真实形状，逐条断言 RecentMessages 的返回。

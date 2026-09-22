@@ -1,0 +1,16 @@
+# 【这一行是必需的，不是形式主义】
+#
+# 本机 git 的 core.autocrlf=true（Windows 的默认），意思是"检出时把 LF 换成
+# CRLF、提交时换回来"。对 .go / .mjs / .yaml 都无所谓，对 shell 脚本是致命的：
+# migrate-entrypoint.sh 会被 COPY 进 alpine 镜像，而 alpine 的 sh 不认识
+# CRLF——报错长这样：
+#
+#   /usr/local/bin/migrate-entrypoint: line 1: #!/bin/sh: not found
+#
+# 一句话看不出原因（行号是对的、文件也在），因为 \r 是行尾的不可见字符。
+# eol=lf 让这个目录下的脚本在**检出时**就是 LF，不管是哪个平台的 git。
+#
+# 【为什么写在子目录里而不是仓库根】范围最小：只有这个目录下的东西是
+# "要被 Linux 容器执行的"。根级的 .gitattributes 会给所有文件设一条规则，
+# 而那需要先证明它对每个文件都成立——现在不需要。
+* text eol=lf

@@ -1,5 +1,10 @@
 # 发布流程
 
+> 这份文档是给**发布者**（维护者）的：怎么把一个版本发出去。
+> 给**用户**的是 [`upgrading.md`](upgrading.md)——怎么把一个已经发出去的版本
+> 装起来、升级、回滚。两边混在一起写过一次，结果是发布者以为用户会自己跑
+> 迁移，而用户以为升级是自动的。
+
 ## 版本号怎么定
 
 五处用**同一个数**（[ADR-002](adr/002-contract-versioning.md)）：
@@ -51,6 +56,42 @@ make release VERSION=3.0       # 真的发布
 （网络、权限、限流）——那时留下的是「有 tag 没 Release」的状态，正是 v1.0 的
 现状。幂等让重跑能补齐，而不是要求人去手工收拾。
 
+## 产物从哪来：`release.yml`
+
+> v3.0 发布时产物是**没有**的：脚本解决的是「发布前该检查什么」，没解决
+> 「产物从哪来」，用户拿到仓库只能自己从源码 build（issue #72）。
+
+tag 推上去之后，`.github/workflows/release.yml` 被触发，构建并上传四类附件：
+
+| 附件 | 内容 |
+| --- | --- |
+| `congorag_<版本>_<os>_<arch>.tar.gz` / `.zip` | api 与 worker 两个二进制（windows 是 zip），六个平台各一份 |
+| `congorag-startup-<版本>-linux-<arch>.zip` | **启动包**：compose + `.env.example` + 镜像 tarball + 升级脚本 |
+
+### 谁负责断言，谁负责构建
+
+这条界线是刻意划开的，别把它们混起来：
+
+- **`scripts/release.mjs` 负责断言。** CHANGELOG 有没有对应小节、契约
+  `info.version` 与版本号是否一致、工作区是否干净、是否在 `main` 上、tag 是否
+  已存在——**全部发生在推 tag 之前**，因为那是唯一能拦住一次错误发布的时刻。
+- **`release.yml` 负责构建。** 它一个断言都不做：不打 tag、不改文件、不碰
+  仓库状态，只把产物建出来挂上去。
+
+为什么不让工作流也做断言：它跑在 tag 已经推上去之后，那时"版本号对不对"
+已经没有意义了。两处都断言的结果是两边迟早不一致，而人只会看那个绿的。
+
+为什么也不让 `release.mjs` 等这个工作流：那样发布脚本就要轮询 Actions API、
+处理"排队""runner 挂了"这些和发布无关的状态。现在的耦合只有一个方向——
+工作流的最后一步会**等 Release 对象出现**（`release.mjs` 先推 tag 再建
+Release，两者之间有几十秒的窗口），超时就报错退出，不静默地少传文件。
+
+### 构建失败时
+
+不要删 tag 重推（那会让 Release 与 tag 的关系变得可疑）。用
+**Actions → Release → Run workflow**，填上版本号重跑即可；上传步骤带
+`--clobber`，重跑是幂等的。
+
 ## 凭据
 
 脚本按 `GITHUB_TOKEN` → `GH_TOKEN` → 仓库根 `.env` 的顺序找 token。
@@ -80,10 +121,15 @@ node scripts/release.mjs 1.0 --allow-existing-tag
 2. **tag 指向的 commit 就是 `main` 顶端**：`git rev-parse 'v3.0^{commit}' main` 两行相同。
    **`^{commit}` 不能省**——两个 tag 都是 annotated，`git rev-parse v3.0` 给的
    是 tag 对象自己的 sha，不是它指向的 commit，不加会得到两个不同的哈希。
-3. **CI 四个 job 全绿。** 注意 tag push **不触发** CI（工作流的 `on` 只有
+3. **CI 五个 job 全绿。** 注意 tag push **不触发** CI（`ci.yml` 的 `on` 只有
    `push[main]` / `pull_request` / `workflow_dispatch`），所以这一条要去看
-   `main` 那次 push 的运行结果。
+   `main` 那次 push 的运行结果。tag push 触发的是 **Release** 那个工作流，
+   两件事别混。
 4. **契约 `info.version` == 版本号。**
+5. **Release 上四个平台的二进制和两个架构的启动包都在**，见 Release 工作流
+   那一次运行的结果。少了的话按上面的「构建失败时」重跑，不要手敲 `go build`
+   补一个上去——手工补的产物和 CI 出来的不可比（工具链版本、`-trimpath`、
+   `-ldflags` 都可能不一样）。
 
 ## 这个流程有意不做的事
 

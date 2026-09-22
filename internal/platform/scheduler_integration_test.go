@@ -1,5 +1,7 @@
-// 连真实 Postgres + River 表的集成测试。和 internal/llm 的同名文件一样的
-// 门控方式：CONGORAG_TEST_DB_URL 未设置就跳过。
+// 连真实 Postgres + River 表的集成测试。
+//
+// 测试库从哪来由 internal/testdb 决定（issue #70）：设了
+// CONGORAG_TEST_DB_URL 就用它，没设就自己起一个容器。
 //
 // 这条测的是 scheduler_test.go 那几条单元测试测不到的部分：
 // RegisterPeriodic 真的调用 river.Client.PeriodicJobs().Add() 时,
@@ -9,27 +11,21 @@ package platform
 
 import (
 	"context"
-	"os"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 	"github.com/stretchr/testify/require"
+
+	"github.com/XiaoleC05/CongoRAG/internal/testdb"
 )
 
 func TestIntegration_RiverScheduler_RegisterPeriodic_DoesNotError(t *testing.T) {
-	dbURL := os.Getenv("CONGORAG_TEST_DB_URL")
-	if dbURL == "" {
-		t.Skip("CONGORAG_TEST_DB_URL 未设置,跳过需要真实 Postgres + River 表的集成测试")
-	}
-
-	ctx := context.Background()
-	pool, err := pgxpool.New(ctx, dbURL)
-	require.NoError(t, err)
-	t.Cleanup(pool.Close)
-	require.NoError(t, pool.Ping(ctx))
+	// 测试库从哪来由 internal/testdb 决定（issue #70）：设了
+	// CONGORAG_TEST_DB_URL 就用它，没设就自己起一个容器；两者都保证
+	// 返回时 schema（含 River 那套队列表）已经就绪。
+	pool := testdb.Require(t)
 
 	sched := NewRiverScheduler()
 	workers := river.NewWorkers()

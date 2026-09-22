@@ -36,19 +36,8 @@ export CONGORAG_DB_URL := $(DB_URL)
 
 # 两条迁移命令在这里写一份，migrate-up / river-migrate-up 引用它们。
 # := 是立刻展开，不调 shell。
-#
-# 【test-integration 不能复用这两个变量】它跑的是**另一个库**（TEST_DB_URL），
-# 而这两个变量把 $(DB_URL) 烤进去了。所以那条 target 里是显式写出的同一组
-# 命令、只是换了 URL——这是有意的重复，不是漏改；改动迁移命令时要记得改两处。
 MIGRATE_UP_CMD := migrate -path migrations -database "$(DB_URL)" up
 RIVER_MIGRATE_UP_CMD := river migrate-up --database-url "$(DB_URL)" --line main
-
-# 【集成测试用独立的库，不碰开发库】开发库里是真实数据（知识库、文档、
-# 会话），而 internal/llm 的集成测试会 ALTER 向量列类型——直接对着开发库跑
-# 一次就可能把已有向量清成 NULL。这个库每次跑之前重建，跑完保留（便于排查
-# 失败），你的开发库完全不受影响。
-TEST_DB_NAME := congorag_test
-TEST_DB_URL := postgres://postgres:postgres@127.0.0.1:5432/$(TEST_DB_NAME)?sslmode=disable
 
 # 【就绪判据必须按容器名，不能用 compose 派生写法】docker compose ps /
 # compose port 要求容器带 compose 标签；手工用 Docker Desktop 起的同名容器
@@ -56,12 +45,24 @@ TEST_DB_URL := postgres://postgres:postgres@127.0.0.1:5432/$(TEST_DB_NAME)?sslmo
 PG_RUNNING = $(shell docker inspect -f "{{.State.Running}}" $(PG_CONTAINER) 2>&1)
 GO_TEST_FLAGS ?=
 
+# 【spectral 的版本锁在这里，别处不要再写一遍】
+# npx 的 `pkg@版本` 写法会按版本缓存到 npm 的 _npx 目录，第二次跑不重新下载。
+# 【为什么用 npx 而不是全局安装】这个项目靠的是"本机有 node"这一个前提
+# （见 ci.yml 顶部那条"工具版本全部锁死"的理由），全局安装会多出一个
+# "先跑 npm i -g"的隐性前置步骤，而它和 go install 那两个工具不一样——
+# 那两个必须全局是因为 Makefile 直接调它们，spectral 只在这一条 target 里出现。
+#
+# 【为什么加 --no-fund/--no-audit】npx 首次下载会把 npm 的赞助与漏洞提示
+# 混进 lint 输出里；这一条 target 的输出要能直接被读，噪声就是失败信息。
+SPECTRAL := npx --yes --no-fund --no-audit @stoplight/spectral-cli@6.15.0
+
 .PHONY: help up down logs psql \
         migrate-up migrate-down migrate-version migrate-create \
         river-migrate-up river-migrate-down \
         generate generate-go generate-ts \
         dev dev-web dev-worker build build-web build-web-assets build-web-placeholder build-go \
-        test test-integration test-integration-db lint tidy fmt vet check         release release-dry check-changelog
+        test test-integration test-contract lint tidy fmt vet check         release release-dry check-changelog \
+        lint-spec crash-probe startup-package upgrade rollback
 
 help:
 	@echo ConGoRAG 开发命令
@@ -78,7 +79,10 @@ help:
 	@echo   make dev                跑 api（:3210）
 	@echo   make dev-web            跑 Vite 开发服务器（:5173，改前端要用这个）
 	@echo   make dev-worker         跑 worker（文档处理的消费端）
-	@echo   make test-integration   跑集成测试（重建独立测试库，不动开发库）
+	@echo   make test-integration   跑集成测试（自己起一个 PostgreSQL 容器，不动开发库）
+	@echo   make test-contract      Prism proxy 契约测试（起 api，逐条校验请求与响应）
+	@echo   make lint-spec          spectral lint 契约（规则集见 .spectral.yaml）
+	@echo   make crash-probe        在 run 执行到一半时硬杀 api，看崩溃后的库状态
 	@echo   make release VERSION=3.0 发布：打 tag + 建 Release（正文来自 CHANGELOG）
 	@echo   make release-dry VERSION=3.0  只打印发布内容，不碰 git、不联网
 	@echo   make check              build + vet + test
@@ -237,34 +241,71 @@ test:
 
 # ── 集成测试（需要真实 PostgreSQL）────────────────────────────
 #
-# 【为什么需要它】需要真库的测试靠 CONGORAG_TEST_DB_URL 门控，没设就 Skip。
-# 而 v2.0 修的大部分缺陷都在 SQL 里——本地 `make test` 全绿不代表那些 SQL
-# 跑得起来，得等 CI 才知道。这条 target 消掉的就是那个反馈延迟。
+# 【测试库从哪来：现在由测试自己起（issue #70）】
+# 这条 target 设 CONGORAG_TESTCONTAINERS=1，于是 internal/testdb 会自己起一个
+# 容器（镜像与开发期同一个）、灌好两套迁移，跑完自动销毁。
 #
-# 【它会动 schema】internal/llm 的集成测试会 ALTER 向量列类型（文件头记录了
-# 一次真实事故）。所以它跑在一个**独立的测试库**上，不是你的开发库。
+# 在此之前它要求开发机上那个 compose Postgres 在跑，并手工重建一个独立测试库、
+# 手工跑两套迁移——四步外部状态，而 CI 用的是另一套（workflow 的 service
+# container）。现在两条路径都由 internal/testdb 保证「返回时 schema 已就绪」，
+# 差别只剩库从哪来，而那个差别写在代码里（见那个包的注释）。
+#
+# 【为什么不再需要"独立测试库"】容器是一次性的，internal/llm 那几条会 ALTER
+# 向量列类型的测试怎么改坏它都不影响任何人——而"不碰开发库"正是当初要一个
+# 独立库的全部理由。
+#
+# 【要在本机也开竞态检测就加 GO_TEST_FLAGS=-race】
+# 本机没有 gcc 时 -race 跑不起来（需要 cgo），CI 的 ubuntu runner 上可以。
 
-test-integration-db:
-	$(if $(filter true,$(subst ",,$(strip $(PG_RUNNING)))),,$(error 集成测试需要 PostgreSQL 在跑，但容器 $(PG_CONTAINER) 不是 Running 状态（docker inspect 说：[$(PG_RUNNING)]）。先在 Docker Desktop 的「容器」页里启动它，或者跑 make up))
-	@echo 数据库就绪：$(PG_CONTAINER)
-
-test-integration: export CONGORAG_TEST_DB_URL := $(TEST_DB_URL)
-test-integration: test-integration-db
-	@echo 【注意】这条命令会动 schema：它会重建独立测试库 $(TEST_DB_NAME)
-	@echo         （不是你的开发库），并跑两套迁移 + 全部 Go 测试。
-	@echo         复刻 CI 的 integration job；要在本机也开竞态检测就加
-	@echo         GO_TEST_FLAGS=-race（本机没有 gcc 时 -race 跑不起来）。
-	docker exec $(PG_CONTAINER) psql -U postgres -c "DROP DATABASE IF EXISTS $(TEST_DB_NAME)"
-	docker exec $(PG_CONTAINER) psql -U postgres -c "CREATE DATABASE $(TEST_DB_NAME)"
-	migrate -path migrations -database "$(TEST_DB_URL)" up
-	river migrate-up --database-url "$(TEST_DB_URL)" --line main
+test-integration: export CONGORAG_TESTCONTAINERS := 1
+test-integration:
+	@echo 集成测试：internal/testdb 会自己起一个 PostgreSQL 容器
+	@echo （镜像与开发期同一个），灌好两套迁移，跑完自动销毁。
+	@echo 你的开发库与开发期的容器都不会被碰到。
+	@echo 第一次跑要拉镜像，会慢一些。
 	go test $(GO_TEST_FLAGS) ./...
-	@echo 集成测试跑完了。测试库 $(TEST_DB_NAME) 保留着便于排查，下一次跑会重建它。
+
+# ── 契约测试（issue #69）────────────────────────────────────────
+#
+# 【它和 lint-spec / contract job 查的不是一回事】
+#   · `make generate + git diff --exit-code` → 改了契约有没有重新生成；
+#   · `make lint-spec`                       → 这份契约本身写的对不对；
+#   · 这一条                                  → **运行时行为**符不符合契约。
+# 第三条是前两条都答不了的：handler 漏一个字段、状态码写成 200 而不是 204、
+# 错误体形状走偏，生成器和 linter 一个都拦不住。
+#
+# 【为什么逻辑全在脚本里，这里只是一层壳】它要编译并起一个 api、起一个
+# prism proxy、发一串请求、再扫 prism 的日志。这些在 cmd.exe 和 bash 里没有
+# 一份共同写法，而 Makefile 的头号规则是"两个 shell 都得能跑"（见文件头）。
+#
+# 【它需要 PostgreSQL 在跑、且迁移已应用】本机就是 `make up` + 两套迁移那套；
+# CI 里用 integration job 的 service container（见 ci.yml）。
+# 端口故意避开 3210/4010，能在 `make dev` 开着的时候同时跑。
+test-contract:
+	node scripts/contract-test.mjs $(CONTRACT_ARGS)
 
 # 前端静态检查。src/components/ui/ 和 src/hooks/use-mobile.ts 在
 # .oxlintrc.json 的 ignorePatterns 里——那是 shadcn 生成的代码，改了会被覆盖。
 lint:
 	pnpm --filter web lint
+
+# 契约 lint（issue #68）。规则集与豁免理由全在 .spectral.yaml，不在这一行里。
+#
+# 【它和 make check 里那些检查查的不是一回事】
+#   · contract job 的 `make generate + git diff --exit-code` 回答
+#     "改了契约有没有重新生成"；
+#   · 这一条回答"**这份契约本身**写的对不对"。
+# 前者对一份写错但生成物同步的契约完全无感。
+#
+# 【--fail-severity=warn 不能省】oas 规则集里绝大多数检查的严重度是 warning，
+# 而 spectral 默认只在 error 上返回非零。不显式提这一档，这个 target 会对着
+# 所有真正有价值的问题保持绿色。
+#
+# 【为什么不进 make check】check 是"提交前快速自查"，承诺的是不联网、不依赖
+# 外部服务（见下面 check 的注释）；spectral 是 npx 拉下来的，首次跑必须联网。
+# 契约 lint 只在 CI 的 spec job 和"改了 contracts/openapi.yaml 之后"需要跑。
+lint-spec:
+	$(SPECTRAL) lint contracts/openapi.yaml --ruleset .spectral.yaml --fail-severity=warn
 
 # 【这里不用 build】check 是"提交前快速自查"，不该依赖 pnpm 装没装。
 # 前端产物有没有问题，由 build 负责。
@@ -275,3 +316,52 @@ tidy:
 
 fmt:
 	go fmt ./...
+
+# ── 崩溃探针（issue #62）────────────────────────────────────────
+#
+# 【它解决的问题】优雅退出的路径（拒新请求 → 排空 SSE → worker 留收尾时间）
+# 会把状态收拾干净，恰好绕开 resume 要处理的所有情况。只有一个不打招呼的
+# KILL 才能制造出「第 N 步跑到一半、进程没了」的真实现场。
+#
+# 【为什么不用 Ctrl-C】`docker compose up -d` 下 Ctrl-C 碰不到容器——
+# 它只影响发起它的那个终端；就算 api 跑在前台，Ctrl-C 走的是 SIGINT，
+# 那条路径会把它该写的终态写完再退。两条都不产生"停在 running 的行"。
+#
+# 【为什么这一条 target 只是一层壳】判据（轮询库、选时机、比对前后状态）
+# 在 scripts/crash-probe.mjs 里；Makefile 只负责转参数。理由是这个脚本要
+# 跑 SQL、要读进程表、要开 SSE 连接——这些东西在 cmd.exe 和 bash 里没有
+# 一份共同写法，而 Makefile 的头号规则是"两个 shell 都得能跑"。
+#
+# PROBE_ARGS 的用法见 node scripts/crash-probe.mjs --help。
+crash-probe:
+	node scripts/crash-probe.mjs $(PROBE_ARGS)
+
+# ── 交付 / 运维（issue #73 / #74）───────────────────────────────
+#
+# 【这三条操作的是"启动包那套环境"，不是开发期那套】
+# 开发期只有 PostgreSQL 在 Docker 里（deployments/docker/docker-compose.yml）；
+# 下面三条走的是 deployments/startup/docker-compose.yml——api / worker / postgres
+# 三个都在容器里，用镜像分发，不要求本机有 Go 工具链。
+#
+# 【startup-package 需要本机 Docker + node】它要 build 镜像、docker save 出
+# tarball、再按平台挑一份打进 zip。CI 里由 .github/workflows/release.yml 调用
+# 同一个脚本（那边镜像已经由 matrix 构建好，只是装配）。
+#
+# 【产物落在 dist/，而 dist/ 不在 .gitignore 里】跑完记得别把它提交上去
+# （一个包 40 MB 起）。要长期跑本地打包的话，把 dist/ 加进 .gitignore。
+startup-package:
+	node scripts/startup-package.mjs --out dist $(PACKAGE_ARGS)
+
+# 升级：备份 → 备份校验通过 → 迁移 → 换镜像。任一步失败即中止，见脚本注释。
+# 默认升到 .env 里 CONGORAG_VERSION 指定的版本。
+#
+# 【--dir 默认指到 deployments/startup】那是启动包那套 compose 所在的地方；
+# 脚本要读同目录的 .env（含 CONGORAG_VERSION 与 CONGORAG_DB_URL）。
+# 不写这个默认值的话，从仓库根跑会去找根目录的 docker-compose.yml——那里没有，
+# 报出来的是"找不到 compose 文件"，而真实原因是目录不对。
+upgrade:
+	node scripts/upgrade.mjs --dir deployments/startup $(UPGRADE_ARGS)
+
+# 回滚：还原 dump + 回退镜像 tag。默认取 deployments/startup/backups 下最新的一份。
+rollback:
+	node scripts/rollback.mjs --dir deployments/startup $(ROLLBACK_ARGS)

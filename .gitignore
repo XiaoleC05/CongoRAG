@@ -35,6 +35,11 @@ evals/results/
 *.out
 vendor/
 
+# ── 启动包产物（make startup-package） ──
+# 一个包 40 MB 起（里面有 docker save 出来的镜像 tarball），进仓库没有任何
+# 好处——它是发布产物，该挂在 Release 上（.github/workflows/release.yml）。
+dist/
+
 # ── 前端 ──
 node_modules/
 web/dist/

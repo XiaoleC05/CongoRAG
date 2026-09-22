@@ -1,0 +1,179 @@
+# ConGoRAG 启动包 —— docker compose 一键部署（issue #73）
+#
+# 【它和 deployments/docker/docker-compose.yml 是两个东西，别拿错】
+#   · deployments/docker/docker-compose.yml  ← 开发期依赖服务，**只有 postgres**，
+#     api / worker 跑在宿主机上，改一行代码不用重建镜像；
+#   · 这个文件 ← 交付形态，**postgres + migrate + api + worker 四个服务**，
+#     全部用镜像跑，用户本机不需要 Go / Node 工具链。
+# 两个文件的 name 都是 congorag，但服务的差别决定了它们不能同时起。
+#
+# 【怎么用】解压启动包之后：
+#   docker load -i images/congorag-images-linux-amd64.tar.gz   # 先导入镜像
+#   cp .env.example .env                                       # 再配环境变量
+#   docker compose up -d                                       # 最后起
+# 详细步骤见包里的 README.md；升级/回滚见 docs/upgrading.md。
+
+name: congorag
+
+services:
+  # ── 数据库 ────────────────────────────────────────────────────
+  postgres:
+    # 和开发期同一个镜像、同一个理由：migrations/0001 的第一句就是
+    # CREATE EXTENSION IF NOT EXISTS vector，官方 postgres 镜像没有这个扩展。
+    # 【不要降到 0.8.1 及以下】0.8.2 修了并行 HNSW 索引构建的缓冲区溢出。
+    image: pgvector/pgvector:0.8.6-pg18
+
+    # 【固定容器名，不用 compose 派生的名字】升级/回滚脚本要用
+    # `docker exec congorag-postgres pg_dump ...` 走容器备份（宿主机上没有
+    # pg_dump）。派生的名字带项目名前缀、还会随 compose 版本变，写死才稳。
+    container_name: congorag-postgres
+
+    environment:
+      POSTGRES_USER: postgres
+      # 默认值和 .env.example 里的是同一个。改了 .env 里的这个值之后，
+      # **已经初始化过的卷不会跟着变**——POSTGRES_PASSWORD 只在首次初始化
+      # 数据目录时生效。要改密码得进容器 ALTER USER，别指望重启。
+      POSTGRES_PASSWORD: ${CONGORAG_PG_PASSWORD:-congorag}
+      POSTGRES_DB: congorag
+
+    volumes:
+      # 【路径是 /var/lib/postgresql，不是 .../data】PG 18 把 PGDATA 改成了
+      # /var/lib/postgresql/18/docker，所以要挂它的上一级。挂到旧的 .../data
+      # 路径时，全新安装不报错，但真正的 PGDATA 会被镜像声明的 VOLUME 落到
+      # 一个匿名卷里——数据不在你以为的地方。理由与开发期那份逐字相同。
+      - pgdata:/var/lib/postgresql
+
+    # 【这个端口是给人排障用的，不是必需的】给成 127.0.0.1 前缀是刻意的：
+    # 写成 "5432:5432" 会绑 0.0.0.0，把数据库暴露给整个局域网——而这是
+    # 方案 §1 的安全基线明确不要的。不需要从宿主机连库的话，整段删掉更干净。
+    ports:
+      - "127.0.0.1:${CONGORAG_PG_PORT:-5432}:5432"
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d congorag"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+    restart: unless-stopped
+
+  # ── 迁移（一次性容器）─────────────────────────────────────────
+  #
+  # 【生命周期和其它三个不一样】它不是常驻服务：跑完两套迁移就以 0 退出，
+  # 然后 api / worker 才被放行（下面 depends_on 的
+  # service_completed_successfully）。`docker compose up -d` 会把它跑一遍、
+  # 停留在 Exited(0) 状态，这是正常的，不是崩溃。
+  #
+  # 【升级时单独调用它】`docker compose run --rm migrate` —— issue #74 的
+  # 升级脚本靠的就是"备份成功才跑这一条"，顺序由脚本保证，不由 compose 保证。
+  migrate:
+    image: congorag-migrate:${CONGORAG_VERSION:?CONGORAG_VERSION 没有设——见 .env.example}
+    container_name: congorag-migrate
+
+    environment:
+      # 容器之间的地址是服务名 postgres，不是 127.0.0.1。
+      # 这一项**必须**在 .env 里能被覆盖（备份/回滚工具会读它）。
+      CONGORAG_DB_URL: ${CONGORAG_DB_URL:-postgres://postgres:${CONGORAG_PG_PASSWORD:-congorag}@postgres:5432/congorag?sslmode=disable}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    restart: "no"
+
+  # ── api ──────────────────────────────────────────────────────
+  api:
+    image: congorag-api:${CONGORAG_VERSION:?CONGORAG_VERSION 没有设——见 .env.example}
+    container_name: congorag-api
+
+    environment:
+      CONGORAG_DB_URL: ${CONGORAG_DB_URL:-postgres://postgres:${CONGORAG_PG_PASSWORD:-congorag}@postgres:5432/congorag?sslmode=disable}
+
+      # ══════════════════════════════════════════════════════════
+      # 【这一行是本文件里最容易漏、也最难发现的一行。删掉它整套就废了】
+      #
+      # internal/platform/config.go 的默认监听地址是 **127.0.0.1:3210**，
+      # 这是刻意的安全选择（那边的注释：绑 0.0.0.0 会把端口对局域网打开，
+      # 而安全性不该全压在一个中间件上）。
+      #
+      # 但在容器里，那个默认值意味着"只监听容器自己的回环"——宿主机的
+      # 端口映射（下面的 3210:3210）**转发不进来**。表现是：
+      #   · 容器正常启动；
+      #   · 日志照常打印 `listening addr=127.0.0.1:3210`，没有任何报错；
+      #   · 外面 curl 127.0.0.1:3210 得到 connection refused。
+      # 一个"健康检查通过、打开是空白"的现场，排查方向从第一秒起就是错的
+      # （人会去查防火墙、查 Docker Desktop、查端口占用）。
+      #
+      # 所以这里显式覆盖成 0.0.0.0:3210。"容器内绑全网卡"和"对外暴露"是
+      # 两件事：真正的暴露面由下面 ports 的 127.0.0.1: 前缀决定，那一层仍然
+      # 只绑宿主机回环。两层各管一件事，缺任何一层都不对。
+      #
+      # 【默认值也写在这里，不是只在 .env.example 里】.env 是用户可改的，
+      # 而这一项一旦被改成回环地址就会安静地坏掉。默认值让"用户删掉那一行"
+      # 也不会出事；要覆盖它得是显式的动作。
+      # ══════════════════════════════════════════════════════════
+      CONGORAG_LISTEN_ADDR: ${CONGORAG_LISTEN_ADDR:-0.0.0.0:3210}
+
+      CONGORAG_LOG_LEVEL: ${CONGORAG_LOG_LEVEL:-info}
+      # 上传上限。默认 32 MiB（config.go 的 defaultMaxUploadBytes），写在这里
+      # 只为让它可调；填 0 或非法值会被 config.go 退回默认值，不会变成"不限"。
+      CONGORAG_MAX_UPLOAD_BYTES: ${CONGORAG_MAX_UPLOAD_BYTES:-33554432}
+
+    ports:
+      # 只绑宿主机回环。局域网上的其他机器连不进来——方案 §1 的安全基线。
+      # 写成 "3210:3210" 会绑 0.0.0.0，那才是暴露。
+      - "127.0.0.1:${CONGORAG_PORT:-3210}:3210"
+
+    volumes:
+      # 【原始文件 + 主密钥 + tiktoken 缓存三样都在这里】
+      # 三者必须待在同一个卷里：主密钥丢了的话，库里那些用它加密的
+      # provider api key 全部作废，用户得重新配一遍所有模型。
+      # 备份时这个卷和数据库要一起备（issue #74）——只备数据库会导致
+      # 文档记录和 data/documents 里的原始文件对不上。
+      - congorag-data:/data
+      # 【没有挂 apps/api/web】界面是 go:embed 在**编译期**嵌进 api 二进制的，
+      # 不是运行时从磁盘读的。挂一个 web 目录进来不会有任何效果。
+
+    depends_on:
+      # 等迁移跑完再起，不是等 postgres 健康。两者都要，但后者是前者的前提。
+      migrate:
+        condition: service_completed_successfully
+
+    # 镜像里已经带了 HEALTHCHECK（wget /healthz），这里不用重复写。
+    # 想看状态：docker compose ps 会显示 (healthy) / (unhealthy)。
+    restart: unless-stopped
+
+  # ── worker ───────────────────────────────────────────────────
+  #
+  # 【它没有 ports、没有 healthcheck】worker 不提供 HTTP，是 River 的消费端
+  # （文档处理：parse → chunk → embed → index，加上孤儿文件对账）。
+  # 起不起它不影响 api 能不能跑，只影响"上传的文档会不会被处理"——
+  # 所以它和一个不健康的容器长得像，但它只要在消费就是健康的。
+  worker:
+    image: congorag-worker:${CONGORAG_VERSION:?CONGORAG_VERSION 没有设——见 .env.example}
+    container_name: congorag-worker
+
+    environment:
+      CONGORAG_DB_URL: ${CONGORAG_DB_URL:-postgres://postgres:${CONGORAG_PG_PASSWORD:-congorag}@postgres:5432/congorag?sslmode=disable}
+      CONGORAG_LOG_LEVEL: ${CONGORAG_LOG_LEVEL:-info}
+      CONGORAG_MAX_UPLOAD_BYTES: ${CONGORAG_MAX_UPLOAD_BYTES:-33554432}
+
+    volumes:
+      # 【和 api 是同一个卷，这是必须的】文档的原始文件由 api 写、由 worker
+      # 读来做解析和分块。两个卷的话，上传成功的文档会永远停在 queued。
+      # 编译期嵌进 api 的那个浏览器界面不受影响（见上面的注释）。
+      - congorag-data:/data
+
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+    restart: unless-stopped
+
+volumes:
+  # 命名卷。`docker compose down` 默认保留（不加 -v 就不会删），
+  # 所以数据能活过容器重建——这条也是升级流程的前提。
+  pgdata:
+  # 原始文件 / 主密钥 / tiktoken 缓存。升级时它必须和 pgdata 一起备份。
+  congorag-data:

@@ -1,0 +1,51 @@
+# 构建上下文排除清单（配合根目录的 Dockerfile，issue #73）
+#
+# 【这个文件不是可选的】Dockerfile 里有 `COPY web ./web` 和 `COPY . .`，
+# 而这两个目录里在开发机上存在一批**绝不能进镜像**的东西：
+#
+#   · web/node_modules、packages/*/node_modules —— pnpm 装的是 Windows 平台的
+#     链接与二进制。它们进了镜像会盖掉容器里刚 install 出来的那份，
+#     表现为 vite 报一个和代码无关的模块解析错误。而且它有几万个文件，
+#     每次构建都要先打包上传给 Docker 守护进程。
+#   · .git —— 一个几百 MB 的历史，镜像里用不到。
+#   · data/ —— 开发库的原始文档与**主密钥**。主密钥进镜像等于把开发机上
+#     加密过的那些 api key 一起发了出去。
+#   · helperDoc/ —— 本地设计文档，本来就在 .gitignore 里。
+#   · extract-verify.exe —— 41 MB 的调试产物。
+#
+# 【排除的是"构建不需要的"，不是"敏感的"】哪怕只是慢一点也该排掉：
+# 构建上下文是被完整打包发给守护进程的，几万个 node_modules 文件会让
+# `docker build` 在真正开始工作之前先卡上几十秒。
+
+.git
+.gitattributes
+.github
+.idea
+.vscode
+
+# 依赖目录：容器里会自己 install
+node_modules
+**/node_modules
+.pnpm-store
+
+# 本地数据与密钥
+data
+
+# 本地设计文档与调试产物
+helperDoc
+*.exe
+*.exe~
+evals/results
+backups
+dist
+
+# 前端产物：由 web 这个构建层生成，宿主机的这份可能是旧的
+# （而且它是 .gitignore 里的东西，本来也不该进上下文）
+web/dist
+apps/api/web/*
+
+# 启动包目录：它是**被分发**的产物，不是构建输入（compose 与 .env.example
+# 由 scripts/startup-package.mjs 组装进 zip，镜像里用不到）。
+# 【注意不要顺手把整个 deployments/ 排掉】Dockerfile 的 migrate 那一层要
+# `COPY deployments/docker/migrate-entrypoint.sh`，排掉它那一层会构建失败。
+deployments/startup
