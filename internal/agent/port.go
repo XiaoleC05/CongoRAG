@@ -117,11 +117,22 @@ type Repo interface {
 	// 不是 ErrDuplicateKey——见 0010 迁移与 sentinel.go 的注释。
 	RecordToolEffect(ctx context.Context, q platform.Querier, stepID uuid.UUID, effectKey string) error
 
-	// ToolEffectApplied 查这一步的这个效果是不是已经记过账了。
+	// ToolEffectApplied 查这一步的工具效果是不是已经记过账了。
 	//
 	// 恢复路径在重放工具步骤**之前**调它：返回 true 就跳过重放
 	// （判读方向见 0010 迁移的注释，别搞反）。
-	ToolEffectApplied(ctx context.Context, q platform.Querier, stepID uuid.UUID, effectKey string) (bool, error)
+	//
+	// 【为什么只按 step_id 问，不带 effect_key】这个问题是"这一步的副作用
+	// 发生过没有"——一步就是一次工具调用，所以"这一行里有没有这个 step 的
+	// 记录"就是全部答案。带上 key 反而更脆：那要求两侧算出的键**逐字节**
+	// 相同，而参数的写入侧是 Eino 给的原始字节、判读侧是从 jsonb 读回来的
+	// （Postgres 会重排它）——一旦不同，判据就静默失效，而失效的表现是
+	// **把工具再执行一次**。EffectKey 现在已经会规范化（见 model.go），
+	// 但判据本身没有理由再去依赖那个规范性。
+	//
+	// 【effect_key 仍然有用】它留在唯一约束里当兜底：同一个 step 的同一个
+	// 效果被记两次就是 23505。
+	ToolEffectApplied(ctx context.Context, q platform.Querier, stepID uuid.UUID) (bool, error)
 
 	// ── 崩溃扫描与 checkpoint 回收 ────────────────────────────
 	//
@@ -210,6 +221,14 @@ type IdempotencyStore interface {
 	// LookupIdempotencyKey 按 (endpoint, key) 取回一条记录，找不到返回
 	// ErrNotFound。
 	LookupIdempotencyKey(ctx context.Context, q platform.Querier, endpoint, key string) (*IdempotencyRecord, error)
+
+	// DeleteIdempotencyKey 把占好的键放回去（占键成功、但紧接着建 run 失败时
+	// 的补偿动作）。找不到不算错误——那个键可能已经因为过期被顺手清掉了。
+	//
+	// 【它只解决一个很窄的窗口】两次写之间失败，键会指向一条不存在的 run，
+	// 用户重试同一个键拿到的是"run not found"而不是第一次的真正原因。
+	// 见 usecase.go 的 claimRun 里那段注释。
+	DeleteIdempotencyKey(ctx context.Context, q platform.Querier, endpoint, key string) error
 }
 
 // IdempotencyRecord 是 idempotency_keys 表一行的投影。

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -40,6 +41,10 @@ type fakeRepo struct {
 	nextEventID int64
 	runEvents   []RunEvent
 	effects     map[string]struct{}
+
+	// onCAS 在 UpdateRunStatus 里被调用（持锁时），用来观察"CAS 那一刻"
+	// 的外部状态。见 UpdateRunStatus 的注释。
+	onCAS func()
 }
 
 // statusUpdate 记一次 UpdateRunStatus 调用，含当时 ctx 是否已被取消。
@@ -94,6 +99,7 @@ func (f *fakeRepo) InsertRun(ctx context.Context, q platform.Querier, r *Run) er
 	f.runs = append(f.runs, r)
 	return nil
 }
+
 // GetRun 按 id 在内存里找——恢复、取消、幂等重放三条路径都要读它。
 func (f *fakeRepo) GetRun(ctx context.Context, q platform.Querier, id uuid.UUID) (*Run, error) {
 	f.mu.Lock()
@@ -121,6 +127,7 @@ func (f *fakeRepo) ListRunsByAgent(ctx context.Context, q platform.Querier, agen
 	}
 	return f.runs, f.listRunsHasMore, nil
 }
+
 // UpdateRunStatus 复刻真实实现的 CAS：`WHERE status = from` 没匹配到就返回
 // ErrConflict，匹配到才改。
 //
@@ -128,9 +135,19 @@ func (f *fakeRepo) ListRunsByAgent(ctx context.Context, q platform.Querier, agen
 // 全靠它——假实现总是成功的话，"取消来晚了一步，运行已经完成"那条分支
 // 永远走不到，而那条分支正是用户会看到"点了停止却说已经完成"的地方。
 func (f *fakeRepo) UpdateRunStatus(ctx context.Context, q platform.Querier, id uuid.UUID, from, to RunStatus) error {
+	// 【onCAS 让测试能观察"CAS 发生的那一刻"的进程内状态】恢复路径有一条
+	// 顺序要求：注册在途句柄必须**早于**把 run 标成 running。晚一步就会留下
+	// 一个窗口，用户正好在窗口里点取消时，`Cancel` 查不到句柄、走孤儿分支
+	// 返回 200，而那条恢复照跑不误。这个回调就是钉住那条顺序的手段。
+	onCAS := f.onCAS
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.updates = append(f.updates, statusUpdate{id: id, from: from, to: to, ctxErr: ctx.Err()})
+
+	if onCAS != nil {
+		onCAS()
+	}
 
 	for _, r := range f.runs {
 		if r.ID == id {
@@ -245,11 +262,17 @@ func (f *fakeRepo) RecordToolEffect(ctx context.Context, q platform.Querier, ste
 	return nil
 }
 
-func (f *fakeRepo) ToolEffectApplied(ctx context.Context, q platform.Querier, stepID uuid.UUID, effectKey string) (bool, error) {
+func (f *fakeRepo) ToolEffectApplied(ctx context.Context, q platform.Querier, stepID uuid.UUID) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	_, ok := f.effects[stepID.String()+"\x00"+effectKey]
-	return ok, nil
+	// 只按 step 找——判据是"这一步记过账没有"，见 port.go 的注释。
+	prefix := stepID.String() + "\x00"
+	for k := range f.effects {
+		if strings.HasPrefix(k, prefix) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // ── 崩溃扫描与 checkpoint 回收 ────────────────────────────────
@@ -381,6 +404,13 @@ func (s *fakeIdempotencyStore) ReserveIdempotencyKey(ctx context.Context, q plat
 	}
 	stored := *rec
 	s.records[key] = &stored
+	return nil
+}
+
+func (s *fakeIdempotencyStore) DeleteIdempotencyKey(ctx context.Context, q platform.Querier, endpoint, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.records, endpoint+"\x00"+key)
 	return nil
 }
 

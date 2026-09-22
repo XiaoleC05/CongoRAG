@@ -117,7 +117,7 @@ func TestPgRepo_ToolEffectLog_DuplicateIsDetected(t *testing.T) {
 	key := EffectKey("calculator", json.RawMessage(`{"a":1,"b":2,"operator":"+"}`))
 	require.NoError(t, repo.RecordToolEffect(ctx, pool, step.ID, key))
 
-	applied, err := repo.ToolEffectApplied(ctx, pool, step.ID, key)
+	applied, err := repo.ToolEffectApplied(ctx, pool, step.ID)
 	require.NoError(t, err)
 	assert.True(t, applied)
 
@@ -172,9 +172,18 @@ func TestPgRepo_InterruptRunningRuns_MarksBothRunAndSteps(t *testing.T) {
 		ID: uuid.New(), RunID: victim.ID, Seq: 2, Type: StepTypeLLM, Status: StepCompleted, CreatedAt: time.Now(),
 	}))
 
+	// 一条**早就** interrupted 的 run：它不该出现在返回值里。
+	//
+	// 早先的实现是"改完再 SELECT 一次 status = interrupted"，于是库里所有
+	// 历史上被中断过的 run 都会跟着回来——跑了两周的库重启时，日志会把几周
+	// 前的运行说成"这次升级掐断的"。
+	stale := seedRun(t, pool, RunInterrupted, CurrentStateSchemaVersion)
+
 	ids, err := repo.InterruptRunningRuns(ctx, pool)
 	require.NoError(t, err)
 	assert.Contains(t, ids, victim.ID)
+	assert.NotContains(t, ids, stale.ID, "只报**这一次**真的改掉的行")
+	assert.Len(t, ids, 1, "这次只有那一条在跑")
 
 	got, err := repo.GetRun(ctx, pool, victim.ID)
 	require.NoError(t, err)
@@ -328,4 +337,56 @@ func TestPgIdempotencyStore_ReserveAndHit(t *testing.T) {
 	back, err := store.LookupIdempotencyKey(ctx, pool, rec.Endpoint, rec.Key)
 	require.NoError(t, err)
 	assert.Equal(t, rec.ResourceID, back.ResourceID)
+}
+
+// ════════════════════════════════════════════════════════════════
+// 效果判据必须扛得住 jsonb 往返（对抗性审查查出的致命缺陷）
+// ════════════════════════════════════════════════════════════════
+
+// 【这条测试的形状就是当初漏掉它的原因】同一个效果会被算两次：
+//
+//	执行工具时——参数来自 Eino 的事件，是**原始字节**
+//	恢复时    ——参数从 `agent_run_steps.tool_args` 读回来，而那是 **jsonb**
+//	             （Postgres 会重写它：冒号/逗号后加空格、键按长度重排）
+//
+// 早先 `EffectKey` 直接哈希原始字节，于是两侧算出的键必然不同，
+// `ToolEffectApplied` **永远返回 false**、工具被静默执行第二次，而且唯一
+// 约束也拦不住（键不同）。**假 repo 里字节原样存取，所以单测全绿。**
+//
+// 后果正是这套机制存在的理由被反过来打脸：一个会静默重复执行的 resume。
+func TestPgRepo_EffectJudgementSurvivesJSONBRoundTrip(t *testing.T) {
+	pool := testdb.Require(t)
+	ctx := context.Background()
+	run := seedRun(t, pool, RunRunning, CurrentStateSchemaVersion)
+	repo := NewPgRepo()
+
+	// 【故意用紧凑、键序 "a","b","operator" 的原始字节】jsonb 读回来会变成
+	// `{"a": 1, "b": 2, "operator": "+"}`（加了空格、键序也可能变），
+	// 两者逐字节不同——这正是当初判据失效的地方。
+	rawArgs := json.RawMessage(`{"a":1,"b":2,"operator":"+"}`)
+
+	step := &Step{ID: uuid.New(), RunID: run.ID, Seq: 1, Type: StepTypeTool,
+		Status: StepRunning, ToolName: "calculator", ToolArgs: rawArgs, CreatedAt: time.Now()}
+	require.NoError(t, repo.InsertStep(ctx, pool, step))
+
+	// 执行侧：用**原始字节**记账（和 consumeEvents 里那一刻一样）。
+	require.NoError(t, repo.RecordToolEffect(ctx, pool, step.ID, EffectKey("calculator", rawArgs)))
+
+	// 恢复侧：从库里把这一步读回来。
+	steps, err := repo.StepsByRun(ctx, pool, run.ID)
+	require.NoError(t, err)
+	require.Len(t, steps, 1)
+	readBack := steps[0].ToolArgs
+
+	assert.NotEqual(t, string(rawArgs), string(readBack),
+		"jsonb 本来就该重写这份字节；如果哪天它不再重写，这条测试的前提就变了")
+
+	// ① 判据本身（只按 step 问）必须为真。
+	applied, err := repo.ToolEffectApplied(ctx, pool, step.ID)
+	require.NoError(t, err)
+	assert.True(t, applied, "读到这一步记过账 → 恢复必须跳过重放")
+
+	// ② 两侧算出的键也必须一致——唯一约束那道兜底靠它。
+	assert.Equal(t, EffectKey("calculator", rawArgs), EffectKey("calculator", readBack),
+		"EffectKey 必须先规范化再哈希，否则两侧永远不同、23505 那道兜底永远不响")
 }

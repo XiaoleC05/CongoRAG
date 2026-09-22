@@ -123,7 +123,8 @@ func TestToolEffectLog_DuplicateExecutionIsObservable(t *testing.T) {
 		"必须是这个 sentinel 而不是 ErrDuplicateKey——恢复路径靠它判读「重复执行了」")
 	assert.NotErrorIs(t, err, platform.ErrDuplicateKey, "它和业务唯一冲突是两件事")
 
-	applied, err := repo.ToolEffectApplied(ctx, nil, stepID, key)
+	// 判据只按 step 问："这一步记过账没有"（见 port.go 的注释）。
+	applied, err := repo.ToolEffectApplied(ctx, nil, stepID)
 	require.NoError(t, err)
 	assert.True(t, applied, "记过账之后查询必须为真——恢复路径正是靠这个跳过重放")
 }
@@ -131,7 +132,7 @@ func TestToolEffectLog_DuplicateExecutionIsObservable(t *testing.T) {
 // 没记过账的效果查出来必须是 false（否则恢复会把没跑过的步骤当成跑过了）。
 func TestToolEffectLog_NotAppliedYet(t *testing.T) {
 	repo := newFakeRepo()
-	applied, err := repo.ToolEffectApplied(context.Background(), nil, uuid.New(), "whatever")
+	applied, err := repo.ToolEffectApplied(context.Background(), nil, uuid.New())
 	require.NoError(t, err)
 	assert.False(t, applied)
 }
@@ -149,7 +150,12 @@ func newResumeFixture(t *testing.T, tool Tool, schemaVersion int) (*Usecase, *fa
 	repo := newFakeRepo()
 	tools := NewToolRegistry()
 	tools.Register(tool)
-	reg := &fakeLLMRegistry{model: newChatModel("test-model", true)}
+	// endpointErr 非空：走到真正的模型调用时**优雅失败**而不是 panic。
+	// 只有少数几条用例会走到那里（Resume 的收尾），其余的都在它之前就返回了。
+	reg := &fakeLLMRegistry{
+		model:       newChatModel("test-model", true),
+		endpointErr: fmt.Errorf("no endpoint in tests: %w", platform.ErrUpstream),
+	}
 	u := newTestUsecase(repo, &fakeCheckpointStore{}, tools, reg)
 
 	ag := &Agent{ID: uuid.New(), Name: "助手", ToolNames: []string{tool.Name()}}
@@ -316,8 +322,7 @@ func TestResume_ReplaysPendingReadOnlyStep(t *testing.T) {
 	assert.NotEmpty(t, step.ToolResult)
 
 	// 关键：记账用的是同一行的 id——换一行就没法在下次恢复时判读了。
-	applied, err := repo.ToolEffectApplied(context.Background(), nil, step.ID,
-		EffectKey(step.ToolName, step.ToolArgs))
+	applied, err := repo.ToolEffectApplied(context.Background(), nil, step.ID)
 	require.NoError(t, err)
 	assert.True(t, applied)
 }
@@ -796,4 +801,143 @@ func cancelledCtx() (context.Context, context.CancelFunc) {
 
 func backgroundCtx() (context.Context, context.CancelFunc) {
 	return context.WithCancel(context.Background())
+}
+
+// ════════════════════════════════════════════════════════════════
+// 对抗性审查查出的四条（2026-09-22）
+// ════════════════════════════════════════════════════════════════
+
+// 【取消一条 interrupted 的 run 必须真的写下去】
+//
+// 状态机里 `interrupted → cancelled` 是一条合法的边（用户放弃一条没跑完的
+// 运行），但早先的 `Cancel` 只处理了两种情形：在途表里有它（signal + 等收尾），
+// 或者库里是 `running`（孤儿 CAS）。对一条 `interrupted` 的 run 调用它，
+// **一个写操作都不会发生**，然后读回来把原状态当结果返回 200——用户以为
+// 取消了，而库里和接口都还停在可恢复状态。
+func TestCancel_InterruptedRun_IsActuallyCancelled(t *testing.T) {
+	u, repo, run, _ := newResumeFixture(t, NewCalculator(), CurrentStateSchemaVersion)
+	require.True(t, run.Status.CanTransition(RunCancelled),
+		"这条边在状态机里是合法的——正因如此，不写下去才是缺陷")
+
+	got, err := u.Cancel(context.Background(), run.ID)
+	require.NoError(t, err)
+
+	require.Len(t, repo.updates, 1, "必须真的发一次 CAS；0 次就是那个静默空操作")
+	assert.Equal(t, RunInterrupted, repo.updates[0].from)
+	assert.Equal(t, RunCancelled, repo.updates[0].to)
+	assert.Equal(t, RunCancelled, got.Status, "返回的必须是取消**之后**的状态")
+}
+
+// 【注册在途句柄必须早于把 run 标成 running】
+//
+// 这是恢复路径上的一个真实交错：先 CAS 再注册的话，中间有一段时间"库里是
+// running、在途表里没有它"。用户正好在这个窗口里点取消，`Cancel` 会走孤儿
+// 分支把它标成 cancelled 并返回 200，而那条恢复照跑不误——工具真的被调用、
+// SSE 继续推帧。取消说自己成功了，运行根本没停。
+//
+// 钉法：让假 repo 在 CAS 那一刻回看一下进程内状态。
+func TestResume_RegistersInFlightHandleBeforeCAS(t *testing.T) {
+	u, repo, run, _ := newResumeFixture(t, NewCalculator(), CurrentStateSchemaVersion)
+
+	registeredAtCAS := false
+	casSeen := false
+	repo.onCAS = func() {
+		// 【只看第一次 CAS】Resume 之后的收尾（finishRun）还会再 CAS 一次，
+		// 而那次发生在 beginExecution 之后——不加这一句的话，后一次会把
+		// 记录覆盖掉，测试对着一个必然为真的值断言（实测就是这样：
+		// 把顺序改回"先 CAS 再注册"，这条测试照样绿）。
+		if casSeen {
+			return
+		}
+		casSeen = true
+		registeredAtCAS = u.lookupRunning(run.ID) != nil
+	}
+
+	// 走到 CAS 就够了——Resume 后面要真的调模型，测试里没有模型可用，
+	// 所以错误照收；本测试关心的是那个顺序。
+	_, _ = u.Resume(context.Background(), mustPrepareResume(t, u, run.ID), newFakeSink())
+
+	require.True(t, casSeen, "应该走到过 CAS")
+	assert.True(t, registeredAtCAS,
+		"CAS 那一刻在途表里必须已经有它——否则那个窗口里取消会以为自己成功了")
+	// 收尾之后不该留下句柄（否则下一次同 id 的取消会摸到一个死句柄）。
+	assert.Nil(t, u.lookupRunning(run.ID), "收尾要把句柄摘掉")
+}
+
+// 【启动扫描返回的必须只是**这一次**改掉的行】
+//
+// 早先是"改完再 SELECT 一次 status = interrupted"，那会把库里历史上所有被
+// 中断过的 run 都捞回来：一个跑了两周的库重启时，日志会把几周前的运行说成
+// "这次升级掐断的"，而这次真正掐断的只有一条。
+//
+// 真库版本在 postgres_integration_test.go；这条用假 repo 钉住语义。
+func TestInterruptRunningRuns_ReportsOnlyThisSweep(t *testing.T) {
+	u, repo, run, _ := newResumeFixture(t, NewCalculator(), CurrentStateSchemaVersion)
+	run.Status = RunRunning
+	_ = repo
+
+	// 再造一条**早就** interrupted 的，它不该出现在返回值里。
+	stale := &Run{
+		ID: uuid.New(), AgentID: run.AgentID, Status: RunInterrupted, Input: "旧的",
+		StateSchemaVersion: CurrentStateSchemaVersion, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	require.NoError(t, repo.InsertRun(context.Background(), nil, stale))
+
+	n, err := u.InterruptRunningRuns(context.Background())
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, n, "这次真正掐断的只有那一条 running；旧的不该被算进来")
+	// 兜底：也别把它的状态动一下。
+	got, err := repo.GetRun(context.Background(), nil, stale.ID)
+	require.NoError(t, err)
+	assert.Equal(t, RunInterrupted, got.Status)
+}
+
+// 【已经失败的 llm 轮次不该被恢复改写成 interrupted】
+//
+// 它是已经落地的事实（错误文本也在那一行上）；恢复再去改它的状态，等于把
+// 轨迹里"这一轮失败了"抹掉、只留一段挂错状态的错误信息。
+func TestPrepareResume_DoesNotRewriteFailedLLMStep(t *testing.T) {
+	u, repo, run, _ := newResumeFixture(t, NewCalculator(), CurrentStateSchemaVersion)
+
+	require.NoError(t, repo.InsertStep(context.Background(), nil, &Step{
+		ID: uuid.New(), RunID: run.ID, Seq: 5, Type: StepTypeLLM,
+		Status: StepFailed, Error: "上游返回 500", CreatedAt: time.Now(),
+	}))
+
+	plan, err := u.PrepareResume(context.Background(), run.ID)
+	require.NoError(t, err)
+
+	assert.Empty(t, plan.interruptedLLMSteps, "failed 是终态事实，不该进「待标 interrupted」那一组")
+}
+
+// 【重建历史要带上原始序号】并行工具调用的结果是乱序到达的，所以恢复拼给
+// 模型的历史必须按 seq 排，不能按"谁先被重放"。Seq 是排序的依据——它没被
+// 填上的话排序是空转的（全零，稳定排序等于不排）。
+func TestPrepareResume_CarriesOriginalSeqForOrdering(t *testing.T) {
+	u, repo, run, _ := newResumeFixture(t, NewCalculator(), CurrentStateSchemaVersion)
+
+	// seq2 是没跑完的工具步骤（会被重放），seq3 是已经完成的。
+	require.NoError(t, repo.InsertStep(context.Background(), nil, &Step{
+		ID: uuid.New(), RunID: run.ID, Seq: 3, Type: StepTypeTool, Status: StepCompleted,
+		ToolName: "calculator", ToolArgs: json.RawMessage(`{"a":2,"b":3,"operator":"*"}`),
+		ToolResult: json.RawMessage(`{"result":6}`), CreatedAt: time.Now(),
+	}))
+
+	plan, err := u.PrepareResume(context.Background(), run.ID)
+	require.NoError(t, err)
+
+	require.Len(t, plan.pendingToolSteps, 1)
+	assert.Equal(t, 2, plan.pendingToolSteps[0].Seq)
+	require.Len(t, plan.priorTurns, 1)
+	assert.Equal(t, 3, plan.priorTurns[0].Seq,
+		"已完成的那一轮要带原始 seq——恢复时重放出来的那些夹在中间，靠它排序")
+}
+
+// mustPrepareResume 是测试里的便利包装：PrepareResume 失败就直接结束测试。
+func mustPrepareResume(t *testing.T, u *Usecase, runID uuid.UUID) *ResumePlan {
+	t.Helper()
+	plan, err := u.PrepareResume(context.Background(), runID)
+	require.NoError(t, err)
+	return plan
 }

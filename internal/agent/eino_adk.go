@@ -47,6 +47,14 @@ const maxIterations = 20
 // 结果，所以重建重点是这两样——正文缺失不影响模型继续，它看到的是
 // "这些工具已经调过、结果如下"。
 type resumeTurn struct {
+	// Seq 是这一步在 run 里的原始序号（agent_run_steps.seq）。
+	//
+	// 【为什么历史要按它排序，而不是按"什么时候被重放的"】一轮里模型可以
+	// 并行请求多个工具，而它们的**结果**是乱序到达的（本包的注释自己就假设
+	// 了这一点）。崩溃现场于是可能长成"seq3 已完成、seq2 还没回来"，恢复拼
+	// 给模型的历史如果按"先完成的先放"，模型看到的调用顺序就与真实发生的
+	// 相反——不报错、不崩，但它对"已经发生过什么"的理解是错的。
+	Seq        int
 	ToolName   string
 	ToolArgs   json.RawMessage
 	ToolResult json.RawMessage

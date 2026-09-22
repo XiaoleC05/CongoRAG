@@ -376,11 +376,11 @@ func (r *PgRepo) RecordToolEffect(ctx context.Context, q platform.Querier, stepI
 	return nil
 }
 
-func (r *PgRepo) ToolEffectApplied(ctx context.Context, q platform.Querier, stepID uuid.UUID, effectKey string) (bool, error) {
+func (r *PgRepo) ToolEffectApplied(ctx context.Context, q platform.Querier, stepID uuid.UUID) (bool, error) {
 	var exists bool
 	err := q.QueryRow(ctx,
-		`SELECT EXISTS (SELECT 1 FROM tool_effect_log WHERE step_id = $1 AND effect_key = $2)`,
-		stepID, effectKey).Scan(&exists)
+		`SELECT EXISTS (SELECT 1 FROM tool_effect_log WHERE step_id = $1)`,
+		stepID).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("check tool effect for step %s: %w", stepID, platform.WrapPgErr(err))
 	}
@@ -395,35 +395,22 @@ func (r *PgRepo) ToolEffectApplied(ctx context.Context, q platform.Querier, step
 // 但它那个 running 的 step 还在"的中间态——正是 ADR-007 崩溃表要判读的
 // 那个现场。恢复逻辑读到它会把一个已经由扫描收尾的 run 再收尾一遍。
 //
-// 【为什么最后单独 SELECT 一次受影响的 id】UPDATE ... RETURNING 只返回被
-// 改的行，而这里要的是 run 级 id 列表（step 那条 UPDATE 会返回一堆 step id，
-// 不是 run id）。多一次查询换来调用方能拿它记日志——这是启动扫描唯一的
-// 可观测性来源。
+// 【那个强制点在调用方，不在这个方法里】签名收的是一个 `Querier`：传 pool
+// 就是各写各的。所以上面那条保证只有在调用方真的用 `txm.InTx` 把两步圈起来
+// 时才成立——`Usecase.InterruptRunningRuns` 就是那个调用方。
+//
+// 【返回的 id 只包含**这一次**改掉的行】用 `UPDATE ... RETURNING id`，
+// 而不是"改完再 SELECT 一次 status = interrupted"——后者会把库里**历史上**
+// 所有被中断过的 run 都捞回来：一个跑了两周的库重启时，日志会把几周前的
+// 运行说成"这次升级掐断的"，而这次真正掐断的只有一条。
 func (r *PgRepo) InterruptRunningRuns(ctx context.Context, q platform.Querier) ([]uuid.UUID, error) {
-	tag, err := q.Exec(ctx,
-		`UPDATE agent_runs SET status = $1, updated_at = now() WHERE status = $2`,
+	rows, err := q.Query(ctx,
+		`UPDATE agent_runs SET status = $1, updated_at = now()
+		  WHERE status = $2
+		 RETURNING id`,
 		string(RunInterrupted), string(RunRunning))
 	if err != nil {
 		return nil, fmt.Errorf("interrupt running runs: %w", platform.WrapPgErr(err))
-	}
-	if tag.RowsAffected() == 0 {
-		return nil, nil
-	}
-
-	if _, err := q.Exec(ctx,
-		`UPDATE agent_run_steps s
-		    SET status = $1
-		   FROM agent_runs r
-		  WHERE s.run_id = r.id AND s.status = $2 AND r.status = $3`,
-		string(StepInterrupted), string(StepRunning), string(RunInterrupted)); err != nil {
-		return nil, fmt.Errorf("interrupt running steps: %w", platform.WrapPgErr(err))
-	}
-
-	rows, err := q.Query(ctx,
-		`SELECT id FROM agent_runs WHERE status = $1 ORDER BY created_at ASC`,
-		string(RunInterrupted))
-	if err != nil {
-		return nil, fmt.Errorf("list interrupted runs: %w", platform.WrapPgErr(err))
 	}
 	defer rows.Close()
 
@@ -436,7 +423,19 @@ func (r *PgRepo) InterruptRunningRuns(ctx context.Context, q platform.Querier) (
 		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate interrupted runs: %w", err)
+		return nil, fmt.Errorf("iterate interrupted run ids: %w", err)
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	if _, err := q.Exec(ctx,
+		`UPDATE agent_run_steps s
+		    SET status = $1
+		   FROM agent_runs r
+		  WHERE s.run_id = r.id AND s.status = $2 AND r.status = $3`,
+		string(StepInterrupted), string(StepRunning), string(RunInterrupted)); err != nil {
+		return nil, fmt.Errorf("interrupt running steps: %w", platform.WrapPgErr(err))
 	}
 	return ids, nil
 }
@@ -493,6 +492,17 @@ func (s *PgIdempotencyStore) ReserveIdempotencyKey(ctx context.Context, q platfo
 	if err != nil {
 		return fmt.Errorf("reserve idempotency key for run: %w", platform.WrapPgErr(err))
 	}
+	return nil
+}
+
+func (s *PgIdempotencyStore) DeleteIdempotencyKey(ctx context.Context, q platform.Querier, endpoint, key string) error {
+	if _, err := q.Exec(ctx,
+		`DELETE FROM idempotency_keys WHERE endpoint = $1 AND idempotency_key = $2`,
+		endpoint, key); err != nil {
+		return fmt.Errorf("delete idempotency key %s: %w", key, platform.WrapPgErr(err))
+	}
+	// 【删掉 0 行不是错误】那个键可能已经因为过期被顺手清掉了——补偿动作
+	// 要的是"它不在了"，而不是"是我删掉的"。
 	return nil
 }
 

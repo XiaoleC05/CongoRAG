@@ -245,10 +245,55 @@ const CurrentStateSchemaVersion = 1
 //
 // 【为什么不带 run_id / step_id】它们已经是行的另一部分（表的主键是
 // (step_id, effect_key)），放进摘要只会让键更难读，且不增加区分度。
+//
+// ══════════════════════════════════════════════════════════════════
+// 【为什么必须先规范化，这一步不能省】
+//
+// 同一个效果会被算**两次**：执行工具时（参数来自 Eino 的事件，是原始字节）
+// 和恢复时（参数从 `agent_run_steps.tool_args` 读回来，而那一列是 **jsonb**
+// ——Postgres 会重写它：冒号与逗号后加空格、键按长度重排）。
+//
+//    写入 {"a":1,"b":2,"operator":"+"}
+//    读回 {"a": 1, "b": 2, "operator": "+"}
+//
+// 两者直接哈希必然不同，于是恢复时 `ToolEffectApplied` **永远返回 false**，
+// 那一步被排进重放列表、工具真的被执行第二次，而且因为两边算出的键不同，
+// 唯一约束也不会拦——**全程无错误、无日志**。这正是这套机制存在的理由
+// （"一个会静默重复执行的 resume，比没有 resume 更糟"）被反过来打脸的情形。
+//
+// 所以先解析再重新序列化：`json.Marshal` 对 map 按键排序、输出紧凑格式，
+// 两侧因此得到同一份字节。数字走 float64 会损失末尾精度，但**两侧损失得
+// 一模一样**，判据要的是稳定，不是精确。
+//
+// 【解析不了怎么办】退回原始字节。参数本来就不是合法 JSON 的话，两次
+// 读到的也都是同一份原始字节（jsonb 存不下非法 JSON，走不到这条路径）。
+//
+// ══════════════════════════════════════════════════════════════════
 func EffectKey(toolName string, args json.RawMessage) string {
 	h := sha256.New()
 	h.Write([]byte(toolName))
 	h.Write([]byte{0}) // 分隔符：避免 ("ab","c") 和 ("a","bc") 撞到同一个摘要
-	h.Write(args)
+	h.Write(canonicalJSON(args))
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// canonicalJSON 把一份 JSON 变成与 Postgres jsonb 往返无关的规范形式。
+//
+// 【为什么是"解析再重新序列化"而不是"删掉空白"】jsonb 还会**重排键**
+// （按长度，等长按字节序），而 Go 的 map 序列化按字典序——两者不一致没关系，
+// 关键是**两侧都走这一条路**，得到的是同一个函数对同一份数据的输出。
+// 手写"删空白"要自己处理字符串字面量里的空格，而那是错的来源。
+func canonicalJSON(raw json.RawMessage) []byte {
+	if len(raw) == 0 {
+		return raw
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return raw
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		return raw
+	}
+	return out
 }

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -355,7 +356,6 @@ type runPlan struct {
 	tools     []Tool
 	chatModel *llm.Model
 	input     string
-
 }
 
 // Start 执行一次 Agent 运行,把 Eino ADK 的事件流归一化成 SSE 推给
@@ -388,7 +388,9 @@ func (u *Usecase) Start(ctx context.Context, agentID uuid.UUID, input, idempoten
 		return existing, u.replayRun(ctx, existing.ID, sink)
 	}
 
-	return u.execute(ctx, plan, run, nil, sink)
+	ex, finish := u.beginExecution(ctx, run.ID)
+	defer finish()
+	return u.execute(ctx, ex, plan, run, nil, sink)
 }
 
 // prepareRun 做全部只读校验，返回一个可以立刻执行的 plan。
@@ -486,6 +488,20 @@ func (u *Usecase) claimRun(ctx context.Context, plan *runPlan, idempotencyKey st
 		StateSchemaVersion: CurrentStateSchemaVersion, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := u.repo.InsertRun(ctx, u.db, run); err != nil {
+		// 【把占好的键放回去】占键与建 run 是两次写，中间失败的话那个键会指向
+		// 一条**不存在的 run**——用户重试同一个键时会走到 lookupExistingRun，
+		// 拿到的是一句"run not found"，而不是第一次真正的原因（比如 Agent 在
+		// 这两步之间被删了，InsertRun 撞的是外键）。
+		//
+		// 【这个窗口有多窄】两次写都连得上库才会走到这里，而且中间要有一次
+		// 瞬时失败或一次并发删除。窄不等于不会发生，而"放回去"只是一个
+		// 方向明确的补偿动作；放不回也只是回到原来的行为，不会更糟。
+		if idempotencyKey != "" {
+			if derr := u.idem.DeleteIdempotencyKey(ctx, u.db, runsEndpoint(plan.agent.ID), idempotencyKey); derr != nil {
+				u.log(ctx).Warn("failed to release the reserved idempotency key after a failed run insert",
+					"agent_id", plan.agent.ID, "error", derr)
+			}
+		}
 		return nil, nil, fmt.Errorf("insert run: %w", err)
 	}
 	return run, nil, nil
@@ -515,12 +531,32 @@ func (u *Usecase) lookupExistingRun(ctx context.Context, agentID uuid.UUID, key,
 // 驱动 Agent、落每一步、写终态。
 //
 // priorTurns 是恢复时重建的历史（新运行时为空）。
-func (u *Usecase) execute(ctx context.Context, plan *runPlan, run *Run, priorTurns []resumeTurn, sink conversation.EventSink) (*Run, error) {
-	// 【把 run id 塞进 ctx 是这一层做的，不是 handler】run id 是这一刻才
-	// 生成的，而 handler 拿不到它（它只知道 Agent id）。塞进去之后，
-	// 这条路径上每一层用 platform.LoggerFrom 打的日志都会带上
-	// agent_run_id（issue #71）。
-	ctx = platform.WithAgentRunID(ctx, run.ID.String())
+// runExecution 是一次运行的 ctx 与在途句柄。
+//
+// 【为什么把它从 execute 里抽出来】因为**注册必须早于"把 run 标成 running"
+// 那一步**，而 Start 与 Resume 的这一步在各自不同的位置：
+//
+//	Start ：建 run 行（本身就是 running）→ 注册 → 执行
+//	Resume：注册 → CAS（interrupted → running）→ 执行
+//
+// Resume 的顺序是被一次真实的交错定出来的：先 CAS 再注册的话，中间有一个
+// 窗口——库里已经是 running、而在途表里还没有。用户正好在这个窗口里点取消，
+// `Cancel` 会查不到在途句柄、走"孤儿 run"分支把状态改成 cancelled 并**返回
+// 200**，而那条恢复照跑不误（工具真的被调用、SSE 继续推帧）。取消说自己
+// 成功了，运行根本没停。
+type runExecution struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	st     *runningRun
+}
+
+// beginExecution 建出这次运行的 ctx、注册在途句柄，返回的 func 做收尾
+// （取消 ctx、从在途表摘掉、关掉 done）。
+//
+// 【把 run id 塞进 ctx 的也是这里】塞进去之后，这条路径上每一层用
+// platform.LoggerFrom 打的日志都会带上 agent_run_id（issue #71）。
+func (u *Usecase) beginExecution(ctx context.Context, runID uuid.UUID) (*runExecution, func()) {
+	ctx = platform.WithAgentRunID(ctx, runID.String())
 
 	// runCtx 是这次运行自己的生命周期。consumeEvents 一旦返回——正常结束、
 	// 出错、被取消、或者客户端断开——它就必须结束：drainIterator 的每一次
@@ -528,15 +564,23 @@ func (u *Usecase) execute(ctx context.Context, plan *runPlan, run *Run, priorTur
 	// （issue #35 的 goroutine/iterator 泄漏）。取消后 ADK 那边的模型请求
 	// 也会被一起拆掉。
 	runCtx, cancelRun := context.WithCancel(ctx)
-	defer cancelRun()
 
 	// 注册在途句柄，取消端点靠它拿到这条 ctx 的 cancel 函数（issue #55）。
-	// done 在最外层 defer 里关闭：Cancel 等它，等的就是"收尾写入做完了"。
-	st := u.registerRunning(run.ID, cancelRun)
-	defer func() {
-		u.unregisterRunning(run.ID)
+	// done 在收尾里关闭：Cancel 等它，等的就是"收尾写入做完了"。
+	st := u.registerRunning(runID, cancelRun)
+	ex := &runExecution{ctx: runCtx, cancel: cancelRun, st: st}
+
+	return ex, func() {
+		cancelRun()
+		u.unregisterRunning(runID)
 		close(st.done)
-	}()
+	}
+}
+
+// execute 跑一次运行。ctx 与在途句柄由调用方用 beginExecution 建好——
+// 那个顺序上的要求见 runExecution 的注释。
+func (u *Usecase) execute(ctx context.Context, ex *runExecution, plan *runPlan, run *Run, priorTurns []resumeTurn, sink conversation.EventSink) (*Run, error) {
+	runCtx, st := ex.ctx, ex.st
 
 	// 首帧必须是 run_started（ADR-008）：客户端凭它拿到这次运行的 id，
 	// 而取消端点、run 级重订阅、幂等重放都要用这个 id。
@@ -555,7 +599,7 @@ func (u *Usecase) execute(ctx context.Context, plan *runPlan, run *Run, priorTur
 	output, runErr := u.consumeEvents(ctx, run.ID, plan.chatModel.ID.String(), events, sink, st)
 	run.Output = output
 	// 消费端已经退出，通知生产者收摊。
-	cancelRun()
+	ex.cancel()
 
 	return u.finishRun(ctx, run, st, runErr)
 }
@@ -691,13 +735,22 @@ func (u *Usecase) Cancel(ctx context.Context, runID uuid.UUID) (*Run, error) {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
-	} else if run.Status == RunRunning {
-		// 【为什么这条分支存在】在途表里没有、数据库里却是 running，
-		// 说明那条运行的进程已经不在了（被 KILL），而启动扫描还没跑到
-		// （或扫描之后又有人手工把状态改了）。这里做一次 CAS 兜底，
-		// 让用户至少能把这条卡住的行收掉。
-		if err := u.repo.UpdateRunStatus(ctx, u.db, runID, RunRunning, RunCancelled); err != nil {
-			return nil, fmt.Errorf("cancel orphan run %s: %w", runID, err)
+	} else {
+		// 【在途表里没有它，也要真的写下去】两种情形都落到这里：
+		//
+		//   running     —— 上个进程被 KILL 留下的孤儿（启动扫描还没跑到），
+		//                  这一条是"把卡住的行收掉"；
+		//   interrupted —— 用户放弃一条没跑完的运行。**这条边在状态机里是
+		//                  合法的**（`runTransitions` 明写了 interrupted →
+		//                  cancelled），但早先的代码只处理了 running，于是
+		//                  对一条 interrupted 的 run 调取消会**一个写操作都
+		//                  不发生**，然后读回来把原状态当结果返回 200。
+		//                  用户以为取消了，库里和接口都还停在可恢复状态。
+		//
+		// 判据是"CAS 的 from 取它的当前状态"，而不是枚举状态——枚举漏一种
+		// 就是又一条静默空操作。
+		if err := u.repo.UpdateRunStatus(ctx, u.db, runID, run.Status, RunCancelled); err != nil {
+			return nil, fmt.Errorf("cancel run %s (not in-flight): %w", runID, err)
 		}
 	}
 
@@ -1203,8 +1256,15 @@ func (u *Usecase) RunEvents(ctx context.Context, runID uuid.UUID, afterEventID i
 // 可以从断点继续），且与 Resume 入口衔接。扫描出来的 run id 逐个记日志——
 // 这是这次升级唯一能看出"有几条运行被就地掐断"的地方。
 func (u *Usecase) InterruptRunningRuns(ctx context.Context) (int, error) {
-	ids, err := u.repo.InterruptRunningRuns(ctx, u.db)
-	if err != nil {
+	// 【两步 UPDATE 必须在同一个事务里】`InterruptRunningRuns` 的注释写明了
+	// 理由（留下"run 已 interrupted、step 还 running"的中间态就是留下一个
+	// 假现场），而那个保证的强制点在调用方——这里就是那个调用方。
+	var ids []uuid.UUID
+	if err := u.txm.InTx(ctx, func(q platform.Querier) error {
+		var err error
+		ids, err = u.repo.InterruptRunningRuns(ctx, q)
+		return err
+	}); err != nil {
 		return 0, fmt.Errorf("interrupt runs left running by a previous process: %w", err)
 	}
 	for _, id := range ids {
@@ -1330,11 +1390,20 @@ func (u *Usecase) PrepareResume(ctx context.Context, runID uuid.UUID) (*ResumePl
 		switch {
 		case s.Status == StepCompleted && s.Type == StepTypeTool:
 			plan.priorTurns = append(plan.priorTurns, resumeTurn{
-				ToolName: s.ToolName, ToolArgs: s.ToolArgs, ToolResult: s.ToolResult,
+				Seq: s.Seq, ToolName: s.ToolName, ToolArgs: s.ToolArgs, ToolResult: s.ToolResult,
 			})
 
 		case s.Status == StepCompleted:
 			// 已完成的 llm 轮次：没有什么要重建的（见 resumeTurn 的注释）。
+
+		case s.Status == StepFailed:
+			// 【已经失败的那一步不要重写成 interrupted】它是**已经落地的
+			// 事实**（错误文本也在那一行上），恢复再去改它的状态，等于把
+			// 轨迹里"这一轮失败了"这件事抹掉、只留一段挂错状态的错误信息。
+			// 恢复从它后面继续就行了。
+			//
+			// 出现这个组合要同时满足"模型那一轮报错"与"客户端同时断开"
+			// （后者把 run 记成 interrupted，而它不是终态、因此可以恢复）。
 
 		case s.Type == StepTypeTool:
 			if err := u.gateToolReplay(ctx, s); err != nil {
@@ -1384,7 +1453,7 @@ func (u *Usecase) gateToolReplay(ctx context.Context, s *Step) error {
 			s.ID, s.ToolName, platform.ErrReplayUnsafe)
 	}
 
-	applied, err := u.repo.ToolEffectApplied(ctx, u.db, s.ID, EffectKey(s.ToolName, s.ToolArgs))
+	applied, err := u.repo.ToolEffectApplied(ctx, u.db, s.ID)
 	if err != nil {
 		return fmt.Errorf("check tool effect of step %s: %w", s.ID, err)
 	}
@@ -1405,6 +1474,11 @@ func (u *Usecase) gateToolReplay(ctx context.Context, s *Step) error {
 //     的键是 (step_id, effect_key)，换一行就等于绕开了那道判据）；
 //  3. 重建历史，交给模型从下一个 Step 继续。
 func (u *Usecase) Resume(ctx context.Context, plan *ResumePlan, sink conversation.EventSink) (*Run, error) {
+	// 【注册必须早于 CAS】见 runExecution 的注释：反过来的话，中间那个窗口里
+	// 取消会以为自己成功了，而这次恢复照跑不误。
+	ex, finish := u.beginExecution(ctx, plan.run.ID)
+	defer finish()
+
 	// interrupted → running 的 CAS（issue #59 的状态机）。失败说明并发地
 	// 有另一次恢复或一次取消先动了它。
 	if err := u.repo.UpdateRunStatus(ctx, u.db, plan.run.ID, RunInterrupted, RunRunning); err != nil {
@@ -1445,8 +1519,13 @@ func (u *Usecase) Resume(ctx context.Context, plan *ResumePlan, sink conversatio
 		turns = append(turns, turn)
 	}
 
+	// 【按原始序号排好再交给模型】priorTurns 已经是升序，重放出来的那些
+	// 夹在中间（它们的 seq 就是崩溃时那个位置）。见 resumeTurn.Seq 的注释：
+	// 并行工具调用的结果是乱序到达的，不排的话模型看到的顺序可能是反的。
+	sort.SliceStable(turns, func(i, j int) bool { return turns[i].Seq < turns[j].Seq })
+
 	// ③ 交给模型继续。
-	run, err := u.execute(ctx, &runPlan{
+	run, err := u.execute(ctx, ex, &runPlan{
 		agent:     plan.agent,
 		tools:     plan.tools,
 		chatModel: plan.chatModel,
@@ -1499,5 +1578,5 @@ func (u *Usecase) replayToolStep(ctx context.Context, s *Step) (resumeTurn, erro
 		return resumeTurn{}, fmt.Errorf("finalize replayed step %s: %w", s.ID, err)
 	}
 
-	return resumeTurn{ToolName: s.ToolName, ToolArgs: s.ToolArgs, ToolResult: result}, nil
+	return resumeTurn{Seq: s.Seq, ToolName: s.ToolName, ToolArgs: s.ToolArgs, ToolResult: result}, nil
 }
