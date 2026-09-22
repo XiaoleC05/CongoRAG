@@ -26,6 +26,23 @@
 
 ---
 
+## [5.0.2] - 2026-09-22
+
+v5.0.1 修掉了集成测试的失败，CI 于是跑到了下一步，又暴露出第二个问题。
+**这一版同样只影响测试与 CI，不影响任何运行时行为** —— 已经发布的
+v5.0 / v5.0.1 产物都无需替换。
+
+### 修复
+
+- **CI 的契约测试会红**：`scripts/contract-test.mjs` 的检索那条断言期待 200，
+  但它跑在集成测试之后、用的是**同一个库** —— 而 `internal/llm` 那批集成测试
+  会模拟"从没做过 BYOK 的全新数据库"，把 embedding 模型配置清掉。于是 api
+  返回 404（`no embedding model configured yet`），而**契约对这条请求同样
+  声明了 404**。这个矛盾一直存在，只是前几次 CI 都在上一步就停了、这一步
+  从没跑到过。
+  修法是让那条断言按契约放行两种结局（200 时仍校验 `hits` 是数组），
+  并给 `call` 的 `expect` 加上多值支持
+
 ## [5.0.1] - 2026-09-22
 
 v5.0 的集成测试在 CI 上会失败，**只影响测试，不影响任何运行时行为** ——
@@ -381,6 +398,7 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
+[5.0.2]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0.1...v5.0.2
 [5.0.1]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0...v5.0.1
 [5.0]: https://github.com/XiaoleC05/CongoRAG/compare/v3.0...v5.0
 [3.0]: https://github.com/XiaoleC05/CongoRAG/compare/v2.0...v3.0

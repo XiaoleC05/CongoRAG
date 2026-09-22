@@ -220,10 +220,15 @@ async function call(method, path, { body, headers = {}, expect } = {}) {
     // SSE 流、空 body、HTML 兜底页都会走到这里——原样留着给断言看。
   }
   const result = { status: res.status, body: parsed, raw: text }
-  if (expect !== undefined && res.status !== expect) {
-    const msg = `${method} ${path} 期望 ${expect}，实际 ${res.status}：${text.slice(0, 200)}`
-    if (!keepGoing) throw new Error(msg)
-    batteryFailures.push(msg)
+  if (expect !== undefined) {
+    // expect 可以是单个数，也可以是一组（契约对同一条请求声明了多个合法
+    // 状态码时用后者，见检索那条）。
+    const want = Array.isArray(expect) ? expect : [expect]
+    if (!want.includes(res.status)) {
+      const msg = `${method} ${path} 期望 ${want.join(' 或 ')}，实际 ${res.status}：${text.slice(0, 200)}`
+      if (!keepGoing) throw new Error(msg)
+      batteryFailures.push(msg)
+    }
   }
   return result
 }
@@ -277,13 +282,20 @@ async function runBattery() {
   await call('GET', `/api/v1/knowledge-bases/${kbId}/documents?limit=5`, { expect: 200 })
   record('GET /api/v1/knowledge-bases/{id}/documents', 'ok')
 
-  // 检索调试：库里没有任何向量，所以命中的是**空数组**那条分支
-  // （契约里 hits 是数组、可以是空的）。这条同时钉住了"空数组不是 null"。
+  // 检索调试。**这条按契约放行两种结局**：配了 embedding 模型时是 200 +
+  // 命中的分块（库里没有向量的话是空数组——契约里 hits 是 required array、
+  // 可以是空的，这条同时钉住"空数组不是 null"）；没配时 api 返回 404，
+  // 契约对它同样声明了 404。
+  //
+  // 【为什么要容忍 404】契约测试跑在集成测试之后、用的是同一个库，而
+  // internal/llm 那批集成测试会模拟"从没做过 BYOK 的全新数据库"（那个文件
+  // 自己记着这条会动全局状态的副作用）。本脚本的请求集本来就是"不需要配置
+  // 模型就能答"的那一批（见文件头），search 是唯一沾到模型的一条。
   const search = await call('POST', `/api/v1/knowledge-bases/${kbId}/search`, {
     body: { query: '契约测试', topK: 3 },
-    expect: 200,
+    expect: [200, 404],
   })
-  if (!Array.isArray(search.body?.hits)) {
+  if (search.status === 200 && !Array.isArray(search.body?.hits)) {
     throw new Error('POST .../search 的 hits 不是数组——契约里它是 required array')
   }
   record('POST /api/v1/knowledge-bases/{id}/search', 'ok')

@@ -9,7 +9,7 @@ info:
   #
   # 【必须加引号】不加的话 YAML 会把 2.0 解析成浮点数，而 info.version 的
   # 类型是 string——校验会报 "Incorrect type. Expected string"。
-  version: "5.0.1"
+  version: "5.0.2"
   description: |
     依靠上下文提供 RAG 服务的全栈开源工具
 

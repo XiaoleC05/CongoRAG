@@ -3,7 +3,7 @@
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Version](https://img.shields.io/badge/version-5.0.1-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.0.2-blue)](CHANGELOG.md)
 
 本地优先的 RAG 问答与 Agent 平台。文档、向量、API Key 全部留在你自己的机器上，
 模型服务由你提供（BYOK）。
@@ -11,7 +11,7 @@
 api 进程默认只监听 `127.0.0.1:3210`，不对局域网开放。API Key 用 AES-GCM 加密后
 存进本地数据库，主密钥在首次启动时生成并落盘。
 
-当前**已发布**的版本是 **v5.0.1**（2026-09-22），下文描述的就是这一版。
+当前**已发布**的版本是 **v5.0.2**（2026-09-22），下文描述的就是这一版。
 之后落在 `main` 上的改动的逐条记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 界面
@@ -292,7 +292,7 @@ Agent 那条流的**首帧永远是 `run_started`**（`data: {"runId": ...}`）�
 `null` 表示到底了。**游标是不透明的**——不要解析它，格式随时可能变（见契约里
 `Cursor` 参数的描述）。
 
-契约的 `info.version` 跟产品版本走（当前 `5.0.1` ↔ tag `v5.0.1`），由发布脚本在发布前
+契约的 `info.version` 跟产品版本走（当前 `5.0.2` ↔ tag `v5.0.2`），由发布脚本在发布前
 断言两者一致，见 [ADR-002](docs/adr/002-contract-versioning.md)。它不表示兼容性
 承诺——**兼容边界是路径里的 `/api/v1`**。
 
