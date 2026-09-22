@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
@@ -32,17 +32,58 @@ const agent: Agent = {
   updatedAt: '2026-09-22T00:00:00Z',
 }
 
+/**
+ * 三条历史运行。
+ *
+ * 【都是终态】useAgentRuns 看到 pending/running 就会每 1.5 秒重取一次
+ * （它会真的把测试进程吊住——`retry: false` 管的是失败重试，管不到轮询）。
+ * 要测"筛不出结果"，筛一个没人有的状态即可。
+ *
+ * 【时间故意跨时区偏移混着写】服务器顺序是 created_at 倒序，而
+ * '2026-09-22T10:00:00+08:00' 在字符串上排在 '2026-09-21...' 前面却比它更晚，
+ * "最早在前"因此能验出排序真的按时间戳比。
+ */
+function makeRun(id: string, status: Schemas['AgentRun']['status'], createdAt: string) {
+  return {
+    id,
+    agentId: AGENT_ID,
+    status,
+    currentStep: 1,
+    input: `任务 ${id}`,
+    output: '',
+    createdAt,
+    updatedAt: createdAt,
+  }
+}
+
+const runNewest = makeRun('a', 'completed', '2026-09-22T10:00:00+08:00')
+const runOlder = makeRun('b', 'failed', '2026-09-21T20:00:00Z')
+const runOldest = makeRun('c', 'interrupted', '2026-09-21T00:00:00Z')
+const serverRuns = [runNewest, runOlder, runOldest]
+
 // jsdom 不实现 scrollIntoView，而这一页在时间线变化时会调它（滚到底部）。
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn()
+
+  // jsdom 也没有 ResizeObserver，而编辑弹窗里的 Checkbox 内部要用它
+  // （Radix 的 BubbleInput 测量尺寸）。没有这个桩，整个弹窗子树会在提交
+  // 阶段被 React 卸掉——现象不是"复选框没渲染"，而是"弹窗里什么都没有"。
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
 })
 
-function mockAgent() {
+function mockAgent(runs: Schemas['AgentRun'][] = []) {
   getMock.mockImplementation((path: string) => {
     if (path === '/api/v1/agents/{id}') return Promise.resolve({ data: agent, error: undefined })
     if (path === '/api/v1/agents/{id}/runs') {
-      return Promise.resolve({ data: { items: [], nextCursor: null }, error: undefined })
+      return Promise.resolve({ data: { items: runs, nextCursor: null }, error: undefined })
     }
+    // 编辑弹窗（issue #81）会拉工具目录与 provider 列表
+    if (path === '/api/v1/tools') return Promise.resolve({ data: [], error: undefined })
+    if (path === '/api/v1/providers') return Promise.resolve({ data: [], error: undefined })
     throw new Error(`用例没预料到的 GET ${path}`)
   })
 }
@@ -218,5 +259,101 @@ describe('运行时间线里的工具卡片与状态（issue #80）', () => {
       .map((b) => b.textContent ?? '')
     expect(names[0]).toContain('first_tool')
     expect(names[1]).toContain('second_tool')
+  })
+})
+
+/**
+ * 历史运行里每一行的任务文案，按 DOM 顺序。用来断言排序真的变了。
+ *
+ * 用 queryAllByText 而不是 getAllByText：后者在一条都没匹配到时抛错，
+ * 而"筛完没有结果"正是要断言的 0 条。
+ */
+function historyRows() {
+  return screen.queryAllByText(/^任务 /).map((el) => el.textContent)
+}
+
+/** 历史列表里那一组筛选开关（页面上还有别的 group——比如没有，但不能赌）。 */
+function filterGroup() {
+  return within(screen.getByRole('group', { name: '按状态筛选' }))
+}
+
+describe('历史运行的排序与筛选（issue #92 的另一半）', () => {
+  it('一条都没跑过时是"还没有运行过"，不是"筛完没有结果"', async () => {
+    mockAgent()
+    renderPage()
+
+    expect(await screen.findByText('历史运行')).toBeTruthy()
+    expect(screen.getByText(/还没有运行过/)).toBeTruthy()
+    expect(screen.queryByText(/没有符合这个条件的/)).toBeNull()
+    // 没有东西可筛时不渲染工具条——一个点了没用的开关只会让人以为坏了
+    expect(screen.queryByRole('group', { name: '按状态筛选' })).toBeNull()
+  })
+
+  it('筛完没有结果时给的是"没有匹配"，出口是一键清除筛选', async () => {
+    mockAgent(serverRuns)
+    renderPage()
+    await screen.findByText('任务 a')
+
+    fireEvent.click(filterGroup().getByRole('button', { name: '排队中' }))
+
+    // 两种空态是两件事（§13/§19）：这里跑过，只是没匹配上
+    expect(screen.getByText('没有「排队中」的运行')).toBeTruthy()
+    expect(screen.queryByText(/还没有运行过/)).toBeNull()
+    // 说清是在多少条里筛的——没加载到的页不参与客户端筛选
+    expect(screen.getByText(/已加载的 3 条里没有符合这个条件的/)).toBeTruthy()
+    expect(historyRows()).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: '清除筛选' }))
+    expect(historyRows()).toEqual(['任务 a', '任务 b', '任务 c'])
+  })
+
+  it('筛到有匹配时只留那一行，开关自己说明当前状态，点回"全部"恢复', async () => {
+    mockAgent(serverRuns)
+    renderPage()
+    await screen.findByText('任务 a')
+
+    const chip = filterGroup().getByRole('button', { name: '失败' })
+    expect(chip.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(chip)
+
+    // aria-pressed 是开关的语义：读屏软件念得出"已按下"（§13：状态不能只靠颜色）
+    expect(filterGroup().getByRole('button', { name: '失败' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    )
+    expect(historyRows()).toEqual(['任务 b'])
+
+    fireEvent.click(filterGroup().getByRole('button', { name: '全部' }))
+    expect(historyRows()).toEqual(['任务 a', '任务 b', '任务 c'])
+  })
+
+  it('换排序会重排已经加载的行，但不重新发请求（游标不动，见 useAgents 的说明）', async () => {
+    mockAgent(serverRuns)
+    renderPage()
+    await screen.findByText('任务 a')
+
+    // 服务器顺序是 created_at 倒序
+    expect(historyRows()).toEqual(['任务 a', '任务 b', '任务 c'])
+    const callsBeforeSort = getMock.mock.calls.length
+
+    fireEvent.click(within(screen.getByRole('group', { name: '排序' })).getByRole('button', { name: '最早在前' }))
+
+    // 按时间戳比：a 是 +08:00 的 10:00（= 02:00Z），排在 b 之后
+    expect(historyRows()).toEqual(['任务 c', '任务 b', '任务 a'])
+    expect(getMock.mock.calls.length).toBe(callsBeforeSort)
+  })
+})
+
+describe('编辑 Agent 的入口（issue #81）', () => {
+  it('详情页有"编辑"，点开是这条 Agent 的当前配置', async () => {
+    mockAgent()
+    renderPage()
+    await screen.findByText(agent.name)
+
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+
+    // 弹窗里的初始值就是刚拉回来的这条（§8：靠 key 重新挂载，不用 effect）
+    const name = (await screen.findByLabelText('名字')) as HTMLInputElement
+    expect(name.value).toBe(agent.name)
+    expect(document.body.textContent).toContain('编辑 Agent')
   })
 })

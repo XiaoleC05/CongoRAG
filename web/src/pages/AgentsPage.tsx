@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router'
 
 import { ErrorText } from '@/components/ErrorText'
-import { CreateAgentDialog } from '@/components/agent/CreateAgentDialog'
+import { AgentFormDialog } from '@/components/agent/AgentFormDialog'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -14,13 +14,22 @@ import { formatDateTime } from '@/lib/format'
 export default function AgentsPage() {
   const { data, isPending, error } = useAgents()
   const [creating, setCreating] = useState(false)
+  // 每次打开表单都递增，用作它的 key：换 key 让 React 重新挂载组件，
+  // 输入框拿到新的初始值、上一次的报错也不会跟过来（§7/§8，比在弹窗里用
+  // effect 监听 open 干净）。
+  const [formSeq, setFormSeq] = useState(0)
   const navigate = useNavigate()
+
+  const openCreate = () => {
+    setCreating(true)
+    setFormSeq((n) => n + 1)
+  }
 
   return (
     <div className="mx-auto max-w-6xl p-6">
       <header className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Agent</h1>
-        <Button onClick={() => setCreating(true)}>
+        <Button onClick={openCreate}>
           <Plus />
           创建
         </Button>
@@ -40,7 +49,7 @@ export default function AgentsPage() {
           </AlertDescription>
         </Alert>
       ) : data.length === 0 ? (
-        <EmptyState onCreate={() => setCreating(true)} />
+        <EmptyState onCreate={openCreate} />
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-3">
           {data.map((agent) => (
@@ -75,7 +84,7 @@ export default function AgentsPage() {
         </div>
       )}
 
-      <CreateAgentDialog open={creating} onOpenChange={setCreating} />
+      <AgentFormDialog key={`create-${formSeq}`} open={creating} onOpenChange={setCreating} />
     </div>
   )
 }
