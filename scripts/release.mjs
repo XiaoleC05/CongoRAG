@@ -322,5 +322,7 @@ if (existing.ok) {
 console.log('\n发布后请核对四件事（清单在 docs/releasing.md）：')
 console.log('  1. Release 正文 == CHANGELOG 小节 + compare 链接')
 console.log(`  2. tag ${tag} 指向的 commit 就是 main 顶端`)
-console.log('  3. CI 四个 job 全绿')
+// 【不写死 job 数量】这里从前写的是「四个 job」，后来 CI 加了 spec 和 docker
+// 两条就成了假话，而没人会回来改这一行。清单的唯一真相是 ci.yml。
+console.log('  3. CI 全绿（job 清单见 .github/workflows/ci.yml）')
 console.log(`  4. 契约 info.version == ${version}`)

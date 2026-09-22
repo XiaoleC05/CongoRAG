@@ -115,13 +115,15 @@ node scripts/release.mjs 1.0 --allow-existing-tag
 防止误覆盖。补建时要注意：正文里如果标着「依 tag/提交/README 重建」，
 那必须是真的（v1.0 的正文就是这样，因为它当时没有 Release 对象）。
 
-## 发布后核对四件事
+## 发布后核对五件事
 
 1. **Release 正文 == CHANGELOG 小节 + compare 链接**（脚本自动拼）。
 2. **tag 指向的 commit 就是 `main` 顶端**：`git rev-parse 'v3.0^{commit}' main` 两行相同。
    **`^{commit}` 不能省**——两个 tag 都是 annotated，`git rev-parse v3.0` 给的
    是 tag 对象自己的 sha，不是它指向的 commit，不加会得到两个不同的哈希。
-3. **CI 五个 job 全绿。** 注意 tag push **不触发** CI（`ci.yml` 的 `on` 只有
+3. **CI 全绿。** 不写死 job 数量——它加过两次（`spec`、`docker`），而写死的数字
+   没人会回来改。清单的唯一真相是 `.github/workflows/ci.yml`。
+   注意 tag push **不触发** CI（`ci.yml` 的 `on` 只有
    `push[main]` / `pull_request` / `workflow_dispatch`），所以这一条要去看
    `main` 那次 push 的运行结果。tag push 触发的是 **Release** 那个工作流，
    两件事别混。
