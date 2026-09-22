@@ -26,6 +26,22 @@
 
 ---
 
+## [5.0.1] - 2026-09-22
+
+v5.0 的集成测试在 CI 上会失败，**只影响测试，不影响任何运行时行为** ——
+已经发布的 v5.0 产物无需替换。
+
+### 修复
+
+- **CI 的 Integration job 会红**：`internal/llm` 的集成测试会把
+  `document_chunks.embedding` ALTER 成 `halfvec(768)`（那个文件自己记着这条
+  「会动全局 schema」的副作用），而 v5.0 新增的 `internal/retrieval` 集成测试
+  用的是 1 维的假 embedder。两者共享同一个库时（CI 就是一个容器跑
+  `go test ./...`）必然撞上 `different halfvec dimensions 1 and 768`。
+  本地 `make test-integration` 看不出来 —— 那条路每个包起自己的容器。
+  修法是让那几条测试**自己**把向量列设成它要用的维度，用完恢复，不再依赖
+  别的包留下的状态
+
 ## [5.0] - 2026-09-22
 
 这一版**没有新功能**：它是对 v4.0 落地之后的一次全面审查与修复。五路并行审查
@@ -365,6 +381,7 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
+[5.0.1]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0...v5.0.1
 [5.0]: https://github.com/XiaoleC05/CongoRAG/compare/v3.0...v5.0
 [3.0]: https://github.com/XiaoleC05/CongoRAG/compare/v2.0...v3.0
 [2.0]: https://github.com/XiaoleC05/CongoRAG/compare/v1.0...v2.0

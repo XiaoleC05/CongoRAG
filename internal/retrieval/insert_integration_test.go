@@ -33,9 +33,33 @@ import (
 	"github.com/XiaoleC05/CongoRAG/internal/testdb"
 )
 
+// requireTestDB 拿一个连上真库的池，并**把向量列设成本包假 embedder 的维度**。
+//
+// 【为什么必须自己设，不能假设列的现状】internal/llm 的集成测试会把
+// document_chunks.embedding ALTER 成 halfvec(768) —— 那个文件自己记着这条
+// 全局副作用（"会动全局 schema，且这个副作用曾经真的咬过一次"）。而本包的
+// cappedEmbedder 返回的是 1 维向量（见 usecase_test.go 的 Dim()）。
+//
+// 两个包共享同一个库时（CI 的 integration job 就是这样：一个容器跑
+// `go test ./...`），谁先跑是不确定的；实测即便加了 -p 1 串行，llm 跑完
+// 也**不会**把列恢复成无维度的 halfvec，于是这里插 1 维就会撞上
+// "different halfvec dimensions 1 and 768"。本地 `make test-integration`
+// 看不出来——那条路每个包起自己的容器，不存在这个共享。
+//
+// 所以：自己 ALTER 成 halfvec(1)，用完恢复成无维度的 halfvec，不把状态留给别人。
 func requireTestDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	return testdb.Require(t)
+	pool := testdb.Require(t)
+
+	ctx := context.Background()
+	_, err := pool.Exec(ctx, `ALTER TABLE document_chunks ALTER COLUMN embedding TYPE halfvec(1)`)
+	require.NoError(t, err, "把向量列设成假 embedder 的维度")
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(),
+			`ALTER TABLE document_chunks ALTER COLUMN embedding TYPE halfvec`)
+	})
+
+	return pool
 }
 
 // seedDocument 造一个知识库 + 一份文档，返回文档 id。
