@@ -171,11 +171,17 @@ export default function AgentDetailPage() {
           </ScrollArea>
 
           <form onSubmit={handleSubmit} className="mt-4 flex gap-2">
+            {/* 【流式期间用 readOnly 而不是 disabled（issue #115）】和对话页同
+                一条：运行是"在这个输入框里回车"发起的，焦点本来就在它上面，
+                而 disabled 会把焦点赶走、结束时又没人还回来（autoFocus 只在
+                挂载时生效，RouteFocus 不抢页面自己拿到的焦点）。readOnly 不改
+                一个字，但焦点从头到尾不离开。理由的完整版写在
+                ConversationPage.tsx 那一处。 */}
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="给这个 Agent 一个任务…"
-              disabled={isRunning}
+              readOnly={isRunning}
               autoFocus
             />
             {/* 【取消不是"停止看"，是"别跑了"】一次 run 会串起多步工具调用和

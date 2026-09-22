@@ -133,7 +133,7 @@ func TestSend_IdempotentHit_TailsUntilTerminalEvent(t *testing.T) {
 
 	// 过一会儿再把终态事件补上——补发循环必须一直等到它。
 	go func() {
-		time.Sleep(3 * replayPollInterval)
+		time.Sleep(3 * replayPollMin)
 		d.repo.mu.Lock()
 		defer d.repo.mu.Unlock()
 		d.repo.events[convID] = append(d.repo.events[convID], late...)
@@ -269,4 +269,70 @@ func TestSend_ReservationRecordsEventCursor(t *testing.T) {
 	assert.Equal(t, resourceTypeAssistantMessage, rec.ResourceType)
 	assert.Equal(t, fingerprint("你好"), rec.RequestFingerprint)
 	assert.Equal(t, messagesEndpoint(convID), rec.Endpoint, "endpoint 里必须带会话 id")
+}
+
+// ════════════════════════════════════════════════════════════════
+// 补发轮询的退避（issue #119）
+//
+// 【为什么测调度序列而不是测循环】验收点是"查询次数随等待时长怎么增长"，
+// 而它完全由 replayPollDelay 决定——对一个纯函数断言，比搭一条真实时间轴
+// 的集成测试稳定得多（也不用真的等 10 分钟）。
+// ════════════════════════════════════════════════════════════════
+
+// 空转时翻倍、封顶在上界；一读到事件就回到下界。
+//
+// 【为什么"读到事件就重置"是必须的】上界 1 秒是给"这一轮早死了"那种
+// 空转用的代价上限。生成还在推进时（token 事件大约每 300ms 写一条，
+// 见 tokenBatchInterval）必须保持灵敏，否则补发会稳定落后一整秒。
+func TestReplayPollDelay_DoublesWhileIdleAndResetsOnProgress(t *testing.T) {
+	delay := replayPollMin
+	var seq []time.Duration
+	for i := 0; i < 6; i++ {
+		seq = append(seq, delay)
+		delay = replayPollDelay(delay, false)
+	}
+	assert.Equal(t, []time.Duration{
+		100 * time.Millisecond, 200 * time.Millisecond, 400 * time.Millisecond,
+		800 * time.Millisecond, time.Second, time.Second,
+	}, seq, "间隔必须递增并在 1 秒封顶，不能无限翻倍")
+
+	assert.Equal(t, replayPollMin, replayPollDelay(replayPollMax, true),
+		"读到事件说明生成还在推进，间隔必须立刻回到下界")
+	assert.Equal(t, replayPollMin, replayPollDelay(0, false),
+		"起点/异常值不能算出比下界还小的间隔")
+}
+
+// 整个补发窗口（10 分钟）内，空转最坏情况下的查询次数必须比原来那个
+// 固定 100ms 的实现低一个数量级。
+//
+// 【为什么这条判据能说明"次线性"】延迟上界封住之后总数终究是线性的，
+// 但常数差一个数量级——而且窗口的前 1.5 秒（真正会决定用户感知的那一段）
+// 是严格次线性的：固定间隔已经查了 15 次，退避只查 4 次。
+func TestReplayPollDelay_CountOverTimeout(t *testing.T) {
+	const legacyInterval = 100 * time.Millisecond
+
+	var polls int
+	var elapsed time.Duration
+	delay := replayPollMin
+	for elapsed < replayTimeout {
+		elapsed += delay
+		polls++
+		delay = replayPollDelay(delay, false)
+	}
+
+	legacy := int(replayTimeout / legacyInterval)
+	assert.Less(t, polls, legacy/5,
+		"10 分钟窗口内 %d 次查询，原来固定 100ms 是 %d 次——退避必须真的把空转压下去", polls, legacy)
+
+	// 前 1.5 秒的次线性：退避还没封顶，间隔在翻倍。
+	var early int
+	elapsed = 0
+	delay = replayPollMin
+	for elapsed < 1500*time.Millisecond {
+		elapsed += delay
+		early++
+		delay = replayPollDelay(delay, false)
+	}
+	assert.LessOrEqual(t, early, 5,
+		"封顶之前查询次数应该随等待时长次线性增长，实际 %d 次", early)
 }

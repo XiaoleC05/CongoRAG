@@ -1,5 +1,5 @@
 import { ChevronDown, Loader2, Wrench } from 'lucide-react'
-import { useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 
 import { RUN_STATUS_LABEL, type RunStatus } from '@/components/agent/runStatus'
 import { CopyButton } from '@/components/conversation/CopyButton'
@@ -62,8 +62,24 @@ function toText(value: unknown): string {
  * 【没有用 shadcn 的 Collapsible】这个项目没引入那个组件；一个 useState
  * 足够表达"点开/收起"，不需要 Radix 的无障碍能力（焦点管理、动画状态机）
  * 来配这么小的一块 UI。aria-expanded 自己给上——那是展开控件必须有的语义。
+ *
+ * 【为什么是 memo】流式过程中每来一个 token，AgentDetailPage 就重渲染一次
+ * （`useStartAgentRun` 的 appendText 每帧 `setTimeline([...items])`），而它
+ * 喂给这里的 props 在 token 之间一个都没变：时间线只是换了个新数组，条目
+ * 对象还是同一批（那个 hook 是就地改 content / result 的）。没有 memo 的话，
+ * 一个跑了五六次检索的 Agent，每一帧都要把每张卡片的完整结果重新序列化
+ * 一遍——屏幕上却什么都没有变，用户看到的是流式发顿。
+ * memo 之后只有"真的收到 tool_result 的那一张"会重算。
+ *
+ * props 都是原始值或稳定引用（AgentDetailPage 传 item.args / item.result，
+ * RunTracePage 传查询结果里的字段），浅比较成立。
  */
-export function ToolCallCard({ name, args, result, stepStatus }: Props) {
+export const ToolCallCard = memo(function ToolCallCard({
+  name,
+  args,
+  result,
+  stepStatus,
+}: Props) {
   const [expanded, setExpanded] = useState(false)
   const [showFull, setShowFull] = useState(false)
 
@@ -75,7 +91,12 @@ export function ToolCallCard({ name, args, result, stepStatus }: Props) {
   const settled = !running
   const hasResult = settled && result !== undefined
 
-  const resultText = toText(result)
+  // 【为什么按 result 记忆】toText 是全量 JSON.stringify，而下面那个截断是
+  // 对**序列化之后的字符串**做的——所以就算卡片是收起的、就算只看前 2000 字，
+  // 每一帧也仍然要把完整结果重新序列化一遍，再乘上 token 数（几十万字 ×
+  // 每 token 一次）。记忆之后只在结果真的换了一个值时才重算。
+  // 截断本身是 O(显示长度) 的切片，不必再包一层。
+  const resultText = useMemo(() => toText(result), [result])
   const clipped = resultText.length > RESULT_PREVIEW_CHARS
   const shownText = clipped && !showFull ? resultText.slice(0, RESULT_PREVIEW_CHARS) : resultText
 
@@ -150,4 +171,4 @@ export function ToolCallCard({ name, args, result, stepStatus }: Props) {
       )}
     </div>
   )
-}
+})

@@ -69,8 +69,22 @@ func newSSESink(c *gin.Context) *sseSink {
 // 编码器现写一遍，会导致 payload 已经是 []byte 时被二次编码成一个
 // JSON 字符串（多一层转义）。这里的 Event.Payload 已经是
 // conversation.Usecase 组装好的完整 JSON,直接原样写出去。
+//
+// 【ID 为 0 时整行省掉 id:，不是写 id: 0】0 是"这一帧没有对应的持久化
+// 事件"的约定值——agent.Usecase.emitUnpersisted 就用它发"run 根本没开始"
+// 那几类失败（两个计数器表的 next_event_id 都从 1 开始，0 不是任何真实
+// 事件的号）。SSE 规范里只有**带 id 字段**的帧才会更新客户端的 lastEventId，
+// 写成 id: 0 会把续传游标退回到起点，下次续传把整个会话重放一遍。
+// docs/sse-protocol.md「线路层怎么区分这两种帧」写的就是这一行，
+// writeFallbackError（下面那个）走的是同一条判据——两条路必须一致。
 func (s *sseSink) Emit(ev conversation.Event) error {
-	_, err := fmt.Fprintf(s.c.Writer, "id: %d\nevent: %s\ndata: %s\n\n", ev.ID, ev.Type, ev.Payload)
+	// 拼一个可以为空的前缀，而不是写两条 Fprintf：帧格式只有一处可看，
+	// 加字段时不会漏改其中一条分支。
+	id := ""
+	if ev.ID != 0 {
+		id = fmt.Sprintf("id: %d\n", ev.ID)
+	}
+	_, err := fmt.Fprintf(s.c.Writer, "%sevent: %s\ndata: %s\n\n", id, ev.Type, ev.Payload)
 	if err != nil {
 		return fmt.Errorf("write sse frame: %w", err)
 	}

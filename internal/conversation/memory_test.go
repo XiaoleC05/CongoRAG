@@ -356,3 +356,119 @@ func TestExtractAllPreferences_CancelledMidSweep_ReportsFailure(t *testing.T) {
 	require.Error(t, err, "被截断的一轮不能返回 nil")
 	assert.ErrorIs(t, err, context.Canceled)
 }
+
+// ════════════════════════════════════════════════════════════════
+// 扫描的查询次数只与【活跃】会话数有关（issue #118）
+// ════════════════════════════════════════════════════════════════
+
+// seedIdleConversations 造 n 个"没有任何消息"的会话——它们是真实使用里
+// 数量最多、也最不该被每轮各查 2~3 次的那一类。
+func seedIdleConversations(d *testDeps, n int) {
+	for i := 0; i < n; i++ {
+		convID := uuid.New()
+		d.repo.conversations[convID] = &Conversation{ID: convID}
+	}
+}
+
+// 【为什么要数调用次数】issue #118 的形状是 N+1：N 个会话 → 2N~3N 次
+// 查询，空闲也照跑。修好的判据不是"结果对不对"（结果本来就对），而是
+// "一轮维护发了几条 SQL、它们和谁成正比"——只有数次数才测得出这个。
+//
+// 这里造 40 个空闲会话 + 2 个越过门槛的会话：理想情况下判据查询只有
+// 1 条，逐会话那几条（LatestSequenceNo / GetSummary）一次都不该出现。
+func TestMaintainAllSummaries_QueriesDependOnActiveConversations(t *testing.T) {
+	d := newMemoryTestUsecase()
+	seedIdleConversations(d, 40)
+	seedSummarizableConversations(d, 2)
+
+	require.NoError(t, d.uc.maintainAllSummaries(context.Background()))
+
+	d.repo.mu.Lock()
+	candidates, latest, getSummary := d.repo.summaryCandidateCalls, d.repo.latestSequenceNoCalls, d.repo.getSummaryCalls
+	d.repo.mu.Unlock()
+
+	assert.Equal(t, 1, candidates, "判据必须是一条批量查询，不是每个会话一条")
+	assert.Zero(t, latest, "已经不再逐会话查 LatestSequenceNo")
+	assert.Zero(t, getSummary, "候选集里已经带了摘要正文，不该再逐会话查 GetSummary")
+	assert.Len(t, d.registry.chatModel.generateCalls, 2,
+		"只有 2 个活跃会话该被处理，40 个空闲会话不能产生任何模型调用")
+}
+
+// 候选集里的摘要正文必须是这个会话【自己】的——拼 prompt 用的就是它，
+// 串了的话新摘要会把别人的内容合并进来，而且不报错。
+func TestMaintainAllSummaries_CandidateCarriesPriorSummary(t *testing.T) {
+	d := newMemoryTestUsecase()
+	convID := uuid.New()
+	d.repo.conversations[convID] = &Conversation{ID: convID}
+	d.repo.summaries[convID] = &Summary{
+		ConversationID: convID, Summary: "此前聊过 Go 的调度器", CoveredUntilSequenceNo: 5,
+	}
+	// 水位线（5）之后再加满一个门槛的消息。
+	for seq := int64(6); seq <= 5+summaryTriggerMessages; seq++ {
+		d.repo.messages[convID] = append(d.repo.messages[convID],
+			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser,
+				Content: "新消息", Status: MsgCompleted, SequenceNo: seq})
+	}
+
+	require.NoError(t, d.uc.maintainAllSummaries(context.Background()))
+
+	require.Len(t, d.registry.chatModel.generateCalls, 1)
+	var prompt string
+	for _, m := range d.registry.chatModel.generateCalls[0] {
+		prompt += m.Content
+	}
+	assert.Contains(t, prompt, "此前聊过 Go 的调度器",
+		"已有摘要必须从候选集里带进来，而不是被丢掉或被重新查错")
+
+	s, err := d.repo.GetSummary(context.Background(), nil, convID)
+	require.NoError(t, err)
+	assert.Equal(t, int64(5+summaryTriggerMessages), s.CoveredUntilSequenceNo,
+		"水位线仍然推进到这一批最后一条已定稿的消息")
+}
+
+// 【占位行不能当消息数】候选集的判据只数 status='completed' 的行——一条
+// 正在生成中的占位行（或生成中断留下的 failed 行）把门槛顶过去的话，
+// 摘要任务会在一个空行上被触发，并把水位线推过一条还没定稿的回答。
+func TestMaintainAllSummaries_StreamingRowsDoNotCountTowardThreshold(t *testing.T) {
+	d := newMemoryTestUsecase()
+	convID := uuid.New()
+	d.repo.conversations[convID] = &Conversation{ID: convID}
+	for seq := int64(1); seq <= summaryTriggerMessages; seq++ {
+		status := MsgCompleted
+		if seq == summaryTriggerMessages {
+			status = MsgStreaming // 最后一条还在生成中
+		}
+		d.repo.messages[convID] = append(d.repo.messages[convID],
+			&Message{ID: uuid.New(), ConversationID: convID, Role: domain.RoleUser,
+				Content: "msg", Status: status, SequenceNo: seq})
+	}
+
+	require.NoError(t, d.uc.maintainAllSummaries(context.Background()))
+
+	assert.Empty(t, d.registry.chatModel.generateCalls,
+		"定稿的消息只有 %d 条，还差一条才到门槛", summaryTriggerMessages-1)
+}
+
+// 偏好抽取同一个形状：40 个空闲会话 + 1 个越过门槛的会话，判据只该发
+// 一条查询，RecentMessages 只该对那 1 个会话发。
+func TestExtractAllPreferences_QueriesDependOnActiveConversations(t *testing.T) {
+	d := newMemoryTestUsecase()
+	seedIdleConversations(d, 40)
+	active := uuid.New()
+	d.repo.conversations[active] = &Conversation{ID: active}
+	for seq := int64(1); seq <= preferenceExtractionMessages; seq++ {
+		d.repo.messages[active] = append(d.repo.messages[active],
+			&Message{ID: uuid.New(), ConversationID: active, Role: domain.RoleUser,
+				Content: "msg", Status: MsgCompleted, SequenceNo: seq})
+	}
+
+	require.NoError(t, d.uc.extractAllPreferences(context.Background()))
+
+	d.repo.mu.Lock()
+	candidates, latest, recent := d.repo.preferenceCandidateCalls, d.repo.latestSequenceNoCalls, d.repo.recentMessagesCalls
+	d.repo.mu.Unlock()
+
+	assert.Equal(t, 1, candidates, "门槛必须由一条批量查询判定")
+	assert.Zero(t, latest, "已经不再逐会话查 LatestSequenceNo")
+	assert.Equal(t, 1, recent, "只有那 1 个活跃会话需要读消息")
+}

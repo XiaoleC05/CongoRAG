@@ -116,18 +116,27 @@ func LoggerFrom(ctx context.Context, base *slog.Logger) *slog.Logger {
 // 项目的部署边界是本地单机应用（方案 §1），所以这是刻意的。
 func OriginCheck(cfg *Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 【为什么走 abortWithProblem 而不是 AbortWithStatusJSON】契约里所有
+		// 错误响应都是 Problem（required: [type, status]）+ problem+json，
+		// 而 AbortWithStatusJSON 写出的是 application/json 且没有 status 字段。
+		// 调用方按 type 分支的代码在前端是同一套，中间件这条路径不能是例外
+		// （issue #112）。
 		if !isLoopbackHost(c.Request.Host) {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"type":   "forbidden_host",
-				"detail": "只允许通过 localhost / 127.0.0.1 访问",
+			abortWithProblem(c, Problem{
+				Type:   "forbidden_host",
+				Status: http.StatusForbidden,
+				Title:  "只允许本地访问",
+				Detail: "只允许通过 localhost / 127.0.0.1 访问",
 			})
 			return
 		}
 
 		if origin := c.GetHeader("Origin"); origin != "" && !isLoopbackOrigin(origin) {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-				"type":   "forbidden_origin",
-				"detail": "跨站请求被拒绝",
+			abortWithProblem(c, Problem{
+				Type:   "forbidden_origin",
+				Status: http.StatusForbidden,
+				Title:  "跨站请求被拒绝",
+				Detail: "只允许来自本机页面的请求",
 			})
 			return
 		}
@@ -136,10 +145,18 @@ func OriginCheck(cfg *Config) gin.HandlerFunc {
 	}
 }
 
-// Recovery 捕获 panic，打日志，返回 500。
+// Recovery 捕获 panic，打日志，然后按响应到底写没写出来分两种收场。
 //
 // 用 gin 自带的 CustomRecoveryWithWriter，不自己写 recover——
 // 它已经处理好了"连接已断时不要写响应"这类边界。
+//
+// 【为什么要看 c.Writer.Written()】SSE 的 handler 在进业务之前就把响应头
+// 写掉了（apps/api/internal/api/sse.go 的 newSSESink 先 c.Status(200) 再设
+// text/event-stream），而 gin 的 CustomRecoveryWithWriter 只在 broken pipe
+// 时不调 handle，其余情况一律调。此时再 AbortWithStatusJSON 会把一段
+// application/json 的正文【追加进事件流】：它没有 \n\n 收尾，不是合法 SSE
+// 帧，客户端解析器会把残帧丢掉——流于是静默结束，而前端的 onError 只在
+// 抛异常时报错，用户等不到回复也不知道出了什么事（issue #111）。
 func Recovery(logger *slog.Logger) gin.HandlerFunc {
 	return gin.CustomRecoveryWithWriter(nil, func(c *gin.Context, err any) {
 		logger.Error("panic recovered",
@@ -147,11 +164,34 @@ func Recovery(logger *slog.Logger) gin.HandlerFunc {
 			"path", c.Request.URL.Path,
 			"panic", err,
 		)
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-			"type":   "internal_error",
-			"detail": "服务内部错误",
+
+		if c.Writer.Written() {
+			// 响应头已经提交，状态码改不了了。只剩两种可能：
+			//   - 已经在发 SSE：补一条 error 帧收场（不带 id，见 writeSSEErrorFrame）；
+			//   - 别的响应写了一半：什么都别写——半截 JSON 比没有 JSON 更糟，
+			//     连接自己会坏掉，客户端按短读报错。
+			if isSSE(c) {
+				writeSSEErrorFrame(c, "internal_error", InternalErrorDetail)
+			}
+			c.Abort()
+			return
+		}
+
+		abortWithProblem(c, Problem{
+			Type:   "internal_error",
+			Status: http.StatusInternalServerError,
+			Title:  InternalErrorDetail,
+			Detail: InternalErrorDetail,
 		})
 	})
+}
+
+// isSSE 判断这个响应是不是已经开始的 SSE 流。
+//
+// 只看 Content-Type：gin 没有"这是不是一个流"的标记，而 SSE handler
+// 唯一可辨认的特征就是它设的这个头（sse.go 在写第一帧之前就设好了）。
+func isSSE(c *gin.Context) bool {
+	return strings.Contains(c.Writer.Header().Get("Content-Type"), "text/event-stream")
 }
 
 // isLoopbackHost 判断 Host 头（形如 "127.0.0.1:3210"、"[::1]:3210"、

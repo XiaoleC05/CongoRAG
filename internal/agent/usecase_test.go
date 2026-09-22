@@ -41,6 +41,23 @@ type fakeRepo struct {
 	nextEventID int64
 	runEvents   []RunEvent
 	effects     map[string]struct{}
+	// effectCtxErrs 记下每次 RecordToolEffect 拿到的 ctx 状态——钉住"账本
+	// 写入也不能跟着请求 ctx 一起死"（issue #107），与 stepCtxErrs 同形。
+	effectCtxErrs []error
+	// recordEffectErr 非空时 RecordToolEffect 返回它（复刻一次写库失败）。
+	recordEffectErr error
+
+	// runEventTimes 与 runEvents 一一对应：真表的 created_at 是数据库默认值，
+	// 假实现必须自己留一份，剪枝测试才能把某几条推到窗口之外（真库那边靠
+	// 一条 UPDATE 做同样的事，见 postgres_integration_test.go）。
+	runEventTimes []time.Time
+
+	// 剪枝的观察点（issue #98）。记录收到的截止时刻，钉住"现在 - 窗口"
+	// 这个算法；两个 err 用来复刻一次写库失败。
+	pruneRunEventsBefore   time.Time
+	pruneRunEventsErr      error
+	pruneToolEffectsBefore time.Time
+	pruneToolEffectsErr    error
 
 	// onCAS 在 UpdateRunStatus 里被调用（持锁时），用来观察"CAS 那一刻"
 	// 的外部状态。见 UpdateRunStatus 的注释。
@@ -228,7 +245,87 @@ func (f *fakeRepo) AppendRunEvent(ctx context.Context, q platform.Querier, runID
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.runEvents = append(f.runEvents, ev)
+	f.runEventTimes = append(f.runEventTimes, time.Now())
 	return nil
+}
+
+// backdateRunEvents 把已经记下的 run 事件整体推到 d 这么早之前。
+//
+// 【为什么需要它】真表的 created_at 由数据库默认值写，唯一能改它的手段是
+// 直接 UPDATE（生产代码里没有这个入口，见集成测试）；假实现直接改这份副本
+// 即可——剪枝的判据就是"比截止时刻早"，把时间挪过去和等到那时候等价。
+func (f *fakeRepo) backdateRunEvents(d time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	past := time.Now().Add(-d)
+	for i := range f.runEventTimes {
+		f.runEventTimes[i] = past
+	}
+}
+
+// ── 保留窗口剪枝（issue #98）──────────────────────────────────
+
+// PruneRunEvents 复刻真 SQL 的判据：只按 created_at 一条线删，不看 run 状态。
+func (f *fakeRepo) PruneRunEvents(ctx context.Context, q platform.Querier, before time.Time) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pruneRunEventsBefore = before
+	if f.pruneRunEventsErr != nil {
+		return 0, f.pruneRunEventsErr
+	}
+
+	var keptEvents []RunEvent
+	var keptTimes []time.Time
+	for i, ev := range f.runEvents {
+		if f.runEventTimes[i].Before(before) {
+			continue
+		}
+		keptEvents = append(keptEvents, ev)
+		keptTimes = append(keptTimes, f.runEventTimes[i])
+	}
+	n := int64(len(f.runEvents) - len(keptEvents))
+	f.runEvents, f.runEventTimes = keptEvents, keptTimes
+	return n, nil
+}
+
+// PruneToolEffectLog 复刻真 SQL 的三跳判定：账本 → 步骤 → run，只有
+// **已终态且终态够久**的 run 的账本才被回收。
+//
+// 【为什么"终态"这一半不能省】假实现若只按时间删，retention_test.go 里
+// "interrupted 的账本一行都不能动"那条测试就永远是绿的——而它正是这张表
+// 存在的全部意义（删错了 = 恢复时重放一个已经生效过的副作用）。
+func (f *fakeRepo) PruneToolEffectLog(ctx context.Context, q platform.Querier, olderThan time.Time) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pruneToolEffectsBefore = olderThan
+	if f.pruneToolEffectsErr != nil {
+		return 0, f.pruneToolEffectsErr
+	}
+
+	// run 已终态、且终态之后又过了 olderThan 这么久。
+	recyclable := map[uuid.UUID]bool{}
+	for _, r := range f.runs {
+		recyclable[r.ID] = r.Status.IsTerminal() && r.UpdatedAt.Before(olderThan)
+	}
+	// 账本键是 "stepID\x00effectKey"（见 RecordToolEffect），取前半段找步骤。
+	stepRun := map[uuid.UUID]uuid.UUID{}
+	for _, s := range f.steps {
+		stepRun[s.ID] = s.RunID
+	}
+
+	var n int64
+	for key := range f.effects {
+		stepIDStr, _, _ := strings.Cut(key, "\x00")
+		stepID, err := uuid.Parse(stepIDStr)
+		if err != nil {
+			continue
+		}
+		if recyclable[stepRun[stepID]] {
+			delete(f.effects, key)
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (f *fakeRepo) RunEventsAfter(ctx context.Context, q platform.Querier, runID uuid.UUID, afterEventID int64) ([]RunEvent, error) {
@@ -254,6 +351,10 @@ func (f *fakeRepo) RunEventsAfter(ctx context.Context, q platform.Querier, runID
 func (f *fakeRepo) RecordToolEffect(ctx context.Context, q platform.Querier, stepID uuid.UUID, effectKey string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.effectCtxErrs = append(f.effectCtxErrs, ctx.Err())
+	if f.recordEffectErr != nil {
+		return f.recordEffectErr
+	}
 	key := stepID.String() + "\x00" + effectKey
 	if _, ok := f.effects[key]; ok {
 		return fmt.Errorf("record tool effect for step %s: %w", stepID, platform.ErrToolEffectApplied)
@@ -707,6 +808,162 @@ func TestConsumeEvents_WritesStepAndCheckpointWithDetachedContext(t *testing.T) 
 	assert.NoError(t, repo.stepCtxErrs[0], "落 Step 用的 ctx 必须脱离请求生命周期")
 	assert.Equal(t, StepFailed, repo.steps[0].Status)
 	assert.NoError(t, cp.lastCtxErr, "checkpoint 同样要脱离请求生命周期")
+}
+
+// ════════════════════════════════════════════════════════════════
+// issue #106：退出路径不能留下"永远 running"的工具步骤
+// ════════════════════════════════════════════════════════════════
+
+// toolStepOf 从落库的步骤里挑出工具那一行（事件流不同，它的下标会变）。
+func toolStepOf(t *testing.T, repo *fakeRepo) *Step {
+	t.Helper()
+	for _, s := range repo.steps {
+		if s.Type == StepTypeTool {
+			return s
+		}
+	}
+	t.Fatal("没有落库的工具步骤——这一步本该在工具执行之前就写进去")
+	return nil
+}
+
+// 【issue #106 的验收判据】取消/断线时正在执行的那一步工具此前会永远停在
+// running：closeOpenStepsOnExit 只关 llmStep，而 pending 里那些已经以
+// running 落库的工具行在函数返回时没有任何处理。
+//
+// 两个后果里第二个更重：轨迹页上那个"运行中"是假的，而 ADR-007 崩溃表的
+// 第一判据就是"一行 running 的 step"——残留让"有 running 的 step"不再等于
+// "进程崩过"，而整条恢复链都建立在这个判据上。
+func TestConsumeEvents_ToolStepStillRunningOnExit_IsInterrupted(t *testing.T) {
+	u, repo := newTestUsecaseForConsumeEvents()
+	sink := newFakeSink()
+	events := make(chan adkEvent, 4)
+	// 模型请求调用工具、这一行已经落库（status=running），但结果还没回来
+	// 流就断了（用户点取消 / 客户端断开都会走到这条路径）。
+	events <- adkEvent{kind: adkEventToolCall, toolCallID: "c1", toolName: "calculator",
+		toolArgs: json.RawMessage(`{}`)}
+	close(events)
+
+	_, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
+	require.Error(t, err, "没有 done 事件就是非正常结束")
+
+	for _, s := range repo.steps {
+		assert.NotEqual(t, StepRunning, s.Status,
+			"任何一条退出路径都不能留下永远 running 的 step（ADR-007 的崩溃判据）")
+	}
+	toolStep := toolStepOf(t, repo)
+	assert.Equal(t, StepInterrupted, toolStep.Status)
+	assert.NotEmpty(t, toolStep.Error, "要写清为什么它没跑完，轨迹页才解释得清")
+}
+
+// 错误事件同样是一条退出路径：工具节点自己失败时（工具返回基础设施错误，
+// ToolsNode 把它当致命错误，不写 tool message）tool_result 永远不会到达，
+// 那一行留在 running 就是同一个现场。
+func TestConsumeEvents_ErrorWithToolInFlight_IsInterrupted(t *testing.T) {
+	u, repo := newTestUsecaseForConsumeEvents()
+	sink := newFakeSink()
+	events := make(chan adkEvent, 4)
+	events <- adkEvent{kind: adkEventToolCall, toolCallID: "c1", toolName: "calculator",
+		toolArgs: json.RawMessage(`{}`)}
+	events <- adkEvent{kind: adkEventError, err: errors.New("tool node exploded")}
+	close(events)
+
+	_, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
+	require.Error(t, err)
+
+	assert.Equal(t, StepInterrupted, toolStepOf(t, repo).Status,
+		"这一行等不到结果了，退出时必须收成 interrupted")
+}
+
+// ════════════════════════════════════════════════════════════════
+// issue #107：工具效果账本不能被请求 ctx 拖死，失败也不能咽
+// ════════════════════════════════════════════════════════════════
+
+// 【issue #107 的验收判据】请求 ctx 已取消时账本仍然要写得进去。
+//
+// 断线是这个端点最常见的触发场景，那时 pgx 拿着已取消的 ctx 连 Acquire 都
+// 过不去——账本在最需要它的那一刻静默缺一行，而代码紧接着就把这一步标成
+// completed。这与 insertStep / updateStep / checkpoint / emitRunEvent 的
+// 处理是同一条规则，此前只有账本这一处例外。
+func TestConsumeEvents_ToolEffectRecordedWithDetachedContext(t *testing.T) {
+	u, repo := newTestUsecaseForConsumeEvents()
+	sink := newFakeSink()
+	events := make(chan adkEvent, 4)
+	events <- adkEvent{kind: adkEventToolCall, toolCallID: "c1", toolName: "calculator",
+		toolArgs: json.RawMessage(`{}`)}
+	events <- adkEvent{kind: adkEventToolResult, toolCallID: "c1", toolName: "calculator",
+		toolArgs: json.RawMessage(`{}`), toolResult: json.RawMessage(`{"result":3}`)}
+	events <- adkEvent{kind: adkEventDone}
+	close(events)
+
+	reqCtx, cancel := context.WithCancel(context.Background())
+	cancel() // net/http 在客户端断开时取消请求 ctx
+
+	_, err := runConsumeEvents(u, reqCtx, uuid.New(), events, sink)
+	require.NoError(t, err)
+
+	require.Len(t, repo.effectCtxErrs, 1)
+	assert.NoError(t, repo.effectCtxErrs[0], "账本写入必须脱离请求生命周期")
+	assert.Len(t, repo.effects, 1, "账本要真的记下去")
+}
+
+// 记不上账 = "这一步的副作用发生过没有"无法判定。以前这里只记一行日志就
+// 往下走、紧接着把步骤标成 completed——若进程随后被杀掉，现场是
+// "step running + 无账本"，恢复路径据此判成"工具没跑过" → 重放 → 工具真的
+// 被第二次执行，全程无错误无日志（项目文档 §9.5 说的正是这件事）。
+func TestConsumeEvents_ToolEffectWriteFailure_FailsTheRun(t *testing.T) {
+	u, repo := newTestUsecaseForConsumeEvents()
+	repo.recordEffectErr = errors.New("connection reset by peer")
+	sink := newFakeSink()
+	events := make(chan adkEvent, 4)
+	events <- adkEvent{kind: adkEventToolCall, toolCallID: "c1", toolName: "calculator",
+		toolArgs: json.RawMessage(`{}`)}
+	events <- adkEvent{kind: adkEventToolResult, toolCallID: "c1", toolName: "calculator",
+		toolArgs: json.RawMessage(`{}`), toolResult: json.RawMessage(`{"result":3}`)}
+	events <- adkEvent{kind: adkEventDone}
+	close(events)
+
+	_, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
+	require.Error(t, err, "账本未知的状态下不能继续往下走")
+	assert.Contains(t, err.Error(), "connection reset by peer")
+
+	toolStep := toolStepOf(t, repo)
+	assert.NotEqual(t, StepRunning, toolStep.Status,
+		"不能把它留在 running——那既污染崩溃判据，又会让它落进恢复的重放列表")
+	assert.NotEqual(t, StepCompleted, toolStep.Status,
+		"也不能说它成功了：账本缺一行，这次执行就没有证据")
+}
+
+// ════════════════════════════════════════════════════════════════
+// issue #109：Agent 路径的输入上限
+// ════════════════════════════════════════════════════════════════
+
+// 【issue #109 的验收判据之一】prepareRun 必须拒绝超长输入，而且拒绝要发生在
+// 分配 run id 之前、错误类型是 invalid_argument。
+//
+// 【为什么错误类型是这条测试的重点】超长输入放过去的话，报错会发生在模型那
+// 一侧、被归成 upstream_llm_error，前端按 type 提示用户"检查 API Key 和
+// 配额"——排查方向从第一句话起就是错的（issue #34 修掉的就是这类误报）。
+func TestStart_InputTooLong_IsRejectedBeforeAnyRunRow(t *testing.T) {
+	u, repo, agentID, sink := newStartFixture(t)
+
+	_, err := u.Start(context.Background(), agentID, strings.Repeat("字", maxInputLen+1), "", sink)
+	require.ErrorIs(t, err, platform.ErrInvalid)
+	assert.Equal(t, "invalid_argument", platform.SSEErrorType(err))
+	assert.Empty(t, repo.runs, "被拒的那一轮不该在 agent_runs 里留下一条 running 行")
+
+	require.Len(t, sink.events, 1)
+	assert.Equal(t, "error", sink.events[0].Type)
+}
+
+// 边界值本身要放行——上限是"至多 maxInputLen 个字符"，不是"少于"。
+// （这里只断言它没有在上限这一道被拒：模型是假的，运行会在后面失败。）
+func TestStart_InputAtLimit_PassesTheLengthGate(t *testing.T) {
+	u, repo, agentID, sink := newStartFixture(t)
+
+	_, err := u.Start(context.Background(), agentID, strings.Repeat("字", maxInputLen), "", sink)
+	assert.NotErrorIs(t, err, platform.ErrInvalid,
+		"正好等于上限的输入不该被这一道挡下：%v", err)
+	assert.NotEmpty(t, repo.runs, "长度过关之后要真的建出 run 行")
 }
 
 // 失败状态必须真的写下去：用请求 ctx 做 CAS 的话，客户端一断开 UPDATE

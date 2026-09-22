@@ -94,3 +94,27 @@ func TestRegisterPeriodic_PanicsBeforeSetClient(t *testing.T) {
 		sched.RegisterPeriodic("orphan-files", 0, func(ctx context.Context) error { return nil })
 	})
 }
+
+// issue #129 的队列路由：周期任务进哪条队列由【插入时】的 InsertOpts 决定，
+// 而 InsertOpts 为 nil 时 River 会退回默认队列（rivercommon.QueueDefault）。
+// 那样维护任务就和单份上限 30 分钟的文档处理抢同一批 worker 名额：任务
+// 没失败，只是被推迟几小时，日志和界面都看不出异样。
+//
+// 【为什么这条测试值得写】它断言的是一个常量对常量式的决定，看着很薄——
+// 但它是唯一能在不接真库的前提下看见"路由有没有生效"的地方
+// （RegisterPeriodic 需要真 river.Client，见 scheduler_integration_test.go）。
+// 退回 nil 是无症状的，必须有东西拦住。
+func TestPeriodicTaskConstructor_InsertsIntoMaintenanceQueue(t *testing.T) {
+	args, opts := periodicTaskConstructor("conversation-summary")()
+
+	require.NotNil(t, opts, "nil InsertOpts 会让周期任务落回 default 队列，隔离静默失效")
+	assert.Equal(t, MaintenanceQueue, opts.Queue)
+	assert.Equal(t, periodicTaskArgs{Name: "conversation-summary"}, args)
+}
+
+// 队列名必须不是默认队列——把它改成 "default"（或 river.QueueDefault 的值）
+// 在编译期完全合法，效果却是隔离消失:两条队列合成一条，正是 #129 要治的病。
+func TestMaintenanceQueue_IsNotTheDefaultQueue(t *testing.T) {
+	assert.NotEqual(t, river.QueueDefault, MaintenanceQueue)
+	assert.NotEmpty(t, MaintenanceQueue)
+}

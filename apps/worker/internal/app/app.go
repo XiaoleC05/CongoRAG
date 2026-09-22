@@ -74,6 +74,26 @@ const (
 	checkpointPruneInterval = time.Hour
 )
 
+// maintenanceQueue 是本进程消费的维护队列名（issue #129）。
+//
+// 【为什么需要一条单独的队列】理由见下面 river.Config.Queues 的注释：
+// 文档处理单任务上限 30 分钟，单队列下一次批量上传就能把所有名额占满
+// 数小时，周期维护任务（摘要/偏好抽取、记忆向量补算、事件与 checkpoint
+// 回收、孤儿文件对账）只能排在后面，而且界面上没有任何信号说明它们只是
+// 被排到了后面。
+//
+// 【这个名字的定义处不在这里】它在 internal/platform（MaintenanceQueue）
+// ——因为任务进哪条队列是**插入时**决定的，而周期任务的插入点是那边的
+// RegisterPeriodic。这里只是一个别名，让"下面 Config.Queues 里注册的
+// 队列"和"那边插入时写的队列"由编译器保证是同一个字符串。对不上时的
+// 表现是任务被投进一条没有消费者的队列：不报错、也不执行，维护工作静默
+// 停摆。
+//
+// 【为什么常量不反过来放在这里让 platform 引用】apps/worker/internal/app
+// 属于 apps/worker 的 internal 子树，Go 只允许 apps/worker 自己 import 它，
+// platform 引用它会直接编译不过（internal 可见性 + 包循环）。
+const maintenanceQueue = platform.MaintenanceQueue
+
 // Run 装配并启动 worker 进程，阻塞到收到关停信号或出错。
 func Run() error {
 	// 顶层 ctx 挂在信号上，理由同 apps/api/internal/app/app.go：
@@ -164,8 +184,38 @@ func Run() error {
 	river.AddWorker(workers, platform.NewPeriodicTaskWorker(sched))
 
 	riverClient, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
+		// ── 两条队列：长任务不能阻塞短周期任务（issue #129）──
+		//
+		// 【一条队列会发生什么】文档处理单任务上限 30 分钟
+		// （internal/knowledge/river.go 的 documentProcessingTimeout），
+		// 一次上传 10 份大文档就能把 default 的 10 个名额占满数小时；
+		// 而周期维护任务走的是同一条队列，于是长期记忆维护、checkpoint
+		// 回收、孤儿文件对账全部延后，界面上却看不出任何异样——看起来
+		// 就像那些功能坏了。解法是给周期维护任务一条自己的队列：文档
+		// 塞满 default 时，maintenance 上的任务仍能按自己的节奏跑。
+		//
+		// 【路由在哪】任务进哪条队列是插入时决定的，那一步在
+		// internal/platform/scheduler.go 的 periodicTaskConstructor
+		// 里（经由那个桥注册的周期任务全部插入 maintenance）。本文件
+		// 负责的是另一端——把这条队列注册成可消费的，两边用的名字同一个
+		// 常量（maintenanceQueue），缺任何一端都会静默失效：少了那边的
+		// InsertOpts，任务全落在 default，这条队列空转；少了这里的
+		// Queues 条目，任务投进一条没人消费的队列，不报错也不执行。
+		//
+		// 【为什么名额是额外给的（10 + 3）而不是从 10 里割】割出去等于
+		// 永久降低文档吞吐，换来的只是"每几分钟一次、单次几十秒"的维护
+		// 任务不被阻塞——代价和收益不成比例。多出来的 3 个名额只在维护
+		// 任务真的到期时才被用上，它们本身也是低频的。
+		//
+		// 【为什么是 3 个】同时注册的周期任务有六个（孤儿文件对账每 10
+		// 分钟、conversation-summary 每 5 分钟、conversation-preferences
+		// 每 10 分钟、conversation-memory-embeddings、conversation-events-prune、
+		// agent-checkpoint-prune 每小时），到期时刻偶尔重叠，3 个名额足够
+		// 让它们各自有位置，又不至于让六个整表扫描同时压库和同一个
+		// embedding/LLM 服务。
 		Queues: map[string]river.QueueConfig{
 			river.QueueDefault: {MaxWorkers: 10},
+			maintenanceQueue:   {MaxWorkers: 3},
 		},
 		Workers: workers,
 
@@ -247,6 +297,13 @@ func Run() error {
 			_, err := agentUC.PruneCheckpoints(ctx)
 			return err
 		})
+
+	// run_events 与 tool_effect_log 的保留窗口剪枝（issue #98）。这两张表和
+	// checkpoint 一样是"只增不减"的，但判据各不相同（一张按时间、一张按
+	// run 是否已终态），所以它们连同全部解释都在 internal/agent/retention.go
+	// 里，装配根只负责说"把它挂上"——与会话那一侧的
+	// convUC.StartMemoryMaintenance 同一个形状。
+	agentUC.StartRetention(ctx, sched)
 
 	logger.Info("starting river client")
 	if err := riverClient.Start(ctx); err != nil {

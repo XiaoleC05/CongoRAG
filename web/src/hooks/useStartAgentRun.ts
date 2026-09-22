@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api } from '@congorag/api-client'
 import type { RunStatus } from '@/components/agent/runStatus'
@@ -54,6 +54,16 @@ export function useStartAgentRun(agentId: string) {
   const cancelRequestedRef = useRef(false)
   /** 这次流走到过哪个终态。null = 没走到。 */
   const terminalRef = useRef<'done' | 'error' | null>(null)
+
+  // 【离开页面就把这条流掐掉（issue #102）】理由和 useSendMessage 里那份
+  // 一样：卸载之后事件流还在被消费，而「取消」按钮所在的页面已经没了——
+  // 用户没有任何入口叫停它，只能看着它烧额度跑完。
+  //
+  // 【这里丢的只是"听"】服务端那次运行的归宿是运行层的决定（POST
+  // /runs/{runId}/cancel），不是卸载这一刻能代替用户做的：run_started 还没
+  // 到时连 runId 都没有，而且这一步没有界面能反馈结果。所以和「停止」同一条
+  // 路径——中止本地流，不算错误（见 streamAgentRun 的注释）。
+  useEffect(() => () => controllerRef.current?.abort(), [agentId])
 
   const start = useCallback(
     async (input: string) => {

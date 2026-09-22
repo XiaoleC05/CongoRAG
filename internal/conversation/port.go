@@ -88,14 +88,36 @@ type Repo interface {
 	// 故意设计成这样的，不是疏忽。
 	LatestSequenceNo(ctx context.Context, q platform.Querier, convID uuid.UUID) (int64, error)
 
-	// ListConversationIDs 返回全部会话的 id，不分页、不过滤。
+	// SummaryMaintenanceCandidates 一次查出所有"摘要需要更新"的会话，
+	// 连判据本身一起带回来（issue #118）。
 	//
-	// 【为什么不在 SQL 里过滤"哪些会话需要维护"】方案的部署边界是本地
-	// 单机应用（开发文档 §1），会话数量在这个量级下全表扫描后在 Go 里
-	// 判断每个会话是否需要处理，比写一条聚合子查询更直接——和
-	// knowledge.Usecase.StartReconciler 的做法一致（先拿到全集，再在 Go
-	// 里筛出真正要处理的那些）。
-	ListConversationIDs(ctx context.Context, q platform.Querier) ([]uuid.UUID, error)
+	// 【为什么要这样一条查询】原来的做法是 ListConversationIDs 拿全集，
+	// 再对每个会话各查一次 GetSummary + LatestSequenceNo——N 个会话 2N 次
+	// 往返，**空闲也照跑**，而这两个数恰恰就是"要不要处理"这条判据。
+	// 判据与取数合成一条 JOIN：判据的代价从 N 次往返变成 1 次，返回的行数
+	// 只和"真的需要维护"的会话数有关，与总会话数无关。
+	//
+	// 【为什么不用 updated_at 水位线】那样能更进一步（连扫描都省掉，
+	// 还能用上 0011 的 conversations_updated_at_id_idx），但水位线会漏会话：
+	// 判据依赖的是 status='completed' 的消息数，而一轮生成结束的那一刻消息
+	// 才定稿——水位线如果在那之前就越过了这个会话，它这一轮永远不会被再看
+	// 一眼，摘要永久滞后，且不报错。全表聚合的代价在这个部署边界下（本地
+	// 单机、几百个会话）是微秒级，不值得换那个静默丢数据。
+	//
+	// 返回行里的 PriorSummary/CoveredUntil 直接给调用方拼 prompt 用，
+	// 调用方不必再查一次 GetSummary（MaintainSummary 原来对同一行查了两遍）。
+	SummaryMaintenanceCandidates(ctx context.Context, q platform.Querier, triggerMessages int64) ([]*SummaryCandidate, error)
+
+	// PreferenceExtractionCandidates 一次查出所有"累计消息数越过门槛"
+	// 的会话 id（issue #118），理由与 SummaryMaintenanceCandidates 逐条相同：
+	// 门槛（LatestSequenceNo >= 门槛）本来就是对每个会话单独查一次的那个数。
+	PreferenceExtractionCandidates(ctx context.Context, q platform.Querier, minSequenceNo int64) ([]uuid.UUID, error)
+
+	// PruneConversationEvents 删掉 created_at 早于 before 的事件行，返回删除
+	// 行数（issue #98）。保留窗口的定义与理由见 retention.go 的
+	// eventsRetention——那是业务参数，不在 SQL 里写 now() - interval，本包
+	// 所有时间戳都由 Go 侧生成后传入，测试才能控制时间。
+	PruneConversationEvents(ctx context.Context, q platform.Querier, before time.Time) (int64, error)
 
 	// UpdateMessageContent 是流式过程中按批次落库的那次 UPDATE——
 	// 每 500ms 或每 N token 调一次（技术方案 §三），content 是当前已经

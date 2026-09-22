@@ -30,11 +30,11 @@ function hastText(node: HastChild): string {
  * 取代码块的语言。
  *
  * 【类名是什么形态】remark-rehype 把围栏上的语言写成 `<code class="language-ts">`；
- * rehype-highlight 认得的话再往前塞一个 `hljs`（实测产物：
+ * MarkdownContent 里的 highlightPlugin 认得的话再往前塞一个 `hljs`（实测产物：
  * `class="hljs language-ts"`）。所以不能只看第一个类名，要按前缀找。
- * 语言没写、或者 rehype-highlight 不认识时，这里返回 undefined——
- * 上层照常渲染成无高亮的等宽块，不报错（rehype-highlight 对不认识的
- * 语言只记一条 vfile message 就返回，源码里写着）。
+ * 语言没写、或者不在 MarkdownContent 的 HIGHLIGHT_GRAMMARS 子集里时，
+ * 这里返回 undefined——上层照常渲染成无高亮的等宽块，不报错（插件对不在
+ * 子集里的语言保留原文返回，那条降级路径有 MarkdownContent.test.tsx 钉着）。
  */
 function languageOf(node: HastNode | undefined): string | undefined {
   const code = node?.children[0]
@@ -59,8 +59,8 @@ function languageOf(node: HastNode | undefined): string | undefined {
  * 靠 className 有没有 language- 判断，会把"没写语言的围栏块"误判成行内。
  * pre 只可能来自代码块，判据是干净的。
  *
- * 【高亮不在这里做】token 的颜色来自 rehype-highlight 在构建 hast 时插进去的
- * hljs-* 类名，映射表在 src/index.css。组件里因此不出现任何色值——
+ * 【高亮不在这里做】token 的颜色来自 MarkdownContent 的 highlightPlugin 在构建
+ * hast 时插进去的 hljs-* 类名，映射表在 src/index.css。组件里因此不出现任何色值——
  * README §9 的零硬编码色值判据对这一块成立。
  *
  * 【外壳：语言标签 + 复制按钮 + 横向滚动】

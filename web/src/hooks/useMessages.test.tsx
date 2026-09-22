@@ -9,7 +9,7 @@ import type { ReactNode } from 'react'
 import { api } from '@congorag/api-client'
 import { messagesKey, useMessages, useSendMessage } from '@/hooks/useMessages'
 import type { Message } from '@/hooks/useMessages'
-import type { Page } from '@/lib/pagination'
+import { flattenPagesChronologically, type Page } from '@/lib/pagination'
 import { streamChat } from '@/lib/streamChat'
 
 // api 和 streamChat 都换成可控的 mock：本文件要验证的是"什么写进了缓存、
@@ -32,6 +32,24 @@ const persistedUserMessage: Message = {
   status: 'completed',
   sequenceNo: 1,
   createdAt: '2026-09-21T00:00:00Z',
+}
+
+/** 造一条历史消息：本文件只关心顺序和正文，其余字段给个合理默认。 */
+function historyMessage(
+  id: string,
+  role: Message['role'],
+  sequenceNo: number,
+  content: string,
+): Message {
+  return {
+    id,
+    conversationId: CONVERSATION_ID,
+    role,
+    content,
+    status: 'completed',
+    sequenceNo,
+    createdAt: '2026-09-21T00:00:00Z',
+  }
 }
 
 function makeWrapper(queryClient: QueryClient) {
@@ -171,5 +189,74 @@ describe('useSendMessage', () => {
 
     expect(vi.mocked(streamChat)).toHaveBeenCalledTimes(1)
     expect(result.current.sender.isStreaming).toBe(true)
+  })
+
+  // 回归（issue #101）：页是按「越往后越旧」加载的，pages[0] 才是最新那页
+  // （见 lib/pagination.ts 的 flattenPagesChronologically）。翻过历史之后再
+  // 发消息，往 pages 数组末尾追加会让摊平出来的提问落在聊天记录的**中间**
+  // ——屏幕上什么都没多出来，而下面的回答照常在涨。
+  it('翻过历史之后，乐观消息仍然落在聊天记录的最末尾', async () => {
+    // 后台重取一直不落地：这条用例要看的正是"重取之前"缓存里的样子。
+    getMock.mockImplementation(() => new Promise(() => {}))
+    vi.mocked(streamChat).mockImplementation(() => new Promise<number | null>(() => {}))
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    // 两页：pages[0] 是最新那页，pages[1] 更旧。
+    queryClient.setQueryData<InfiniteData<Page<Message>>>(messagesKey(CONVERSATION_ID), {
+      pages: [
+        { items: [historyMessage('m-3', 'assistant', 3, '最新的回答')], nextCursor: null },
+        {
+          items: [
+            historyMessage('m-1', 'user', 1, '最早的提问'),
+            historyMessage('m-2', 'assistant', 2, '更早的回答'),
+          ],
+          nextCursor: 'cursor-1',
+        },
+      ],
+      pageParams: [null, 'cursor-1'],
+    })
+
+    const { result } = renderChat(queryClient)
+    await waitFor(() => expect(result.current.messages.isSuccess).toBe(true))
+
+    act(() => {
+      void result.current.sender.send('翻过历史之后的提问')
+    })
+
+    // 页面按时间正序渲染（flattenPagesChronologically），所以提问必须在最后。
+    const rendered = flattenPagesChronologically(
+      queryClient.getQueryData<InfiniteData<Page<Message>>>(messagesKey(CONVERSATION_ID)),
+    )
+    expect(rendered.map((m) => m.content)).toEqual([
+      '最早的提问',
+      '更早的回答',
+      '最新的回答',
+      '翻过历史之后的提问',
+    ])
+  })
+
+  // 回归（issue #102）：组件卸载（离开页面、切换会话）之后，fetch 与
+  // ReadableStream 不会跟着结束——服务端会把这一轮跑完，**每个 token 都在
+  // 花用户自己配的额度**，而屏幕上的「停止」按钮已经跟着页面消失了。
+  it('卸载时中止在途的流', async () => {
+    getMock.mockResolvedValue({ data: { items: [], nextCursor: null }, error: undefined })
+    let signal: AbortSignal | undefined
+    vi.mocked(streamChat).mockImplementation((_id, _text, _key, _callbacks, abort) => {
+      signal = abort
+      return new Promise<number | null>(() => {})
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result, unmount } = renderChat(queryClient)
+    await waitFor(() => expect(result.current.messages.isSuccess).toBe(true))
+
+    act(() => {
+      void result.current.sender.send('你好')
+    })
+    // 流还在跑：这时还没有任何中止。
+    expect(signal?.aborted).toBe(false)
+
+    unmount()
+    expect(signal?.aborted).toBe(true)
   })
 })

@@ -26,12 +26,60 @@
 
 ---
 
-## [Unreleased]
+## [5.0] - 2026-09-22
+
+这一版**没有新功能**：它是对 v4.0 落地之后的一次全面审查与修复。五路并行审查
+（域逻辑 / API 层 / 数据库 / 前端 / 工程化）产出 34 条（#97–#130），全部落地，
+改的都是**已经交付的行为里那些不正确的、会静默出错的部分**。
+
+### 行为变更
+
+| 变更 | 说明 |
+| --- | --- |
+| **升级前必须先跑 `make migrate-up`** | 新增三条迁移：`0012_token_usage_indexes`（补上 `token_usage` 两个外键列的索引 —— 级联删会话或删模型时不再全表扫描这张唯一会无限增长的表）、`0013_enum_constraints`（七处文本枚举列补 `CHECK`，并删掉一条被唯一约束完全覆盖的冗余索引）、`0014_retention_indexes`（事件表剪枝用的索引）。漏跑不会立刻出错，但用量表会随使用线性变慢 |
+| **`CONGORAG_PORT` 环境变量被移除** | 它此前**从未生效**（`Config.Port` 全仓零读取点），真正决定监听地址的一直是 `CONGORAG_LISTEN_ADDR`。README 的配置表里也删掉了它 —— 留着会让人以为改了它就能换端口。compose 里那个同名变量是另一回事（宿主机端口映射），不受影响 |
+| **聊天与 Agent 输入有了长度上限** | `SendMessageRequest.text` 与 `StartAgentRunRequest.input` 在契约里补了 `maxLength: 8000`。超限返回 `invalid_argument`，且**不写任何消息行**（此前会留下一条永远没有回答、也永远不会被清理的占位气泡）。直连 API 的调用方按严格 schema 解析时需要跟着改 |
+| **JSON 端点有了 1 MiB 请求体上限** | 此前只有文档上传有上限。超限返回 400、文案里带上限值。上传仍走 `CONGORAG_MAX_UPLOAD_BYTES`，不受影响 |
+| **服务端新增 5 分钟 `ReadTimeout`** | 此前只设了 `ReadHeaderTimeout`。对 SSE 安全 —— 读超时只覆盖读请求，而 SSE 的长处在响应方向（这一点是实测确认的，不是照抄结论） |
+| **SSE 的错误帧不再泄漏 5xx 内部错误原文** | 此前工具失败会把 SQLSTATE、表名、连接串一路发到前端 toast 的第二行；而"5xx 不返回原文"这条策略此前只在兜底帧成立，兜底帧又只在主帧发不出去时才跑 —— 所以那条测试是假绿。现在两条路径走同一个判据 |
+| **SSE 的 `id: 0` 不再出现在线路上** | "运行根本没开始"那类错误帧（空输入 / agent 不存在 / 没有可用模型）此前会带 `id: 0`。按协议，不带 `id` 的帧才不更新续传游标；写 0 会把游标退回起点、下次续传重放整轮。协议文档一直是对的，是实现在违反它 |
+| **SSE 的错误类型补齐了三档** | `conflict` / `conflict_duplicate_key` / `not_found` 此前在 SSE 侧一律落成 `internal_error`，而 REST 侧是分开的 —— 同一类失败在两条通道上 type 不同。现在由同一张表产出 |
+| **工具结果截断到 16 KiB** | 此前工具结果原样进模型消息历史，一个检索工具就能把上下文撑爆；而撑爆后上游返回的错误会被归类成 `upstream_llm_error`，把用户引向"检查 API Key 和配额"—— 排查方向从第一句话起就是错的。超限结果现在截断，并**显式告诉模型"结果被截断了"** |
+| **事件表的保留窗口是 24 小时** | `conversation_events` / `run_events` 现在按时间剪枝（此前只增不减 —— 实测 6 个会话攒了 4853 行，其中 97.5% 是流式 token 事件）。**代价**：超过 24 小时的 run 走 run 级重订阅只会拿到空历史（`GET /runs/{id}` 的 input/output/steps 不受影响）。`tool_effect_log` **不按年龄剪** —— 它是"工具是否已执行过"的唯一判据，剪早了会让恢复重放已执行过的工具 |
+| **流式 token 事件改为攒批落库** | 此前每个 chunk 写一行库（两个往返）。现在按 300ms / 1 KiB 合成一条。客户端看到的帧类型与语义不变 |
+
+### 修复
+
+（以下都不改变 API 形状，列出来是为了让"这一版到底改了什么"可查。）
+
+- 文档索引把 embedding 的 HTTP 调用包在写事务里 —— 一条连接被占住最长 30 分钟，10 个并发文档任务就能占满连接池、把同队列的维护任务一起饿死
+- 取消 / 断线时正在执行的那一步工具会**永远停在 `running`**，而 ADR-007 崩溃表的第一判据就是"有没有一行 running 的 step"
+- 工具效果账本用会被取消的请求 ctx 写、失败只记一行日志 —— 会让"工具到底跑没跑过"在最需要它的那一刻失准
+- `Resume` 重放失败的收尾用请求 ctx 且丢弃错误，run 会卡在 `running` 且既不可恢复、界面也不会显示失败
+- 模型配置不校验 `contextWindow > maxOutputTokens`，两个数字填反后每条消息都失败、且没有任何线索指向引导页
+- 文档列表的分块数聚合抹掉了 keyset 分页的索引优势 —— 每翻一页都要扫全库文档再排序
+- 两个周期任务对每个会话单独发查询（N+1），且用不上 `0011` 新建的 `updated_at` 索引
+- 幂等补发每 100ms 轮询一次事件表、无退避，最长持续 10 分钟
+- `Bootstrap` 在请求路径的事务里做表重写 + 非 `CONCURRENTLY` 建 HNSW 索引，全程 ACCESS EXCLUSIVE
+- SSE 已经开始后 handler panic，Recovery 会把一段 JSON 写进 `text/event-stream`，客户端表现为流静默结束
+- worker 只配了一个队列，一次批量上传就能把周期维护任务饿死数小时
+- **前端**：乐观上屏的消息被插进"已加载页里最旧"的那一页 —— 翻过历史后提问会跑到记录中间，表现为"提问看不见、回答在跑"
+- **前端**：离开页面或切换会话不中止 SSE —— 额度继续烧，而那个位置上的取消入口已经跟着页面消失
+- **前端**：`conversations/:id` 没有按 id 加 key，会话间前进/后退时流式状态会串到另一个会话上
+- **前端**：流式过程中每个 token 都给每张工具卡片做一次全量 `JSON.stringify`（截断发生在序列化之后）
+- **前端**：发送之后输入框失焦，键盘用户每一轮都要重新点一次
+- **前端**：语法高亮把 36 种语言全打进会话页（单个 chunk 334 KB，其余页面 2–20 KB）→ 改为 16 种语言按需加载，会话页降到 228 KB
+- `make release-dry` 承诺"不碰 git、不联网"却仍在顶层发一次 `git ls-remote`
+- `upgrade.mjs` / `rollback.mjs` 零自动化 —— 它们会 `DROP DATABASE` + 清卷，是全项目代价最高的一条路径，却一个门禁都没有
+- CI 五个 job 没有一个碰 Docker（Dockerfile、两份 compose、`migrate-entrypoint.sh` 全无覆盖），改坏了要等到打 tag 才红
+- `evals/measure_recall.sh` 的「N/A（分块数为 0）」分支永远不可达 —— `grep` 无匹配返回 1，配上 `set -e` 让脚本半路无输出地死掉
+- SPA 路径穿越的回归测试是自证的：假文件系统里没有哨兵文件，断言在任何实现下都成立
+- 若干文档与注释漂移（`agents/runs/{runId}/events` 这个不存在的旧路径、ADR 引用的迁移文件名、SSE 心跳、README 里 test-integration 的描述停在两版之前）
+
+## [4.0] - 2026-09-22
 
 这一版把 v3.0 之后那批 issue（#54–#96）做完：Agent 的运行控制与崩溃恢复、
 检索调试视图、一批前端能力与无障碍，以及发布/交付/升级那条工程链。
-版本号与发布日期由发布时再定——`scripts/release.mjs` 会断言契约的
-`info.version` 与 tag 一致，所以发布前要把它提到同一个数（见 ADR-002）。
 
 ### 行为变更
 
@@ -42,7 +90,7 @@
 | **`POST /api/v1/agents/{id}/runs` 接受 `Idempotency-Key`** | 命中同一个键时不重新执行，而是补发那条 run 已记录的事件（首帧同样是 `run_started`，带的是原来那条 run 的 id）。保留窗口与发消息那条路径共用 24 小时（ADR-008） |
 | **`Document` 的响应多了一个**必填字段 `chunkCount` | 该文档当前的向量分块数，未处理完的文档是 `0`（不是 null）。**直连 API 的调用方**如果按严格 schema 解析，需要跟着改 |
 | **会话的 `updatedAt` 语义变了** | 它现在真的是"最近活动时间"（每次收到消息就更新），会话列表 `GET /api/v1/conversations` 按它倒序。在此之前它只在创建那一刻写过一次——**所以它在旧数据上等于 `createdAt`**，迁移 `0011` 会把已有会话回填成"最后一条消息的时间" |
-| **`GET /api/v1/agents/runs/{runId}/events` 与 `POST .../cancel`、`.../resume`** 见下面的"新增" | run 维度的断线重订阅、取消与断点恢复都在这一版 |
+| **`GET /api/v1/runs/{runId}/events` 与 `POST .../cancel`、`.../resume`** 见下面的"新增" | run 维度的断线重订阅、取消与断点恢复都在这一版。路径在 `/runs/{runId}/` 下，不是 `/agents/runs/{runId}/` —— runId 全局唯一，放在 `/agents/{id}` 那层会与路径参数混用静态段（见契约里那段注释） |
 | **Agent 的 `interrupted` 状态现在真的会被写入** | 两个来源：进程**启动时**的扫描（把上个进程留下的 `running` 运行标成它，见 ADR-007）与客户端中途断开。**只有 `interrupted` 的运行可以恢复**；`completed` / `failed` / `cancelled` 都是终态 |
 | **错误类型新增四个** | `state_schema_version_mismatch`、`tool_effect_already_applied`、`replay_unsafe`（恢复端点，都是 409），以及 Agent 流上的同名 `error` 帧 type。前端按 `type` 分支的映射表要跟着补 |
 | **上游模型服务出错时的归因更准** | 工具自己失败（查不到那一行之类）不再被说成 `upstream_llm_error`——那是前一版就修的方向，这一版把恢复相关的几种也补齐了 |
@@ -317,7 +365,7 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
-[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v3.0...HEAD
+[5.0]: https://github.com/XiaoleC05/CongoRAG/compare/v3.0...v5.0
 [3.0]: https://github.com/XiaoleC05/CongoRAG/compare/v2.0...v3.0
 [2.0]: https://github.com/XiaoleC05/CongoRAG/compare/v1.0...v2.0
 [1.0]: https://github.com/XiaoleC05/CongoRAG/releases/tag/v1.0

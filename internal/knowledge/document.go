@@ -73,8 +73,9 @@ type Document struct {
 	// ChunkCount 是这份文档当前的向量分块数（issue #82）。
 	//
 	// 【它不是 documents 表的一列】它是 document_chunks 的聚合结果，
-	// 由读路径上的 LEFT JOIN 算出来（见 document_postgres.go 的
-	// documentsSelectCols）。冗余成一列的话就得在切分、重建、删除三条
+	// 由读路径上现算（列表走关联子查询、ByID 走 LEFT JOIN + GROUP BY，
+	// 两种写法各自的理由见 document_postgres.go）。冗余成一列的话就得在
+	// 切分、重建、删除三条
 	// 路径上各自维护它，而其中任一条漏了都不会报错——数出来的数字和
 	// 库里的分块对不上，正是最容易被忽略的那种不一致。
 	//

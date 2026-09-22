@@ -360,7 +360,7 @@ const NOT_COVERED = [
   ['PATCH / DELETE /api/v1/models/{id}', '要动本机已配置的模型条目（删错了会让发消息立刻失败）。它们的业务规则（当前生效的删不掉、embedding 不能改名）在 internal/llm/model_admin_test.go 里测'],
   ['POST /api/v1/agents/{id}/runs', '要打真实模型服务（SSE）'],
   ['GET /api/v1/runs/{runId}/steps', '需要一条已存在的 run'],
-  ['GET /api/v1/agents/runs/{runId}/events', '同上（SSE）'],
+  ['GET /api/v1/runs/{runId}/events', '同上（SSE）'],
   ['POST /api/v1/runs/{runId}/cancel', '同上'],
   ['POST /api/v1/runs/{runId}/resume', '同上'],
 ]

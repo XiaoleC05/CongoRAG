@@ -1,8 +1,8 @@
 name: CI
 
-# 每个 push / PR 都跑五个互相独立的检查。
+# 每个 push / PR 都跑六个互相独立的检查。
 #
-# 【五个 job 之间没有 needs】它们查的是五件不相干的事，串起来只会让反馈变慢。
+# 【六个 job 之间没有 needs】它们查的是六件不相干的事，串起来只会让反馈变慢。
 # 唯一的例外是 integration 依赖一个正常的 Postgres 服务，那由 GitHub 的
 # service container 提供，不需要靠 job 顺序解决。
 on:
@@ -137,7 +137,7 @@ jobs:
   #     一份写错但生成物同步的契约能全绿通过；
   #   · 这个 job："这份契约本身写得对不对"——枚举重项、$ref 旁边挂兄弟键、
   #     example 与 schema 对不上、参数漏了 description，都归它。
-  # 和 ci.yml 顶部那条"五个 job 查五件不相干的事"是同一个理由。
+  # 和 ci.yml 顶部那条"六个 job 查六件不相干的事"是同一个理由。
   #
   # 【规则集与豁免全在 .spectral.yaml，一条都不在这里】改门禁只改那个文件；
   # 每一条豁免旁边都写着理由，以及"什么时候该回来重开它"。
@@ -211,6 +211,24 @@ jobs:
       # ERR_TEST_FAILURE / # pass 0。引号不能省，否则 shell 会自己展开。
       - name: Eval metric self-test
         run: node --test "evals/lib/*.test.mjs"
+
+      # 【交付脚本也有门禁了（issue #104）】scripts/upgrade.mjs 与 rollback.mjs
+      # 是全仓唯一会真的动用户环境的代码（rollback 会 DROP DATABASE + 删 /data），
+      # 在那之前没有任何自动化跑过它们——回归只能在"用户升级失败"时才被发现。
+      # 这里跑的是 delivery-lib 的纯函数单测，加上 upgrade / rollback / release
+      # 三个脚本的参数面与 --dry-run 分支：只用 Node 标准库，不碰数据库、镜像和
+      # 网络，所以同样够格进 push 触发的 CI。
+      #
+      # 【为什么也要显式给 glob】理由与上面那条逐字相同（node 22 把 --test 后面的
+      # 位置参数当 glob；引号不能省，否则 shell 会自己展开）。
+      - name: Delivery script self-test
+        run: node --test "scripts/*.test.mjs"
+
+      # measure_recall.test.sh 用假 docker / 假 curl 造出"空库 / 查询失败 / 有数据"
+      # 三条分支，验的是那个脚本的管道与退出码——真跑它要一个迁好的 Postgres 加一个
+      # 真的 embedding API，那种回归没人会跑。也是完全离线的。
+      - name: Recall metric harness self-test
+        run: bash evals/measure_recall.test.sh
 
       # tsc -b && vite build。类型错误在这里暴露——vite 本身不做类型检查。
       - name: Build web
@@ -299,3 +317,108 @@ jobs:
         env:
           CONGORAG_DB_URL: ${{ env.DB_URL }}
         run: node scripts/contract-test.mjs
+
+  # ── 6. 交付形态：镜像能不能构建、compose 能不能解析、迁移入口能不能跑通 ──
+  #
+  # 【为什么需要这个 job】上面五个 job 一个都不碰 Docker。于是"改坏 Dockerfile /
+  # 改坏 compose / 把 migrate-entrypoint.sh 里的 river 那行写错"这三类改动在 PR
+  # 上是**全绿**的——唯一会红的地方是打 tag 时 release.yml 的 images job，而
+  # migrate-entrypoint.sh 连那里都不跑（它只在用户解压启动包、真正升级时被执行）。
+  # 缺陷的修复窗口因此被推迟到最坏的时刻：已经发出去之后。
+  #
+  # 【它和 release.yml 的 images job 查的不是一回事】那个 job 按架构构建
+  # （arm64 要走 QEMU）、save 成 tarball、并且只 smoke test api 镜像——它是
+  # 发布步骤。这个 job 在 runner 的原生架构上构建一次，查三件 PR 里就该知道的事：
+  #   · 三个 target 拼得起来（尤其前端那句 `test -f apps/api/web/index.html`，
+  #     它是"界面真的嵌进了二进制"的唯一守门人，位置在 go build 之前）；
+  #   · 两份 compose 的语法与变量插值成立；
+  #   · migrate 镜像对着一个真的 postgres **真的跑一次**，退出码 0。
+  #
+  # 【为什么这里不 smoke test api 镜像】api 启动时要预热 tiktoken 词表，那需要
+  # 访问一次 openaipublic.blob.core.windows.net，失败即拒绝启动。把一条外网依赖
+  # 放进每个 PR 的门禁，换来的是随机翻红——而随机翻红会训练人忽略红色（web job
+  # 里那条"完整 eval 不进 CI"的注释是同一个理由）。镜像能不能构建在这查，能不能
+  # 在目标架构上跑起来由 release.yml 在发布前查。
+  docker:
+    name: Docker (images / compose / migrate)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # 和 integration job 同一个镜像、同一个理由（migrations/0001 的第一句
+        # 就是 CREATE EXTENSION IF NOT EXISTS vector）。下面 migrate 那一步要
+        # 真的建表，所以这个服务是这个 job 的前提，不是可选项。
+        image: pgvector/pgvector:0.8.6-pg18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: congorag
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d congorag"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+          --health-start-period 5s
+    steps:
+      - uses: actions/checkout@v4
+
+      # 【compose 校验排在构建前面】它几秒钟就出结果，失败信息也直接指向那个
+      # 写错的文件；排在一趟几分钟的 docker build 后面只会让人多等。
+      #
+      # 【startup 那份必须显式给 CONGORAG_VERSION】它的镜像 tag 写成
+      # `${CONGORAG_VERSION:?...}`，是刻意设成必填的：用户漏配 .env 时要在
+      # `docker compose up` 那一刻就看到"变量没设"，而不是拿到一个指向
+      # `congorag-api:` 的镜像名错误。这里显式给一个假版本号，让这条断言
+      # 在 CI 上真的被执行一次——漏掉它就会在这里红。
+      #
+      # 【config -q 只做插值与语法检查】不拉镜像、不起容器，所以这一条
+      # 不受网络与镜像仓库可用性的影响。
+      - name: Validate both compose files
+        run: |
+          docker compose -f deployments/docker/docker-compose.yml config -q
+          CONGORAG_VERSION=0.0.0 docker compose -f deployments/startup/docker-compose.yml config -q
+
+      # 【三个 target 都构建，不是挑一个】它们共用前三层（前端构建、Go 编译、
+      # CLI 工具），所以第一个真构建、后两个各只多一层 COPY——与 release.yml
+      # 里那个 for 循环同一个理由。这里**不** save 成 tarball：那是发布形态的事。
+      - name: Build the three delivery images
+        run: |
+          set -euo pipefail
+          for t in api worker migrate; do
+            docker build --target "$t" -t "congorag-${t}:ci" .
+          done
+
+      # 【这一步才是这个 job 的全部价值】migrate-entrypoint.sh 里那三行
+      # （业务表迁移 + River 队列表迁移 + 输出收尾）是启动包里唯一"决定一次升级
+      # 能不能成功"的可执行逻辑，而它在别的任何 job 里都不会被跑到。这里把它
+      # 对着上面那个 postgres 真跑三次：
+      #   ① 全新库：migrations/ 下全部业务表迁移与 River 的队列表都要真的建出来，
+      #      退出码 0；
+      #   ② 再跑一次：入口脚本的注释声明了两条命令都幂等（"no change"），
+      #      所以这一步必须仍是 0——否则每次 `docker compose up` 都会红；
+      #   ③ 不给 CONGORAG_DB_URL：必须非零，见下面那一步。
+      #
+      # 【--network host 是为了够到 service container】service container 的
+      # 5432 发布在 runner 的宿主回环上，而 `docker run` 的容器默认有自己的
+      # 网络命名空间，里面的 127.0.0.1 不是宿主。ubuntu runner 是 Linux，
+      # 共享宿主网络命名空间是最确定的一条路（不用赌 host.docker.internal）。
+      - name: Run the migrate image against a real PostgreSQL, twice (fresh + idempotent)
+        run: |
+          set -euo pipefail
+          echo "· 第一次：全新库，两套迁移都要建出来"
+          docker run --rm --network host -e CONGORAG_DB_URL="$DB_URL" congorag-migrate:ci
+          echo "· 第二次：同一个库，两条命令都该报告无事可做并退出 0"
+          docker run --rm --network host -e CONGORAG_DB_URL="$DB_URL" congorag-migrate:ci
+
+      # 【反向断言】入口脚本开头那句 `:?` 是刻意的——compose 少传一个环境变量时，
+      # 报错要指向"这个变量没设"，而不是 migrate 那条难以理解的驱动错误。
+      # 光有正向的两次成功跑不出这个分支，而一个静默消失的保护比没有更糟，
+      # 所以这里把"缺变量必须失败"也钉住。
+      - name: Fail when CONGORAG_DB_URL is missing
+        run: |
+          if docker run --rm --network host congorag-migrate:ci; then
+            echo "::error::没有 CONGORAG_DB_URL 时 migrate 容器退出了 0——入口脚本的 :? 断言没了"
+            exit 1
+          fi
+          echo "缺 CONGORAG_DB_URL 时如预期非零退出"

@@ -66,6 +66,28 @@ type Summary struct {
 	UpdatedAt              time.Time
 }
 
+// SummaryCandidate 是"这个会话的摘要该更新了"这条判据，连同更新时需要的
+// 三个输入（issue #118）。
+//
+// 【它不是 Summary 的一部分，也不是一条消息】判据（LatestSequenceNo 与
+// CoveredUntilSequenceNo 的差越过门槛）和取数在一条 JOIN 里一次算完，
+// 逐会话的那两三次往返就消失了（见 Repo.SummaryMaintenanceCandidates）。
+// 把输入随判据一起带回来是同一件事的第二步：MaintainSummary 拼 prompt
+// 需要的正是 PriorSummary，让它再查一次 GetSummary 是把同一条 SQL 发两遍。
+type SummaryCandidate struct {
+	ConversationID uuid.UUID
+
+	// LatestSequenceNo 是该会话已定稿（status='completed'）消息里最大的
+	// sequence_no，没有定稿消息的会话不会出现在候选集里。
+	LatestSequenceNo int64
+
+	// CoveredUntil 与 PriorSummary 来自 conversation_summaries 的同一行，
+	// 没有摘要时是 0 和空串（GetSummary 的 ErrNotFound 那条路径在这里
+	// 由 LEFT JOIN 的 COALESCE 表达）。
+	CoveredUntil int64
+	PriorSummary string
+}
+
 // Event 是随流下发、同时持久化的一条 SSE 事件，字段对应
 // docs/sse-protocol.md 定义的线路格式。
 //

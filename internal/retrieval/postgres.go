@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -26,28 +27,72 @@ func NewPgRepo() *PgRepo {
 	return &PgRepo{}
 }
 
-// InsertChunks 逐条插入。
+// insertRowsPerStmt 是一条 INSERT 语句里最多带多少行（issue #97）。
 //
-// 【为什么不是一条多值 INSERT 或 COPY】M1 阶段一份文档切出来的分块数量
-// 通常是几十到几百条，逐条 Exec 的往返成本在这个量级不值得为了省下来
-// 换取更复杂的批量写入代码（pgx.Batch 或 COPY）。真的出现"单份文档几万
-// 分块"的场景再优化——那时候这里的注释本身就是"什么时候该换"的判据。
+// 【为什么从逐条改成多值】逐条 Exec 是"一份文档几十到几百个分块 =
+// 几十到几百次往返"。issue #97 之后 DELETE + INSERT 跑在调用方开的一个
+// 事务里（见 usecase.go 的 ReplaceChunks），而这个事务的全部意义就是
+// "别让删除和插入之间留下中间态"——往返次数越多，事务开着、行锁攥着、
+// 连接被占着的时间就越长。批量写入因此从"优化"变成了"让这个事务尽快
+// 提交"这件事的一部分。
+//
+// 【为什么是 256 而不是一条语句带上一整份文档】PostgreSQL 单条语句最多
+// 65535 个绑定参数，这里是每行 5 个（id/document_id/content/embedding/
+// embedding_model），一条语句的上限落在 13107 行。不贴着上限是因为每条
+// 语句的参数表、解析结果和要发给 pgvector 的那一批 halfvec 都得在服务端
+// 一次性摊开，行数越多这条语句自己的内存峰值越高。256 已经把往返次数
+// 从"每块一次"压到"每 256 块一次"；再往上调，省下的往返是个位数百分比，
+// 单条语句的峰值却按同样的比例继续涨。
+const insertRowsPerStmt = 256
+
+// InsertChunks 批量写入分块：每 insertRowsPerStmt 行组成一条多值 INSERT。
+//
+// vecs 与 chunks 按下标一一对应（这个对应关系由 usecase.EmbedChunks
+// 保证），这里再挡一次长度不等的情况——错位不会报任何 SQL 错误，
+// 只会让 A 段的向量安静地挂到 B 段上，检索时表现为"答案对不上原文"，
+// 是这条路径上最难查的一类缺陷。
 func (r *PgRepo) InsertChunks(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk, vecs [][]float32, model string) error {
-	for i, c := range chunks {
-		// pgvector.NewHalfVector 把 []float32 包成 pgx 的 halfvec 编解码器
-		// 认识的类型；真正的二进制编码发生在 q.Exec 内部（pgxvec.RegisterTypes
-		// 已经在装配根注册过，见 apps/worker/internal/app/app.go）。
-		vec := pgvector.NewHalfVector(vecs[i])
-		_, err := q.Exec(ctx,
-			`INSERT INTO document_chunks (id, document_id, content, embedding, embedding_model)
-			 VALUES ($1, $2, $3, $4, $5)`,
-			uuid.New(), docID, c.Content, vec, model,
-		)
-		if err != nil {
-			return fmt.Errorf("insert chunk %d/%d of document %s: %w", i+1, len(chunks), docID, platform.WrapPgErr(err))
+	if len(vecs) != len(chunks) {
+		return fmt.Errorf("insert chunks of document %s: %d vectors for %d chunks: %w",
+			docID, len(vecs), len(chunks), platform.ErrInvalid)
+	}
+
+	for start := 0; start < len(chunks); start += insertRowsPerStmt {
+		end := min(start+insertRowsPerStmt, len(chunks))
+		if err := r.insertChunkBatch(ctx, q, docID, chunks[start:end], vecs[start:end], model); err != nil {
+			return fmt.Errorf("insert chunks %d-%d of %d in document %s: %w",
+				start+1, end, len(chunks), docID, platform.WrapPgErr(err))
 		}
 	}
 	return nil
+}
+
+// insertChunkBatch 把一批分块拼成一条多值 INSERT 发出去。
+//
+// 占位符的编号按下标算（第 i 行是 $5i+1..$5i+5），行的顺序就是 chunks 的
+// 顺序——多值 INSERT 不保证任何插入顺序，但这里也不依赖顺序：每行自带
+// id 和它自己的向量。
+func (r *PgRepo) insertChunkBatch(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk, vecs [][]float32, model string) error {
+	var sql strings.Builder
+	sql.WriteString(`INSERT INTO document_chunks (id, document_id, content, embedding, embedding_model) VALUES `)
+
+	args := make([]any, 0, len(chunks)*5)
+	for i, c := range chunks {
+		if i > 0 {
+			sql.WriteString(", ")
+		}
+		p := i * 5
+		fmt.Fprintf(&sql, "($%d, $%d, $%d, $%d, $%d)", p+1, p+2, p+3, p+4, p+5)
+
+		// pgvector.NewHalfVector 把 []float32 包成 pgx 的 halfvec 编解码器
+		// 认识的类型；真正的二进制编码发生在 q.Exec 内部（pgxvec.RegisterTypes
+		// 已经在装配根注册过，见 apps/worker/internal/app/app.go）。
+		args = append(args, uuid.New(), docID, c.Content, pgvector.NewHalfVector(vecs[i]), model)
+	}
+
+	// 错误原样返回：包装留给 InsertChunks，那里知道这是第几条到第几条。
+	_, err := q.Exec(ctx, sql.String(), args...)
+	return err
 }
 
 func (r *PgRepo) DeleteByDocument(ctx context.Context, q platform.Querier, docID uuid.UUID) error {

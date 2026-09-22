@@ -202,11 +202,27 @@ export default function ConversationPage() {
       </ScrollArea>
 
       <form onSubmit={handleSubmit} className="mt-4 flex gap-2">
+        {/* 【流式期间用 readOnly 而不是 disabled（issue #115）】发起一次请求的
+            是"在这个输入框里按回车/点发送"，那一刻焦点就在它上面；而浏览器会
+            让一个**获得焦点的 disabled 控件**失焦（焦点落到 body），流结束把
+            disabled 撤掉时又没有任何代码把焦点还回来——autoFocus 只在挂载时
+            生效一次，RouteFocus 明确不抢页面自己已经拿到的焦点
+            （AppLayout.tsx）。于是"打字 → 回车 → 打字"这个主循环每一轮都要先
+            用鼠标点一下输入框，或者按若干次 Tab。
+
+            readOnly 一个字都改不进去，却不会让元素失焦；它也不像 disabled
+            那样被从 Tab 序列和无障碍树里摘出去。对比的另一条路是"流结束后
+            focus()"：那要在流收场的**那一刻抢一次焦点**，而用户这时可能正在
+            别处操作（点引用角标、点停止）——用偶发的抢焦点去换必然发生的失焦
+            不划算。不放开焦点，就不需要还。
+
+            提交路径不用改：这时的 input 是空的，handleSubmit 本来就被
+            `!text || isStreaming` 挡住。 */}
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="输入消息…"
-          disabled={isStreaming}
+          readOnly={isStreaming}
           autoFocus
         />
         {/* 【发送与停止是同一个位置上的两个状态】流式进行中把发送换成停止

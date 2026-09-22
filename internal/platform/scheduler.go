@@ -1,7 +1,9 @@
 // scheduler.go 把"注册一个按固定间隔执行的函数"这个通用需求接到 River
-// 的周期任务机制上。目前唯一的消费方是 knowledge.Usecase.StartReconciler
-// （孤儿文件对账），但接口本身不认识"孤儿文件"是什么——它只认识
-// "名字 + 间隔 + 一个函数"，这样将来别的模块要加周期任务时不需要碰这个文件。
+// 的周期任务机制上。消费方是各业务包的周期任务注册入口
+// （knowledge.Usecase.StartReconciler、conversation.Usecase.StartMemoryMaintenance、
+// worker 装配根里的 agent-checkpoint-prune），但接口本身不认识这些任务
+// 是什么——它只认识"名字 + 间隔 + 一个函数"，这样将来别的模块要加周期任务
+// 时不需要碰这个文件。
 package platform
 
 import (
@@ -26,6 +28,21 @@ import (
 type PeriodicScheduler interface {
 	RegisterPeriodic(name string, every time.Duration, fn func(ctx context.Context) error)
 }
+
+// MaintenanceQueue 是周期维护任务的专用队列名（issue #129）。
+//
+// 【为什么队列名的定义处在这里，而不是 worker 的装配根】任务进哪条队列是
+// **插入时**决定的，而周期任务的插入点就在本文件（RegisterPeriodic 给出的
+// InsertOpts）。装配顺序反过来引用是不通的：apps/worker/internal/app 属于
+// apps/worker 的 internal 子树，Go 只允许 apps/worker 自己 import 它，本包
+// 引用它会直接编译不过（internal 可见性 + 包循环两重障碍）。所以名字定义在
+// 插入点这一侧，worker 的 Config.Queues 反过来引用它——两边因此共用一个
+// 定义，而不是两个必须碰巧一致的字面量。
+//
+// 【对不上会怎样】任务被投进一条没有任何消费者注册的队列：不报错、不执行、
+// 日志里也只有一条普通的成功插入。对账、摘要这些维护工作会静默停摆，
+// 而界面上看不出任何异样——这正是它必须由编译器而不是靠人眼保证的原因。
+const MaintenanceQueue = "maintenance"
 
 // periodicTaskArgs 是桥接用的统一 job 类型。它的 Name 字段是任务名,
 // 真正要执行的逻辑通过 riverScheduler 的 tasks map 在运行期查到。
@@ -74,11 +91,40 @@ func (s *riverScheduler) RegisterPeriodic(name string, every time.Duration, fn f
 
 	client.PeriodicJobs().Add(river.NewPeriodicJob(
 		river.PeriodicInterval(every),
-		func() (river.JobArgs, *river.InsertOpts) {
-			return periodicTaskArgs{Name: name}, nil
-		},
+		periodicTaskConstructor(name),
 		&river.PeriodicJobOpts{ID: name},
 	))
+}
+
+// periodicTaskConstructor 造出"这次到点了要插什么任务"的描述函数。
+//
+// 【为什么插入时就要指定队列】队列不是任务的属性，是**插入那一刻**写进
+// river_job 行的（river 的 insertParamsFromConfigArgsAndOptions：
+// insertOpts.Queue 优先于 args 自带的、再退到 default）。返回 nil
+// InsertOpts 等于把任务放回 default——文档处理也在那条队列上，而单份文档
+// 的上限是 30 分钟（internal/knowledge/river.go 的 documentProcessingTimeout），
+// 一次批量上传就能把 default 的 10 个名额占满数小时。这正是 issue #129 要
+// 治的问题：维护任务没坏，只是排在那后面，界面上完全看不出来。
+//
+// 【为什么是"经由这个桥的任务全都进 maintenance"，而不是按任务名挑】本桥
+// 服务的全部是"按固定间隔、在后台遍历一小批数据做整理"的活（摘要压缩、
+// 偏好抽取、记忆向量补算、事件/checkpoint 回收、孤儿文件对账）——它们都是
+// 短周期任务。而真正会把队列占满的长任务只有文档处理，它不走这个桥
+// （knowledge.RiverEnqueuer 直接入队），所以"default 留给文档处理、
+// maintenance 留给周期任务"这条分工在这里天然成立。
+//
+// 【为什么不反过来列一张名单】名单漏一个的后果是静默的：那个任务悄悄回到
+// default，被文档处理压在后面几小时。默认落在维护队列、需要时再显式改，
+// 出错的代价小得多。
+//
+// 【为什么单独抽一个函数】RegisterPeriodic 必须先有 river.Client 才能调用
+// （没有 client 会 panic），于是"插入时带不带队列"在单元测试里没有任何
+// 观察点。抽出来之后测试可以直接断言这个返回值——队列路由退回 nil 是
+// 一次单测能拦住的改动。
+func periodicTaskConstructor(name string) river.PeriodicJobConstructor {
+	return func() (river.JobArgs, *river.InsertOpts) {
+		return periodicTaskArgs{Name: name}, &river.InsertOpts{Queue: MaintenanceQueue}
+	}
 }
 
 func (s *riverScheduler) lookup(name string) (func(ctx context.Context) error, bool) {

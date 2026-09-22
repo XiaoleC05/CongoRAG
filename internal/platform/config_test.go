@@ -23,7 +23,7 @@ func TestLoadConfig_RequiresDatabaseURL(t *testing.T) {
 func TestLoadConfig_DefaultsWhenOnlyDBURLSet(t *testing.T) {
 	t.Setenv("CONGORAG_DB_URL", "postgres://localhost/congorag")
 	for _, k := range []string{
-		"CONGORAG_LISTEN_ADDR", "CONGORAG_PORT",
+		"CONGORAG_LISTEN_ADDR",
 		"CONGORAG_DOCUMENTS_DIR", "CONGORAG_LOG_LEVEL", "CONGORAG_MASTER_KEY",
 		"CONGORAG_MASTER_KEY_PATH",
 	} {
@@ -35,7 +35,6 @@ func TestLoadConfig_DefaultsWhenOnlyDBURLSet(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "postgres://localhost/congorag", cfg.DatabaseURL)
 	assert.Equal(t, "127.0.0.1:3210", cfg.ListenAddr)
-	assert.Equal(t, "3210", cfg.Port)
 	assert.Equal(t, "./data/documents", cfg.DocumentsDir)
 	assert.Equal(t, "info", cfg.LogLevel)
 	assert.Empty(t, cfg.MasterKey)
@@ -64,7 +63,6 @@ func TestLoadConfig_DefaultListenAddrIsLoopback(t *testing.T) {
 func TestLoadConfig_EnvOverridesDefaults(t *testing.T) {
 	t.Setenv("CONGORAG_DB_URL", "postgres://db/x")
 	t.Setenv("CONGORAG_LISTEN_ADDR", "0.0.0.0:3210")
-	t.Setenv("CONGORAG_PORT", "8080")
 	t.Setenv("CONGORAG_DOCUMENTS_DIR", "/var/data")
 	t.Setenv("CONGORAG_LOG_LEVEL", "debug")
 	t.Setenv("CONGORAG_MASTER_KEY", "deadbeef")
@@ -74,11 +72,33 @@ func TestLoadConfig_EnvOverridesDefaults(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, "0.0.0.0:3210", cfg.ListenAddr)
-	assert.Equal(t, "8080", cfg.Port)
 	assert.Equal(t, "/var/data", cfg.DocumentsDir)
 	assert.Equal(t, "debug", cfg.LogLevel)
 	assert.Equal(t, "deadbeef", cfg.MasterKey)
 	assert.Equal(t, "/etc/congorag/master.key", cfg.MasterKeyPath)
+}
+
+// 【这一条钉的是部署事实，不是默认值】CONGORAG_PORT 不归这个进程读。
+//
+// 它在交付期 compose 里是**宿主机**那一侧的端口：
+// deployments/startup/docker-compose.yml 写的是
+// "127.0.0.1:${CONGORAG_PORT:-3210}:3210"——容器内永远监听 3210，
+// CONGORAG_PORT 只决定宿主机哪个端口转发进去。
+//
+// 如果哪天有人"顺手"把它接进 ListenAddr 让它看起来生效，容器里就会去
+// 监听那个宿主机端口，而 compose 仍然把 ${CONGORAG_PORT} 映到容器的
+// 3210：容器正常启动、日志照常打印 listening、健康检查也过得去，
+// 只有从外面连不进来。删掉这条断言的话，这个坏法没有任何一处会报错。
+func TestLoadConfig_PortEnvVarDoesNotChangeListenAddr(t *testing.T) {
+	t.Setenv("CONGORAG_DB_URL", "postgres://localhost/congorag")
+	t.Setenv("CONGORAG_LISTEN_ADDR", "")
+	t.Setenv("CONGORAG_PORT", "8080")
+
+	cfg, err := LoadConfig()
+
+	require.NoError(t, err)
+	assert.Equal(t, defaultListenAddr, cfg.ListenAddr,
+		"CONGORAG_PORT 是 compose 的宿主机端口，接进监听地址会让容器场景静默失联")
 }
 
 // 只有空格的环境变量等于没设。

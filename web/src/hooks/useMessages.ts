@@ -1,6 +1,6 @@
 import type { InfiniteData } from '@tanstack/react-query'
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { api } from '@congorag/api-client'
 import type { Schemas } from '@congorag/api-client'
@@ -144,6 +144,19 @@ export function useSendMessage(conversationId: string) {
   // 这一条流的 AbortController。「停止」按的就是它（issue #79）。
   const controllerRef = useRef<AbortController | null>(null)
 
+  // 【离开页面 / 换会话就把这条流掐掉（issue #102）】组件卸载之后 fetch 与
+  // ReadableStream 不会跟着结束：服务端会把这一轮跑完，**每一个 token 都在
+  // 花用户自己配的额度**，而那个位置上的「停止」按钮已经跟着页面消失了，
+  // 用户再也没有取消入口。
+  //
+  // 【依赖写 conversationId】换会话时在途的那条流属于上一个会话——它同样
+  // 该被中止，而且这时候界面上给出的已经是另一个会话了。
+  //
+  // 【为什么读 ref 而不是把 controller 当依赖】要掐的永远是"当下这条流"，
+  // 而 controller 每次 runTurn 都换新的；把它写进依赖会让这个 effect 每发
+  // 一轮消息就重跑一次，清理函数在重跑时把刚建好的流误杀。
+  useEffect(() => () => controllerRef.current?.abort(), [conversationId])
+
   const key = messagesKey(conversationId)
 
   const runTurn = useCallback(
@@ -188,9 +201,13 @@ export function useSendMessage(conversationId: string) {
       // 乐观插入：内容、顺序都取自用户刚敲的这一下，不等后端返回 uuid 和
       // sequence_no。随后的作废重取会用数据库里的那一行把它替换掉。
       //
-      // 【分页之后要落到最后一页，不是顶层数组】缓存形状是
-      // {pages, pageParams}，而"最后一条"是**所有已加载页**里的最后一条
-      // （不是第一页的最后一条，也不是 pages 数组的最后一项）。
+      // 【追加到 pages[0] 的尾部，不是 pages 数组的最后一项】页是按「越往后
+      // 越旧」加载的（见 lib/pagination.ts 的 flattenPagesChronologically），
+      // 所以 pages[0] 是**最新**的一页、pages[pages.length - 1] 反而是已加载
+      // 页里**最旧**的那一页。翻过历史（pages.length >= 2）之后往数组末尾
+      // 追加，倒着摊平出来这条提问会落在聊天记录的中间：屏幕上什么都没多
+      // 出来，而下面的回答照常一个字一个字地涨。这一页内部是升序的，所以
+      // 最新那条就该挂在这一页的尾部。
       if (options.optimisticUserMessage) {
         queryClient.setQueryData<InfiniteData<Page<Message>>>(key, (old) => {
           const optimistic: Message = {
@@ -208,8 +225,8 @@ export function useSendMessage(conversationId: string) {
             return { pages: [{ items: [optimistic] }], pageParams: [null] }
           }
           const pages = [...old.pages]
-          const last = pages[pages.length - 1]
-          pages[pages.length - 1] = { ...last, items: [...last.items, optimistic] }
+          const newest = pages[0]
+          pages[0] = { ...newest, items: [...newest.items, optimistic] }
           return { ...old, pages }
         })
       }

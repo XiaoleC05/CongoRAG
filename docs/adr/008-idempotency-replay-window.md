@@ -30,7 +30,7 @@ v3.0 实现幂等重放时**只定了会话消息那一侧的行为**（把那�
    （`run_events`，按 `event_id` 升序）补发一遍，帧类型与真实 `event_id`
    和原请求一致，补完即结束响应。
 3. 客户端凭首帧里的 `run_id` 可以在任何时候调
-   `GET /api/v1/agents/runs/{runId}/events?after_event_id=N` 重新订阅。
+   `GET /api/v1/runs/{runId}/events?after_event_id=N` 重新订阅。
 
 **为什么不是「只有 run_id」**：POST 的响应体是一条 SSE 流，只给一个 id 就无
 内容可发；而且会话那一侧已经确立了「命中即补发同一轮事件」的语义，两端不一致

@@ -101,7 +101,7 @@ type Repo interface {
 	AppendRunEvent(ctx context.Context, q platform.Querier, runID uuid.UUID, ev RunEvent) error
 
 	// RunEventsAfter 返回 event_id > afterEventID 的全部事件，按 event_id
-	// 升序——run 级断线重订阅（GET /agents/runs/{runId}/events）与幂等重放
+	// 升序——run 级断线重订阅（GET /api/v1/runs/{runId}/events）与幂等重放
 	// 都用它。afterEventID 传 0 表示"从头补发整个 run"。
 	RunEventsAfter(ctx context.Context, q platform.Querier, runID uuid.UUID, afterEventID int64) ([]RunEvent, error)
 
@@ -152,6 +152,29 @@ type Repo interface {
 	// （轨迹页要看、用量要统计）；膨胀的是快照这一列。issue #67 要的是
 	// "这个纯增长的表不要一直堆积"，置空正好解决它而不损失别的。
 	ClearTerminalRunCheckpoints(ctx context.Context, q platform.Querier, olderThan time.Time) (int64, error)
+
+	// ── 保留窗口剪枝（issue #98）──────────────────────────────
+	//
+	// 两张表此前都只增不减。两个方法的判据【不一样】，这不是疏漏——
+	// 理由写在 internal/agent/retention.go 的文件头，改之前先读那一段。
+	//
+	// PruneRunEvents 删掉 created_at 早于 before 的 run 事件行，返回删除行数。
+	// 与会话那一侧的 PruneConversationEvents 逐字同形（同一个窗口、同一个
+	// created_at 判据）：它的下界由幂等键的保留窗口定，不是由"run 跑完了没有"。
+	PruneRunEvents(ctx context.Context, q platform.Querier, before time.Time) (int64, error)
+
+	// PruneToolEffectLog 回收**终态 run** 的工具效果账本，返回删除行数。
+	//
+	// 【为什么判据是"run 已经终态"而不是"账本行有多旧"】账本是恢复路径
+	// 判断"这一步的工具是否已经执行过"的**唯一依据**（ADR-007 崩溃表第二行），
+	// 而恢复入口只接受 interrupted 的 run。终态在状态机里没有任何出边
+	// （model.go 的 runTransitions），所以一条终态 run 的账本再也不会被
+	// 任何读者读到；反过来，一条 interrupted 的 run 无论多旧都可能被恢复，
+	// **按时间剪它就是在制造静默的重复执行**。
+	//
+	// olderThan 是叠加在终态之上的第二道闸：run 进入终态之后还要再等这么久
+	// 才回收，让刚结束的运行留一份完整的现场供排查。
+	PruneToolEffectLog(ctx context.Context, q platform.Querier, olderThan time.Time) (int64, error)
 
 	// ListToolCatalog 读 tools 表的种子数据,给创建 Agent 的表单渲染
 	// 勾选列表用——它是纯只读目录查询,和 Registry（真正能被调用的工具

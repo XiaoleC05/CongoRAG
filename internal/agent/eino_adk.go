@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"unicode/utf8"
 
 	einochatmodel "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
@@ -116,10 +117,86 @@ type toolError struct {
 	Error string `json:"error"`
 }
 
+// maxToolResultBytes 是单次工具结果交给模型前的字节上限。
+//
+// 【为什么这条路径上必须有它】普通聊天那条走 ctxmgr.Build，系统提示、历史、
+// chunk 都在那里按 token 裁；Agent 这条是一个由 Eino 驱动的 ReAct 循环，
+// 没有一个静态的"组装点"可以交给 ctxmgr，工具结果原样进历史。而结果可以
+// 很大：conversation_search 在 500 条消息里返回**每条消息的完整正文**
+// （internal/conversation/usecase.go 的 searchMessagesLimit），几百 KB
+// 塞给模型必然超出上下文窗口。
+//
+// 更麻烦的是报错的方向：上游返回的错误会经 agentEventError 落到
+// upstream_llm_error，而前端按这个 type 提示用户"检查 API Key 和配额"
+// ——排查方向从第一句话起就是错的。这正是 issue #34 修掉的那类误报，只是
+// 换到了 Agent 这条路径上（issue #109）。所以在工具边界上主动截断。
+//
+// 【16 KiB 是怎么定的】一次检索类工具结果约合 2–4k token，对任何还有余量
+// 的模型都塞得下；再大就该让模型换更精确的查询，而不是把整个历史喂给它。
+// 20 轮（maxIterations）全打满也只有 320 KiB 的量级，仍在常见窗口之内。
+const maxToolResultBytes = 16 * 1024
+
+// truncatedToolResult 是超限的工具结果交回模型时的形状。
+//
+// 【为什么包一层对象，而不是把 JSON 剪短】tool_result 那一列是 jsonb
+// （migrations/0005_agents.up.sql:78），写一份被拦腰截断的文本进去会让整行
+// UPDATE 失败，而那个失败只记一行日志——轨迹静默缺一行。包一层既保证
+// 结果是合法 JSON，又让模型从 truncated/notice 两个字段**明确知道**
+// "后面还有内容被拿掉了"（issue #109 要的正是"不要静默丢弃"）。
+type truncatedToolResult struct {
+	Truncated bool   `json:"truncated"`
+	Notice    string `json:"notice"`
+	// Preview 是被保留下来的那一段原文（它本身是这段结果的 JSON 文本，
+	// 在这里当字符串放，不要求它自己可解析——刀口落在哪就是哪）。
+	Preview string `json:"preview"`
+}
+
+// capToolResult 把一份工具结果截到 maxToolResultBytes 以内——返回值的长度
+// 是**硬上限**，不是"接近"。
+//
+// 【为什么是循环而不是切一刀】保留下来的那一段是原文（JSON 文本），塞进
+// truncatedToolResult.Preview 这个字符串字段时每个引号都要转义成 \"，
+// 控制字符更夸张——切 16 KiB 原文有可能编出 96 KiB 的 JSON。所以要一轮轮
+// 缩，直到序列化结果本身也在上限之内。每次至少缩 1 字节，必然终止。
+//
+// 【为什么按 rune 回退】直接切字节会把一个多字节字符劈成两半，
+// json.Marshal 之后模型读到的是 U+FFFD 乱码，还看不出那是截断造成的。
+func capToolResult(result []byte) []byte {
+	if len(result) <= maxToolResultBytes {
+		return result
+	}
+
+	head := result[:maxToolResultBytes]
+	for len(head) > 0 {
+		if !utf8.Valid(head) {
+			head = head[:len(head)-1]
+			continue
+		}
+		capped, err := json.Marshal(truncatedToolResult{
+			Truncated: true,
+			Notice: fmt.Sprintf(
+				"结果被截断：只保留了前 %d 字节（原始 %d 字节）。请换更精确的参数重试，或者分几次取。",
+				len(head), len(result)),
+			Preview: string(head),
+		})
+		if err == nil && len(capped) <= maxToolResultBytes {
+			return capped
+		}
+		head = head[:len(head)-len(head)/8-1]
+	}
+
+	// 原文全是控制字符之类的极端情况——宁可只交回一句通知，也不返回一份
+	// 超限的结果。
+	return []byte(`{"truncated":true,"notice":"结果过长，已截断。请换更精确的参数重试。"}`)
+}
+
 func (a *toolAdapter) InvokableRun(ctx context.Context, argsJSON string, opts ...tool.Option) (string, error) {
 	result, err := a.t.Invoke(ctx, json.RawMessage(argsJSON))
 	if err == nil {
-		return string(result), nil
+		// 【截断必须发生在这里】这是工具结果回到 Eino 消息历史的唯一入口，
+		// 也就是模型下一次生成会读到的那个字符串。放在别处（比如消费事件
+		// 的地方）只能截到落库的那一份，模型仍然会收到全量。
+		return string(capToolResult(result)), nil
 	}
 
 	// 参数级的失败（除零、非法 UUID、JSON 解析不了）当成一次普通的 tool
@@ -220,7 +297,12 @@ func runAgent(
 						Arguments: string(turn.ToolArgs),
 					},
 				}}),
-				schema.ToolMessage(string(turn.ToolResult), callID),
+				// 【这里也过一遍上限】新写进去的结果在工具边界上已经截过了
+				// （capToolResult 在 InvokableRun 里），但库里可能还躺着加
+				// 这个上限之前存下来的超大行——恢复一条老 run 时它们会原样
+				// 进历史，把预算一次性撑爆。这一层是幂等的：已经截过的值
+				// 远低于上限，原样返回。
+				schema.ToolMessage(string(capToolResult(turn.ToolResult)), callID),
 			)
 		}
 		iter = runner.Run(ctx, msgs)

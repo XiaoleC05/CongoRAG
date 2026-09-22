@@ -171,6 +171,62 @@ func nullableCursor(next string) *string {
 	return &next
 }
 
+// maxJSONBodyBytes 是 JSON 端点允许的最大请求体字节数。
+//
+// 【为什么需要它】ShouldBindJSON 内部是 json.Decoder，读到 EOF 才停。没有
+// 上限时一个几百 MB 的 body（本机脚本跑飞、前端 bug）会被整个解进内存。
+// 上传那条路早就有上限了（Deps.MaxUploadBytes，见 UploadDocument 的注释），
+// 其余端点一直没有——config.go 里"没有上限时几 GB 的请求体在任何拒绝点存在
+// 之前就已经被吃完"那条论证对它们同样成立。
+//
+// 【为什么是常量，不是 platform.Config 的一项】上传上限来自部署配置，因为它
+// 决定"用户能把多大的文件交进来"，是对外承诺；这个值只是"一条 HTTP 请求该
+// 有多小"的防御线。1 MiB 对任何 JSON 端点都远远够用（最长的字段是聊天正文，
+// 前端按字符数计），没有按部署调整的理由——写成常量也就只有一处可看。
+//
+// 【SSE 的 POST 端点也走这条路】SendMessage / StartAgentRun 的响应是流，
+// 请求体却是普通 JSON：限的是**读**，不影响写，1 MiB 也不是流式响应的限制。
+//
+// 【为什么 1 MiB 而不是更小】不能小到把合法请求挡在门外。这个值是"整条 body
+// 的上限"而不是"某个字段的上限"，所以判断依据是最宽的那个端点（agents 的
+// instruction）——1 MiB 大约是 30 万汉字，任何手写配置都到不了。
+const maxJSONBodyBytes int64 = 1 << 20
+
+// bindJSON 把请求体绑进 dst；失败时写好 400 响应并返回 false。
+//
+// 【为什么收敛成一个方法】这段样板原来散在十个 handler 里，承载的是一条策略：
+// "绑定失败 → 400 + 固定文案 +（对 SSE 端点）必须在 newSSESink 之前"。
+// 散在十处时，改文案或加请求体上限漏掉一处不会有任何编译错误或测试失败。
+// 现在两点都只加在这一处，十个调用点自动一致。
+//
+// 【返回值的约定】false 表示响应已经写过，调用方直接 return——和
+// parseListParams 同一个形状。SendMessage / StartAgentRun 要特别注意：
+// 这次调用必须在 newSSESink 之前，sink 一构造出来响应就切成 200 + SSE 了，
+// 那时再想回一个 400 Problem 已经来不及。
+func (s *Server) bindJSON(c *gin.Context, dst any) bool {
+	// 【MaxBytesReader 必须在绑定之前包上】ShouldBindJSON 会一路读到 EOF；
+	// 等它返回再判长度，超限的 body 已经整个进过内存了——这正是
+	// UploadDocument 里"上限必须在 FormFile 之前设"的同一件事。
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxJSONBodyBytes)
+
+	if err := c.ShouldBindJSON(dst); err != nil {
+		// 【超限和"不是合法 JSON"要分开报】MaxBytesReader 超限返回的是
+		// *http.MaxBytesError，文案（"http: request body too large"）是标准库
+		// 内部的说法，对客户端没有意义——换成一句带上限值的，和上传那条路
+		// 一致。gin 的 json 绑定把 Decoder 的错误原样返回、不包一层，
+		// 所以 errors.As 能直接拿到它。
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			s.fail(c, fmt.Errorf("request body exceeds the %d byte limit: %w",
+				tooLarge.Limit, platform.ErrInvalid))
+			return false
+		}
+		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+		return false
+	}
+	return true
+}
+
 func (s *Server) Readyz(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), readinessProbeTimeout)
 	defer cancel()
@@ -205,8 +261,7 @@ func (s *Server) CreateKnowledgeBase(c *gin.Context) {
 
 	// 解析失败说明请求体不是合法 JSON，或者结构上对不上契约。
 	// 这是参数问题，包成 ErrInvalid 让 fail 返回 400 而不是 500。
-	if err := c.ShouldBindJSON(&req); err != nil {
-		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+	if !s.bindJSON(c, &req) {
 		return
 	}
 
@@ -231,8 +286,7 @@ func (s *Server) GetKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 
 func (s *Server) RenameKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 	var req RenameKnowledgeBaseRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+	if !s.bindJSON(c, &req) {
 		return
 	}
 
@@ -492,8 +546,7 @@ func (s *Server) ListProviders(c *gin.Context) {
 
 func (s *Server) CreateProvider(c *gin.Context) {
 	var req CreateProviderRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+	if !s.bindJSON(c, &req) {
 		return
 	}
 
@@ -572,14 +625,18 @@ func toAPIMessageList(msgs []*conversation.Message) []Message {
 	return out
 }
 
+// CreateConversation 是唯一一个"看起来空"的 body 也能通过的端点：
+// CreateConversationRequest 的字段都不是 required（契约里 title /
+// knowledgeBaseId 都可选），所以空的 JSON 对象 `{}` 能绑成功。
+// 前端 useCreateConversation 发的正是这种 body。
+//
+// 【这条为什么写在这里，不写进 bindJSON】它是这个请求类型自己的性质，
+// 不是绑定策略的一部分——bindJSON 对十个端点做的事完全一样（body 完全为空、
+// Content-Length: 0 时 json.Decode 返回 io.EOF，一律 400）。写进 bindJSON
+// 的注释会变成隐藏行为：让人以为别处也允许空 body。
 func (s *Server) CreateConversation(c *gin.Context) {
 	var req CreateConversationRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		// 【为什么允许空 body】CreateConversationRequest 的字段都不是
-		// required（契约里 title/knowledgeBaseId 都可选）——一个空的
-		// JSON 对象 "{}" 应该能通过绑定。ShouldBindJSON 在 body 完全
-		// 为空（Content-Length: 0）时才会报错，那种情况才拒绝。
-		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+	if !s.bindJSON(c, &req) {
 		return
 	}
 
@@ -656,8 +713,7 @@ func (s *Server) ListConversationMessages(c *gin.Context, id openapi_types.UUID,
 // 两头都够不着。handler 只负责把头读出来并做长度校验。
 func (s *Server) SendMessage(c *gin.Context, id openapi_types.UUID, params SendMessageParams) {
 	var req SendMessageRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+	if !s.bindJSON(c, &req) {
 		return
 	}
 
@@ -762,8 +818,7 @@ func (s *Server) SubscribeConversationEvents(c *gin.Context, id openapi_types.UU
 // 之间的转换（和 toAPIModelSummary 是同一个方向上的另一件事）。
 func (s *Server) UpdateModel(c *gin.Context, id openapi_types.UUID) {
 	var req UpdateModelRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+	if !s.bindJSON(c, &req) {
 		return
 	}
 
@@ -928,8 +983,7 @@ func (s *Server) ListAgents(c *gin.Context) {
 
 func (s *Server) CreateAgent(c *gin.Context) {
 	var req CreateAgentRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+	if !s.bindJSON(c, &req) {
 		return
 	}
 
@@ -969,8 +1023,7 @@ func (s *Server) GetAgent(c *gin.Context, id openapi_types.UUID) {
 // 同一份——见 agent.Usecase.validateAgentFields 的注释。
 func (s *Server) UpdateAgent(c *gin.Context, id openapi_types.UUID) {
 	var req UpdateAgentRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+	if !s.bindJSON(c, &req) {
 		return
 	}
 
@@ -1005,8 +1058,7 @@ func (s *Server) ListAgentRuns(c *gin.Context, id openapi_types.UUID, params Lis
 // 错误都通过 error 事件传给客户端,不再改变 HTTP 状态码。
 func (s *Server) StartAgentRun(c *gin.Context, id openapi_types.UUID, params StartAgentRunParams) {
 	var req StartAgentRunRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+	if !s.bindJSON(c, &req) {
 		return
 	}
 
@@ -1119,8 +1171,7 @@ func (s *Server) ResumeAgentRun(c *gin.Context, runId openapi_types.UUID) {
 // 一个空结果，二是避免对着一堆别的库的向量做一次没有意义的检索。
 func (s *Server) SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 	var req KnowledgeSearchRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+	if !s.bindJSON(c, &req) {
 		return
 	}
 

@@ -14,7 +14,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { crc32 } from 'node:zlib'
 
@@ -124,7 +124,21 @@ export function pgSqlOn(container, database, query) {
 }
 
 /**
- * 从一个容器上挂到 <destination> 的卷里取出卷名。
+ * 把 `docker inspect` 模板的输出解析成卷名。
+ *
+ * 【为什么单独一个函数】"空"在这条路径上有三种来源：容器不在（`tryRun` 给的是
+ * null）、destination 没有匹配的挂载（模板输出一串空行）、以及真的取到了名字。
+ * 三者必须归成同一个结论（null / 名字），而这段判断是本模块里**唯一能脱离
+ * docker 被测的部分**——volumeNameOf 剩下的工作只是把命令输出喂进来。
+ */
+export function parseVolumeName(raw) {
+  if (raw === null || raw === undefined) return null
+  const name = String(raw).trim()
+  return name ? name : null
+}
+
+/**
+ * 从一个容器上挂到 <destination> 的卷里取出卷名。读不到返回 null。
  *
  * 【为什么不按 `docker volume ls` 猜名字】卷名默认是
  * `<compose 项目名>_<卷名>`，而项目名会随 `name:` 字段、目录名、
@@ -132,11 +146,12 @@ export function pgSqlOn(container, database, query) {
  * 这些规则影响的做法。
  */
 export function volumeNameOf(container, destination = '/data') {
-  const name = tryRun('docker', [
-    'inspect', container,
-    '-f', `{{range .Mounts}}{{if eq .Destination "${destination}"}}{{.Name}}{{end}}{{end}}`,
-  ])
-  return name && name.trim() ? name.trim() : null
+  return parseVolumeName(
+    tryRun('docker', [
+      'inspect', container,
+      '-f', `{{range .Mounts}}{{if eq .Destination "${destination}"}}{{.Name}}{{end}}{{end}}`,
+    ]),
+  )
 }
 
 /** 容器当前跑的是哪个镜像 tag（如 congorag-api:3.0）。容器不在则 null。 */
@@ -210,6 +225,51 @@ export function ensureDir(path) {
 /** 备份目录的默认根。相对 --dir，这样"在启动包目录里跑"和"在仓库里跑"都自然。 */
 export function defaultBackupRoot(dir) {
   return resolve(dir, 'backups')
+}
+
+/**
+ * 在 backupRoot 下挑最新的一份备份目录。
+ *
+ * 【按清单里的 createdAt 排，不按目录名】目录名是 `--backup-dir` 给什么就是
+ * 什么，用户手工挪一下、解压一次就不可信了；清单里的时间戳是升级脚本自己
+ * 写下来的，描述的是"这份备份是什么时候做的"，那才是"新"的定义。
+ *
+ * 【为什么把读不出清单的收集起来、而不是直接跳过】回滚是最后一次机会。把一份
+ * "看起来是备份、但清单读不出来"的目录悄悄跳过、退回到更旧的一份，用户以为在
+ * 还原 A、实际还原了 B——那比停下来把话说清楚糟得多。这里只负责收集，怎么处理
+ * 由 rollback.mjs 定（它才是面向用户的那一端）。
+ *
+ * 【没有 manifest.json 的不算"损坏"】那种目录根本不是备份（可能是用户自己放的
+ * 东西），损坏指的是"看起来是备份、但读不出来"。
+ *
+ * @returns {{dir: string|null, corrupt: {path: string, reason: string}[]}}
+ */
+export function pickNewestBackup(root) {
+  if (!existsSync(root)) return { dir: null, corrupt: [] }
+
+  const corrupt = []
+  const dated = []
+  for (const name of readdirSync(root)) {
+    const entry = join(root, name)
+    const manifestPath = join(entry, 'manifest.json')
+    if (!existsSync(manifestPath)) continue
+    try {
+      const createdAt = JSON.parse(readFileSync(manifestPath, 'utf8')).createdAt
+      // 【缺 createdAt 也要当成损坏】排序靠它，undefined 会让比较器抛
+      // "Cannot read properties of undefined"——那正是这个函数要避免的那种
+      // 莫名其妙的崩法，换成一条能读懂的理由。
+      if (typeof createdAt !== 'string' || !createdAt) {
+        corrupt.push({ path: entry, reason: '清单里没有 createdAt' })
+        continue
+      }
+      dated.push({ path: entry, createdAt })
+    } catch (err) {
+      corrupt.push({ path: entry, reason: String(err.message ?? err) })
+    }
+  }
+
+  dated.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return { dir: dated.length ? dated[0].path : null, corrupt }
 }
 
 // ── zip ─────────────────────────────────────────────────────────

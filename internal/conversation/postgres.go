@@ -313,10 +313,74 @@ func (r *PgRepo) LatestSequenceNo(ctx context.Context, q platform.Querier, convI
 	return *max, nil
 }
 
-func (r *PgRepo) ListConversationIDs(ctx context.Context, q platform.Querier) ([]uuid.UUID, error) {
-	rows, err := q.Query(ctx, `SELECT id FROM conversations`)
+// SummaryMaintenanceCandidates 实现「哪些会话的摘要该更新了 + 更新它需要的
+// 三个输入」，一条 JOIN 替代原来的 2N 次往返（issue #118）。
+//
+// 【判据写在 WHERE 里，不要拿回 Go 里筛】"latest - covered_until >= 门槛"
+// 就是筛选本身：放在 SQL 里，返回的行数只和真正要维护的会话数有关；拿回
+// Go 里筛，虽然省掉了往返，却仍然要把每个会话的两行都传一遍。
+//
+// 【内连接而不是 LEFT JOIN messages】没有已定稿消息的会话（刚建的、或者
+// 只有一条 streaming 占位行的）在聚合子查询里根本没有行，内连接自然把它们
+// 排除——这正是 LatestSequenceNo 返回 0、门槛判不过的效果，不需要额外的
+// COALESCE 兜底。
+//
+// 【ORDER BY updated_at DESC】整表扫描被 job 超时截断时（platform 的
+// periodicTaskTimeout 是 30 分钟），排在前面的是最近活跃的会话——用户此刻
+// 最可能在等的就是它们。顺序本身不影响正确性，只影响被截断时的取舍。
+func (r *PgRepo) SummaryMaintenanceCandidates(ctx context.Context, q platform.Querier, triggerMessages int64) ([]*SummaryCandidate, error) {
+	rows, err := q.Query(ctx,
+		`SELECT c.id,
+		        m.latest,
+		        COALESCE(s.covered_until_sequence_no, 0),
+		        COALESCE(s.summary, '')
+		 FROM conversations c
+		 JOIN (
+		     SELECT conversation_id, MAX(sequence_no) AS latest
+		     FROM messages
+		     WHERE status = 'completed'
+		     GROUP BY conversation_id
+		 ) m ON m.conversation_id = c.id
+		 LEFT JOIN conversation_summaries s ON s.conversation_id = c.id
+		 WHERE m.latest - COALESCE(s.covered_until_sequence_no, 0) >= $1
+		 ORDER BY c.updated_at DESC`,
+		triggerMessages)
 	if err != nil {
-		return nil, fmt.Errorf("list conversation ids: %w", platform.WrapPgErr(err))
+		return nil, fmt.Errorf("list summary maintenance candidates: %w", platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	var out []*SummaryCandidate
+	for rows.Next() {
+		c := &SummaryCandidate{}
+		if err := rows.Scan(&c.ConversationID, &c.LatestSequenceNo, &c.CoveredUntil, &c.PriorSummary); err != nil {
+			return nil, fmt.Errorf("scan summary maintenance candidate: %w", err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate summary maintenance candidates: %w", err)
+	}
+	return out, nil
+}
+
+// PreferenceExtractionCandidates 和 SummaryMaintenanceCandidates 同一个形状，
+// 只是门槛的判据不同（累计到第几条消息，而不是"自上次摘要之后新增了几条"）。
+func (r *PgRepo) PreferenceExtractionCandidates(ctx context.Context, q platform.Querier, minSequenceNo int64) ([]uuid.UUID, error) {
+	rows, err := q.Query(ctx,
+		`SELECT c.id
+		 FROM conversations c
+		 JOIN (
+		     SELECT conversation_id, MAX(sequence_no) AS latest
+		     FROM messages
+		     WHERE status = 'completed'
+		     GROUP BY conversation_id
+		 ) m ON m.conversation_id = c.id
+		 WHERE m.latest >= $1
+		 ORDER BY c.updated_at DESC`,
+		minSequenceNo)
+	if err != nil {
+		return nil, fmt.Errorf("list preference extraction candidates: %w", platform.WrapPgErr(err))
 	}
 	defer rows.Close()
 
@@ -324,14 +388,32 @@ func (r *PgRepo) ListConversationIDs(ctx context.Context, q platform.Querier) ([
 	for rows.Next() {
 		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("scan conversation id: %w", err)
+			return nil, fmt.Errorf("scan preference extraction candidate: %w", err)
 		}
 		out = append(out, id)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate conversation ids: %w", err)
+		return nil, fmt.Errorf("iterate preference extraction candidates: %w", err)
 	}
 	return out, nil
+}
+
+// PruneConversationEvents 删掉保留窗口之外的事件行（issue #98）。
+//
+// 【为什么是一整条 DELETE，不分批】保留窗口由 retention.go 的 eventsRetention
+// 定义，而它在稳态下只让这张表装下"最近 24 小时、且已经攒过批的事件"——
+// 本地单机一天的量。分批删除要自己维护游标、还要处理"删到一半失败"，
+// 换来的是省下一次本来就很快的删除。
+//
+// 【没有 created_at 索引，这是一次顺序扫描】主键是 (conversation_id,
+// event_id)，服务的是按会话续传（唯一的热路径）。为剪枝加的索引要一条新迁移，
+// 不在本包范围内；而这张表被窗口限制在有限规模，删一次是毫秒级。
+func (r *PgRepo) PruneConversationEvents(ctx context.Context, q platform.Querier, before time.Time) (int64, error) {
+	tag, err := q.Exec(ctx, `DELETE FROM conversation_events WHERE created_at < $1`, before)
+	if err != nil {
+		return 0, fmt.Errorf("prune conversation events before %s: %w", before, platform.WrapPgErr(err))
+	}
+	return tag.RowsAffected(), nil
 }
 
 func scanMessages(rows pgx.Rows) ([]*Message, error) {

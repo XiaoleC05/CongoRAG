@@ -269,4 +269,33 @@ describe('useStartAgentRun', () => {
     // 客户端断开时后端写的正是 interrupted（不是 failed），徽章照实显示。
     await waitFor(() => expect(result.current.runner.status).toBe('interrupted'))
   })
+
+  // 回归（issue #102）：组件卸载（离开页面、切走）之后事件流还在被消费，
+  // 而「取消」按钮所在的页面已经没了——用户没有任何入口叫停它，只能看着
+  // 它烧额度跑完。
+  it('卸载时中止在途的运行流', async () => {
+    getMock.mockImplementation(() =>
+      Promise.resolve({ data: { items: [], nextCursor: null }, error: undefined }),
+    )
+    let abort: AbortSignal | undefined
+    vi.mocked(streamAgentRun).mockImplementation((_agentId, _input, callbacks, signal) => {
+      abort = signal
+      callbacks.onEvent({ type: 'run_started', id: 1, data: { runId: RUN_ID } })
+      // 流一直开着：卸载之前这次运行还在跑。
+      return new Promise<void>(() => {})
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result, unmount } = renderAgent(queryClient)
+    await waitFor(() => expect(result.current.runs.isSuccess).toBe(true))
+
+    act(() => {
+      void result.current.runner.start('算一下 1/0')
+    })
+    await waitFor(() => expect(result.current.runner.runId).toBe(RUN_ID))
+    expect(abort?.aborted).toBe(false)
+
+    unmount()
+    expect(abort?.aborted).toBe(true)
+  })
 })

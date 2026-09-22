@@ -4,6 +4,8 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -26,6 +28,34 @@ func fakeWebFS() fs.FS {
 		"web/assets/geist-latin-wght-normal-BgDaEnEv.woff2": {Data: []byte("font-bytes")},
 		"web/favicon.svg":                                   {Data: []byte("<svg/>")},
 	}
+}
+
+// realWebTree 造一棵**真实磁盘上**的目录树，并返回根 FS 与哨兵内容：
+//
+//	<root>/sentinel.txt                        ← 被服务根【之外】的哨兵
+//	<root>/web/index.html
+//	<root>/web/assets/index-BjyFRYsa.js
+//
+// 【为什么不能用 fstest.MapFS 测穿越】MapFS 里根本不存在哨兵文件，
+// "它没出现在响应里"因此恒真——断言的否定面没有可失败的对象，
+// 把实现换成"直接读仓库根"它照样绿。os.DirFS 背后是真实磁盘，哨兵真的
+// 在那儿，绕过路径校验就会把它发出去。
+//
+// 【为什么根目录是 t.TempDir()，不是仓库根】同一件事不能依赖工作目录：
+// 测试从哪个目录跑、跑在谁的机器上，都不该改变结果。
+func realWebTree(t *testing.T) (fs.FS, string) {
+	t.Helper()
+	root := t.TempDir()
+	const sentinel = "SENTINEL-MUST-NOT-BE-SERVED"
+
+	require.NoError(t, os.WriteFile(filepath.Join(root, "sentinel.txt"), []byte(sentinel), 0o600))
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "web", "assets"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "web", "index.html"),
+		[]byte("<!doctype html><title>ConGoRAG</title>"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "web", "assets", "index-BjyFRYsa.js"),
+		[]byte("console.log(1)"), 0o600))
+
+	return os.DirFS(root), sentinel
 }
 
 // doWithHeader 返回整个 recorder。
@@ -178,14 +208,47 @@ func TestSPA_MissingBuildGivesInstructionsNotBlankPage(t *testing.T) {
 	assert.Contains(t, body, "make build-web", "要告诉人怎么修，而不是给一个白屏")
 }
 
+// 路径里带 ".." 的请求读不到被服务根之外的文件。
+//
+// 【这条以前是自证的】原版用的是 fakeWebFS（只含 web/ 几个文件的 MapFS），
+// 断言 "响应体里没有 go.mod 的内容"——而那个 FS 里根本没有 go.mod，
+// 背后也没有真实磁盘。把 fs.Sub 换成对仓库根的原始读取，它照样绿。
+//
+// 【为什么现在不是】哨兵真的写在磁盘上（realWebTree），而且实测过：把被
+// 服务根从 web/ 放宽成它的父目录（也就是"fs.Sub(webFS,"web") 换成读仓库根"
+// 那个回归），同一个请求会把 sentinel.txt 的内容发出来。MapFS 里没有这个
+// 对象，那种 fixture 看不到这件事。
+//
+// 【它钉住的是哪一道】实际生效的是 MountSPA 里那次 fs.Stat：路径含 ".." 时
+// fs.Sub 的路径校验让 Stat 返回 ErrInvalid，于是落回 SPA 兜底页。
+// http.FileServer 自己也会 clean 路径（"/../sentinel.txt" 规整成
+// "/sentinel.txt"），所以那几个形态本来就安全——留着是为了防止有人把守卫删掉。
 func TestSPA_PathTraversalIsRefused(t *testing.T) {
-	r := newSPARouter(t, fakeWebFS())
+	webFS, sentinel := realWebTree(t)
+	r := newSPARouter(t, webFS)
 
-	// fs.Sub 会拒绝含 ".." 的路径，落回 index.html
-	for _, p := range []string{"/../go.mod", "/../../etc/passwd"} {
+	// 【对照组：同一棵真实树里，被服务根【之内】的文件要照常发出来】
+	// 没有这一条，"哨兵没出现"也可能是因为静态文件这条路整个坏了——
+	// 那样它也必然不出现，断言同样是自证的。
+	code, body := do(r, http.MethodGet, "/assets/index-BjyFRYsa.js", "")
+	require.Equal(t, http.StatusOK, code, body)
+	require.Contains(t, body, "console.log(1)", "被服务根之内的文件必须发得出来")
+
+	for _, p := range []string{
+		"/../sentinel.txt",
+		"/../../sentinel.txt",
+		"/assets/../../sentinel.txt",
+		"/..%2fsentinel.txt",
+		// 反斜杠：fs.ValidPath 只按 "/" 切分，所以这两个路径能过路径校验，
+		// 落到 fs.Stat 那一层才被拒——它们是唯一可能绕过"按 / 切分"这类
+		// 校验的输入形态，值得单独留着（Windows 上 filepath.Join 会把 \ 当
+		// 分隔符，实测没有逃出去）。
+		`/..\sentinel.txt`,
+		`/assets/..\..\sentinel.txt`,
+	} {
 		code, body := do(r, http.MethodGet, p, "")
-		assert.NotContains(t, body, "module github.com", p)
-		assert.Equal(t, http.StatusOK, code, p)
+		assert.NotContains(t, body, sentinel, "%s 读到了被服务根之外的文件", p)
+		assert.Equal(t, http.StatusOK, code, "%s 应该落到 SPA 兜底页", p)
 	}
 }
 

@@ -269,9 +269,44 @@ func Run(webFS embed.FS) error {
 	// http.Server 再 ListenAndServe，那个 server 既没返回也没存字段，
 	// 外部拿不到 → 无法调 Shutdown。所以这里自己造 server。
 	//
-	// 【绝对不要设 ReadTimeout / WriteTimeout】WriteTimeout 覆盖到整个
-	// 响应写完为止，而 SSE 是长响应——设了等于给每次对话加一个硬上限。
-	// ReadHeaderTimeout 只管请求头，对 SSE 安全。
+	// 【ReadTimeout 能设，WriteTimeout 绝对不能设】两者不是一类东西，区别在
+	// 于超时盯的是请求的哪一侧，而不在长短：
+	//
+	//   · WriteTimeout 的 deadline 覆盖到**整个响应写完**为止。SSE 是长响应
+	//     ——一次 Agent run 可能连着推几分钟且没有终点——设了它等于给每次对话
+	//     加一个硬上限，到点连接就被掐断。所以它必须保持不设。
+	//   · ReadTimeout 只覆盖**读请求**（请求头 + body）。它到期时 handler 早已
+	//     跑起来，而 SSE 的长全部长在响应方向，请求侧只有「打开连接、发一个
+	//     JSON」这一下。两者因此不冲突。
+	//
+	// 【它不会误伤 SSE 的排空】本仓的排空建立在
+	// sseSink.Done() == c.Request.Context().Done() 上（见 drain 的注释），所以
+	// 「读 deadline 到期会不会顺手取消请求 ctx」是决定性的：不会。net/http 那个
+	// 用来探测客户端断开的后台读，启动之前会自己清掉读 deadline（server.go 的
+	// startBackgroundRead 里那句 SetReadDeadline(time.Time{})），它只在真的读到
+	// EOF 或出错时才取消 ctx。于是读超时是一次「这个请求读太久了」的判定，
+	// 而不是一次「客户端断了」的误判。
+	//
+	// 上面这段是刻意写细的：本注释的上一版把两者一概而论地写成「绝对不要设」，
+	// 而那个理由只对 WriteTimeout 成立——下一个人照着它删掉 ReadTimeout 是最
+	// 可能发生的事（issue #126）。
+
+	// apiReadTimeout 是单个请求（请求头 + body）的读取上限。
+	//
+	// 【5 分钟是跟着上传上限算出来的，不是随手拍的】最慢的合法请求是把一份
+	// 32 MiB 的文档传上来（CONGORAG_MAX_UPLOAD_BYTES 的默认值）：5 分钟意味着
+	// 链路慢到 ~110 KB/s 也传得完，比这再慢的多半不是用户而是一个卡住的连接。
+	// 谁要调小它请先把这个算式重算一遍——别照着 ReadHeaderTimeout 的 10 秒降。
+	//
+	// 【一个良性副作用，写在这里免得下次有人"发现"它】IdleTimeout 没有设，
+	// net/http 的空闲超时于是回落到 ReadTimeout：两个请求之间空置 5 分钟以上的
+	// keep-alive 连接从此会自己退场（以前是永久挂着）。浏览器和 fetch 都会透明
+	// 地重连，而 SSE 那条流跑在 handler 里，不受这一条影响。
+	const apiReadTimeout = 5 * time.Minute
+
+	// 【ReadHeaderTimeout 仍然要单独设】它只管请求头那一小段，比整个请求的
+	// ReadTimeout 短得多（10 秒 vs 5 分钟，net/http 取两者中更早到期的那个，
+	// 所以慢头请求在 10 秒就出局，不必等满 5 分钟）。
 	//
 	// 【BaseContext 是排空的关键】它让每个请求的 ctx 都挂在 rootCtx 上。
 	// 关停时 cancelRoot() 会让所有在途 handler 的 ctx.Done() 立刻触发，
@@ -284,6 +319,7 @@ func Run(webFS embed.FS) error {
 		Addr:              cfg.ListenAddr,
 		Handler:           r,
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       apiReadTimeout,
 		BaseContext:       func(net.Listener) context.Context { return rootCtx },
 	}
 

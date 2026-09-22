@@ -41,11 +41,31 @@ func (f *fakeRepo) Insert(ctx context.Context, q platform.Querier, kb *KB) error
 	return nil
 }
 
+// List 按 created_at 倒序返回——复刻真实现（postgres.go 的
+// `ORDER BY created_at DESC`，契约 contracts/openapi.yaml 承诺的"按创建
+// 时间倒序"）。
+//
+// 【为什么假实现也必须排（issue #103）】它以前直接 `return f.kbs, nil`，
+// 而 f.kbs 是 Insert 按插入顺序 append 的，即**升序——与真实现恰好相反**。
+// 那不是"省事的假实现"，是"给出相反答案的假实现"：任何依赖列表顺序的断言
+// 在它身上都会得出与真库相反的结论，真实现里 ORDER BY 写错/写反时全套单测
+// 仍然全绿。
+//
+// 【返回排序后的副本，不原地排 f.kbs】原地排会顺带改掉 Insert 的插入顺序，
+// 让"插入顺序 ≠ 返回顺序"这件事再也测不出来——而这条测试的价值恰恰在于
+// 先插旧、后插新。
 func (f *fakeRepo) List(ctx context.Context, q platform.Querier) ([]*KB, error) {
 	if f.failOn == "List" {
 		return nil, f.err
 	}
-	return f.kbs, nil
+	out := make([]*KB, len(f.kbs))
+	copy(out, f.kbs)
+	// 稳定排序：created_at 相同时保持插入顺序，不引入假实现自己的 tie-break
+	// 语义（真实现也没定义同刻并列的次序）。
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].CreatedAt.After(out[j].CreatedAt)
+	})
+	return out, nil
 }
 
 func (f *fakeRepo) ByID(ctx context.Context, q platform.Querier, id uuid.UUID) (*KB, error) {
@@ -430,23 +450,60 @@ type fakeChunkIndexer struct {
 	indexed map[uuid.UUID][]domain.Chunk
 	fail    bool
 
-	// cancelJob 在 IndexDocument 被调用的那一刻执行一次，用来模拟
+	// cancelJob 在 EmbedChunks 被调用的那一刻执行一次，用来模拟
 	// "job 的截止时间正好在这步到点"——River 取消 job ctx 的时刻。
 	cancelJob func()
+
+	// tx 指向同一个 Usecase 用的那个假事务管理器。两个方法被调用时如果它
+	// 正开着事务，说明那一步跑在事务里——issue #97 要钉的正是两半各自
+	// 该不该在事务里（见 port.go 里 ChunkIndexer 的注释）。
+	tx *fakeTxManager
+
+	// embeddedUnderTx 记录 embedding 真的在事务里跑过（不该发生）；
+	// replacedUnderTx 记录落库真的在事务里跑过（必须发生）。
+	embeddedUnderTx bool
+	replacedUnderTx bool
+
+	// lastModel / lastVecs 记录 EmbedChunks 传下来的向量与模型名，
+	// 供断言"ReplaceChunks 拿到的是同一批东西"。
+	lastModel string
+	lastVecs  [][]float32
 }
 
 func newFakeChunkIndexer() *fakeChunkIndexer {
 	return &fakeChunkIndexer{indexed: map[uuid.UUID][]domain.Chunk{}}
 }
 
-func (f *fakeChunkIndexer) IndexDocument(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk) error {
+// EmbedChunks 是"只发网络请求、不写库"的那一半。零分块时不返回任何向量
+// （复刻真实现：空文档不该因为没配 embedding 模型而失败）。
+func (f *fakeChunkIndexer) EmbedChunks(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk) ([][]float32, string, error) {
+	if f.tx != nil && f.tx.open {
+		f.embeddedUnderTx = true
+	}
 	if f.cancelJob != nil {
 		f.cancelJob()
 	}
 	if f.fail {
-		return errors.New("fake index failure")
+		return nil, "", errors.New("fake embed failure")
 	}
-	f.indexed[docID] = chunks
+	if len(chunks) == 0 {
+		return nil, "", nil
+	}
+	vecs := make([][]float32, len(chunks))
+	f.lastVecs = vecs
+	f.lastModel = "fake-embed-model"
+	return vecs, f.lastModel, nil
+}
+
+// ReplaceChunks 是"只写库、不发网络请求"的那一半：先删后插。
+func (f *fakeChunkIndexer) ReplaceChunks(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk, vecs [][]float32, model string) error {
+	if f.tx != nil && f.tx.open {
+		f.replacedUnderTx = true
+	}
+	delete(f.indexed, docID)
+	if len(chunks) > 0 {
+		f.indexed[docID] = chunks
+	}
 	return nil
 }
 
@@ -487,11 +544,18 @@ var _ platform.TxManager = (*fakeTxManager)(nil)
 // 同名假实现一样的取舍和一样的限制，见那边的注释：这个假实现能验证
 // "出错时返回了 error"，不能验证"出错时数据被回滚了"，后者需要连
 // 真实数据库的集成测试。
+//
+// open 在 fn 执行期间为 true。它不模拟任何数据库行为，只是一个标志位，
+// 让"这一步是不是跑在事务里"变得可断言（issue #97 用 fakeChunkIndexer
+// 读它）。
 type fakeTxManager struct {
-	q platform.Querier
+	q    platform.Querier
+	open bool
 }
 
 func (f *fakeTxManager) InTx(ctx context.Context, fn func(q platform.Querier) error) error {
+	f.open = true
+	defer func() { f.open = false }()
 	return fn(f.q)
 }
 
@@ -535,7 +599,11 @@ func newFullTestUsecase() *testDeps {
 		cleaner: &fakeFileCleaner{},
 		sched:   newFakeScheduler(),
 	}
-	d.uc = NewUsecase(d.kbRepo, d.docRepo, d.files, d.enq, d.indexer, d.cleaner, d.sched, &fakeTxManager{}, nil)
+	// 事务管理器和 indexer 指向同一个假实现：ProcessDocument 里
+	// "调用 indexer 的时候有没有事务开着"因此可以被断言。
+	tx := &fakeTxManager{}
+	d.indexer.tx = tx
+	d.uc = NewUsecase(d.kbRepo, d.docRepo, d.files, d.enq, d.indexer, d.cleaner, d.sched, tx, nil)
 	return d
 }
 
@@ -688,14 +756,21 @@ func TestList(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, kbs)
 
-	_, err = uc.Create(context.Background(), "a")
-	require.NoError(t, err)
-	_, err = uc.Create(context.Background(), "b")
-	require.NoError(t, err)
+	// 【为什么直接塞 repo 而不是走 uc.Create】Create 用 time.Now()，两次
+	// 调用可能落在同一时刻——那时"谁该排前面"取决于排序的稳定性，断言会
+	// 随机红。这里要钉的是 created_at 决定顺序，所以直接给可控的时间戳。
+	// 插入顺序故意是"先旧后新"，与期望的返回顺序相反：万一排序被漏掉，
+	// 假实现吐出来的就是插入顺序（升序），下面两条断言都会红。
+	older := &KB{ID: uuid.New(), Name: "旧", CreatedAt: time.Now().Add(-time.Hour)}
+	newer := &KB{ID: uuid.New(), Name: "新", CreatedAt: time.Now()}
+	repo.kbs = append(repo.kbs, older, newer)
 
 	kbs, err = uc.List(context.Background())
 	require.NoError(t, err)
-	assert.Len(t, kbs, 2)
+	require.Len(t, kbs, 2)
+	assert.Equal(t, "新", kbs[0].Name,
+		"created_at 更晚的必须排在前面（真实现是 ORDER BY created_at DESC，假实现不能给出相反的顺序）")
+	assert.Equal(t, "旧", kbs[1].Name)
 }
 
 func TestGet_NotFound(t *testing.T) {
@@ -1017,8 +1092,39 @@ func TestProcessDocument_Success(t *testing.T) {
 	assert.NotEmpty(t, d.indexer.indexed[docID])
 }
 
+// 【这条钉的是 issue #97】索引一份文档的两半对事务的要求正好相反：
+//
+//   - embedding 含对上游 embedding 服务的 HTTP 调用，耗时完全由上游决定
+//     （单份文档的处理上限是 30 分钟，见 river.go 的 Timeout）。它必须在
+//     事务外跑——不然那段等待的每一秒都占着连接池的一个连接：worker 的
+//     MaxWorkers 是 10，而连接池没配 pool_max_conns（pgx 默认 max(4, NumCPU)），
+//     几个并发的文档任务就够把池攥干，把同一队列里的文件清理、周期维护
+//     任务一起堵住。
+//   - 落库（先删后插）与状态置 ready 必须在同一个事务里——不然 DELETE 与
+//     INSERT 之间失败会留下"旧分块删了、新的没插上"的中间态，而文档却停在
+//     processing，检索一条都命中不到它。
+//
+// 两个判据都落在"调用 indexer 的时候有没有事务开着"上——HTTP 调用本身在
+// retrieval 里，这是这条规则在这一层唯一可观察的形式。
+func TestProcessDocument_EmbeddingOutsideTransaction_WritesInsideIt(t *testing.T) {
+	d := newFullTestUsecase()
+	docID := uuid.New()
+	d.docRepo.docs = []*Document{
+		{ID: docID, StorageKey: "doc-1.txt", Status: StatusQueued},
+	}
+	d.files.contents["doc-1.txt"] = []byte("一些内容\n\n另一段内容")
+
+	require.NoError(t, d.uc.ProcessDocument(context.Background(), docID, false))
+
+	assert.False(t, d.indexer.embeddedUnderTx,
+		"embedding 会在事务外发 HTTP 请求，调用它的时候不能有事务开着")
+	assert.True(t, d.indexer.replacedUnderTx,
+		"落库必须先删后插地跑在事务里，否则'删了旧的、没插上新的'会留库")
+	assert.Equal(t, StatusReady, d.docRepo.docs[0].Status)
+}
+
 // 同一个任务被 River 重试：进程崩溃发生在"标记 processing 成功之后、
-// IndexDocument 还没跑完之前"，第二次调用看到的初始状态就是 processing
+// 索引那两步还没跑完之前"，第二次调用看到的初始状态就是 processing
 // 而不是 queued。ProcessDocument 必须能接着跑完，不能因为
 // "queued->processing 这次 CAS 会失败"就直接报错。
 func TestProcessDocument_RetryFromProcessing_Succeeds(t *testing.T) {

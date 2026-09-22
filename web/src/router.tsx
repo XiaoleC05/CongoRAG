@@ -1,5 +1,6 @@
-import { lazy, Suspense } from 'react'
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router'
+import { Fragment, lazy, Suspense } from 'react'
+import type { ReactNode } from 'react'
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useParams } from 'react-router'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { ErrorText } from '@/components/ErrorText'
@@ -39,6 +40,29 @@ const AgentDetailPage = lazy(() => import('@/pages/AgentDetailPage'))
 const RunTracePage = lazy(() => import('@/pages/RunTracePage'))
 const UsagePage = lazy(() => import('@/pages/UsagePage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
+
+/**
+ * 把「路由里的 :id 变了」翻译成 React 的一次重新挂载（issue #113）。
+ *
+ * 【为什么路由元素自己做不到】同一个路由只换 :id 时，react-router 只是把
+ * 同一个 element 重新渲染一遍——组件类型没变、也没有 key，React 比的是引用，
+ * 于是复用的是**同一个实例**。而流式的全部状态都活在实例里
+ * （streamingContent / isStreaming / stoppedIds / AbortController / 输入框
+ * 草稿）。在 /conversations/A ↔ /conversations/B 之间前进/后退时，A 正在
+ * 生成的回答会渲染在 B 的页面上、B 的输入框被禁用、按「停止生成」停的是 A
+ * 那条流。数据层是好的（queryKey 按会话分开），坏的只是实例状态。
+ *
+ * 【为什么在这里读 id，而不是让调用方把 key 传进来】key 只能由元素的父级
+ * 决定，而路由参数要等渲染到这条路由时才读得到——所以在这一层读一次，交给
+ * React 当 key。两个路由的参数名都是 :id，一个壳两边都能用。
+ *
+ * 【Fragment 上的 key 一样有效】换 key 就是"这是另一个东西"，React 会把
+ * 整棵子树卸载重挂——这里要的正是这件事，而不是只重渲染一遍。
+ */
+function RemountOnIdChange({ children }: { children: ReactNode }) {
+  const { id } = useParams()
+  return <Fragment key={id}>{children}</Fragment>
+}
 
 /**
  * 路由表。
@@ -90,9 +114,26 @@ export function AppRouter() {
                 /conversations，于是点它落到 `*` 上——用户看到的是 404。
                 会话列表页落地之后这一条才有内容，顺带把那个 404 修掉了。 */}
             <Route path="conversations" element={<ConversationsPage />} />
-            <Route path="conversations/:id" element={<ConversationPage />} />
+            {/* 【这两条的 key 不能省（issue #113）】见 RemountOnIdChange：
+                没有它，换 :id 等于复用同一个组件实例，上一个会话/Agent 的
+                流式状态会串到这一个身上。 */}
+            <Route
+              path="conversations/:id"
+              element={
+                <RemountOnIdChange>
+                  <ConversationPage />
+                </RemountOnIdChange>
+              }
+            />
             <Route path="agents" element={<AgentsPage />} />
-            <Route path="agents/:id" element={<AgentDetailPage />} />
+            <Route
+              path="agents/:id"
+              element={
+                <RemountOnIdChange>
+                  <AgentDetailPage />
+                </RemountOnIdChange>
+              }
+            />
             <Route path="agents/:agentId/runs/:runId" element={<RunTracePage />} />
             <Route path="usage" element={<UsagePage />} />
             <Route path="settings" element={<SettingsPage />} />

@@ -115,8 +115,13 @@ const summarizePrompt = "你会看到一份已有的对话摘要（可能为空�
 // 【为什么门槛不够时直接返回 nil,不是报错】"这个会话新消息还不够多,
 // 这一轮不用处理"是正常状态,不是异常——和 knowledge.Usecase 的孤儿对账
 // job 遇到"没有候选文件"时直接返回 nil 是同一个模式。
+//
+// 【这条路自己取数，周期任务那条路不】周期任务已经用一条 JOIN 把判据和
+// 三个输入一起拿回来了（SummaryMaintenanceCandidates），它调的是
+// maintainSummaryWith；这里是给"我只知道会话 id"的调用方用的入口，
+// 两次查询不可避免。
 func (u *Usecase) MaintainSummary(ctx context.Context, convID uuid.UUID) error {
-	_, coveredUntil, err := u.RetrieveSummary(ctx, convID)
+	priorSummary, coveredUntil, err := u.RetrieveSummary(ctx, convID)
 	if err != nil {
 		return fmt.Errorf("retrieve summary of conversation %s: %w", convID, err)
 	}
@@ -125,6 +130,17 @@ func (u *Usecase) MaintainSummary(ctx context.Context, convID uuid.UUID) error {
 	if err != nil {
 		return fmt.Errorf("latest sequence_no of conversation %s: %w", convID, err)
 	}
+	return u.maintainSummaryWith(ctx, convID, priorSummary, coveredUntil, latest)
+}
+
+// maintainSummaryWith 是 MaintainSummary 的实际逻辑，取数由调用方负责。
+//
+// 【为什么要把取数拆出去】MaintainSummary 原来在这一段里把
+// RetrieveSummary 调了两次（第一次只为拿 coveredUntil 就把正文丢掉，
+// 第二条在水位线判断之后再查一遍同样的行）——同一次调用里对同一行发两条
+// SQL。把已经取到的 priorSummary 传进来，那一对重复查询就没有了；
+// 周期任务那条路还能顺便把它并进候选集的 JOIN 里（issue #118）。
+func (u *Usecase) maintainSummaryWith(ctx context.Context, convID uuid.UUID, priorSummary string, coveredUntil, latest int64) error {
 	// latest 只数已定稿的消息（postgres.go 里 SQL 的 status = 'completed'
 	// 断言）：还在生成中的占位行不该把这条门控顶过去。
 	if latest-coveredUntil < summaryTriggerMessages {
@@ -161,11 +177,8 @@ func (u *Usecase) MaintainSummary(ctx context.Context, convID uuid.UUID) error {
 	}
 	msgs = msgs[:lastCompleted+1]
 
-	priorSummary, _, err := u.RetrieveSummary(ctx, convID)
-	if err != nil {
-		return fmt.Errorf("retrieve prior summary of conversation %s: %w", convID, err)
-	}
-
+	// 【priorSummary 是参数带进来的】这里原来自己再查一次 GetSummary——
+	// 同一次调用里对同一行发的第二条 SQL（issue #118）。
 	chatModelID, err := u.registry.ActiveModelID(ctx, llm.KindChat)
 	if err != nil {
 		return fmt.Errorf("resolve active chat model for summarization: %w", err)
@@ -417,9 +430,16 @@ func (u *Usecase) activeEmbeddingModel(ctx context.Context, q platform.Querier) 
 // 周期任务注册
 // ────────────────────────────────────────────────────────────────
 
-// StartMemoryMaintenance 注册摘要滚动压缩和长期偏好抽取两个周期任务,
-// worker 进程启动时调用一次——和 knowledge.Usecase.StartReconciler
-// 同样的模式(platform.PeriodicScheduler,不认识 River 的存在)。
+// StartMemoryMaintenance 注册本包全部的周期任务：摘要滚动压缩、长期偏好
+// 抽取、记忆向量补算（#39）、事件表剪枝（#98）。worker 进程启动时调用
+// 一次——和 knowledge.Usecase.StartReconciler 同样的模式
+// (platform.PeriodicScheduler,不认识 River 的存在)。
+//
+// 【事件剪枝为什么挂在这个函数里而不是单开一个入口】装配根
+// （apps/worker/internal/app/app.go）只调这一个方法，单开一个
+// StartEventRetention 的话得同时改装配根，而那个改动不在本次范围内；
+// 这四个任务也确实是同一类东西——本包拥有的、后台按固定间隔跑的清理/
+// 维护工作，注册点放在一起，漏注册一个的可能性最小。
 func (u *Usecase) StartMemoryMaintenance(ctx context.Context, sched platform.PeriodicScheduler) {
 	sched.RegisterPeriodic("conversation-summary", summaryMaintenanceInterval, func(ctx context.Context) error {
 		return u.maintainAllSummaries(ctx)
@@ -434,23 +454,33 @@ func (u *Usecase) StartMemoryMaintenance(ctx context.Context, sched platform.Per
 	sched.RegisterPeriodic("conversation-memory-embeddings", memoryEmbeddingInterval, func(ctx context.Context) error {
 		return u.reembedAllMemories(ctx)
 	})
+	// 【事件表的回收路径（issue #98）】这张表原来只增不减。
+	sched.RegisterPeriodic("conversation-events-prune", eventsPruneInterval, func(ctx context.Context) error {
+		return u.pruneExpiredEvents(ctx)
+	})
 }
 
-// maintainAllSummaries 遍历全部会话,对每一个调用 MaintainSummary。
+// maintainAllSummaries 处理所有「摘要该更新」的会话。
 //
 // 【单个会话失败不该拖垮整轮】和 asyncFileCleaner.Schedule 里"删不掉
 // 只是浪费一点磁盘空间,不是数据错误"同样的取舍——一个会话的摘要这一轮
 // 没更新成功(比如正好那个会话的 chat 模型调用超时),不该导致其它
 // 会话这一轮也不被处理,下一轮还会再试。
+//
+// 【候选集是查出来的，不是遍历出来的（issue #118）】原来的做法是拿全部
+// 会话 id、再对每个会话各发 2~3 条 SQL——N 个会话就是 2N~3N 次往返，
+// 空闲也照跑。现在一条 JOIN 把「哪些会话需要处理」和「处理它需要的三个
+// 输入」一次拿回来（Repo.SummaryMaintenanceCandidates），往返次数只与
+// 需要处理的会话数有关。
 func (u *Usecase) maintainAllSummaries(ctx context.Context) error {
-	ids, err := u.repo.ListConversationIDs(ctx, u.db)
+	candidates, err := u.repo.SummaryMaintenanceCandidates(ctx, u.db, summaryTriggerMessages)
 	if err != nil {
-		return fmt.Errorf("list conversation ids for summary maintenance: %w", err)
+		return fmt.Errorf("list conversations needing summary maintenance: %w", err)
 	}
-	for _, id := range ids {
-		if err := u.MaintainSummary(ctx, id); err != nil {
+	for _, c := range candidates {
+		if err := u.maintainSummaryWith(ctx, c.ConversationID, c.PriorSummary, c.CoveredUntil, c.LatestSequenceNo); err != nil {
 			slog.Default().Error("failed to maintain conversation summary",
-				"conversation_id", id, "error", err)
+				"conversation_id", c.ConversationID, "error", err)
 		}
 	}
 	// 单个会话失败可以容忍,ctx 被取消不行:那说明这一轮是被 job 超时
@@ -463,7 +493,7 @@ func (u *Usecase) maintainAllSummaries(ctx context.Context) error {
 	return nil
 }
 
-// extractAllPreferences 遍历全部会话,对达到抽取门槛的会话调用
+// extractAllPreferences 处理所有达到抽取门槛的会话，对它们调用
 // ExtractPreferences。
 //
 // 【门槛判断为什么在这里,不在 ExtractPreferences 内部】ExtractPreferences
@@ -476,20 +506,17 @@ func (u *Usecase) maintainAllSummaries(ctx context.Context) error {
 // "只抽取没抽取过的那一段"——重复抽取到同一条已经提过的偏好，后果只是
 // memories 表里出现内容相近的两行，不是错误，下一步的手动去重/合并
 // 留给 M5 的运维工具做,不在这一轮的范围内。
+//
+// 【门槛由一次查询判定（issue #118）】见函数体第一段的说明。
 func (u *Usecase) extractAllPreferences(ctx context.Context) error {
-	ids, err := u.repo.ListConversationIDs(ctx, u.db)
+	// 【门槛也在 SQL 里，不再是每会话一条 LatestSequenceNo（issue #118）】
+	// 原来对每个会话先查一次 latest 才判断门槛——门槛恰恰就是这个数，
+	// 于是"跳过空闲会话"这个动作本身要发 N 条 SQL。
+	ids, err := u.repo.PreferenceExtractionCandidates(ctx, u.db, preferenceExtractionMessages)
 	if err != nil {
-		return fmt.Errorf("list conversation ids for preference extraction: %w", err)
+		return fmt.Errorf("list conversations needing preference extraction: %w", err)
 	}
 	for _, id := range ids {
-		latest, err := u.repo.LatestSequenceNo(ctx, u.db, id)
-		if err != nil {
-			slog.Default().Error("failed to read latest sequence_no", "conversation_id", id, "error", err)
-			continue
-		}
-		if latest < preferenceExtractionMessages {
-			continue
-		}
 		// beforeSequenceNo 传 0：偏好抽取跑在周期任务里，没有"本轮"这个概念，
 		// 上界就是当前最新的一条，不需要排除任何东西。
 		recent, err := u.repo.RecentMessages(ctx, u.db, id, 0, 0, preferenceExtractionMessages)

@@ -24,14 +24,22 @@ type Config struct {
 	// 将来写交付期 compose（api 进容器）时必须显式设
 	// CONGORAG_LISTEN_ADDR=0.0.0.0:3210 —— 容器内绑回环的话，
 	// 宿主机的端口映射转发不进来，表现是连接被拒绝。
+	//
+	// 【为什么没有 CONGORAG_PORT 字段】那个变量属于**交付期的 compose**
+	// （deployments/startup，决定宿主机映射到容器的哪个端口），不归这个
+	// 进程读。这里曾经也读一次存进 Config.Port，但那个字段全仓没有任何
+	// 读取点——设了它不会有任何变化，也不会收到任何提示，是个"看起来
+	// 生效但不生效"的旋钮（issue #125）。改端口就改这个字段。
 	ListenAddr string
-
-	// Port 是对外暴露的端口，只用于日志和提示。真正的端口映射在 compose 里。
-	Port string
 
 	// DocumentsDir 是原始文件的存储目录（./data/documents）。
 	//
-	// 【当前没有任何代码读它】文档上传功能还没做。做上传时由 usecase 从这里取根目录。
+	// 【两个装配根都在读它】api 与 worker 各调一次
+	// knowledge.NewLocalFileStore(cfg.DocumentsDir)（apps/api/internal/app 与
+	// apps/worker/internal/app）。上传时由 api 进程把原始文件写进这个根目录，
+	// 处理流水线在 worker 进程里再从同一个根目录读回来——两边必须指向同一份
+	// 目录，否则表现是"上传成功、处理时找不到文件"（LocalFileStore 只拿到
+	// 根目录这个字符串，不会回头再读 Config，所以换目录只需改这里）。
 	DocumentsDir string
 
 	// LogLevel 是 debug | info | warn | error
@@ -84,7 +92,6 @@ const (
 	// 写交付期 compose 时漏了 CONGORAG_LISTEN_ADDR=0.0.0.0:3210，
 	// 容器会正常启动、日志会打印 listening，但外面连不进来。
 	defaultListenAddr       = "127.0.0.1:3210"
-	defaultPort             = "3210"
 	defaultDocumentsDir     = "./data/documents"
 	defaultLogLevel         = "info"
 	defaultMasterKeyPath    = "./data/master.key"
@@ -102,7 +109,6 @@ func LoadConfig() (*Config, error) {
 	cfg := &Config{
 		DatabaseURL:      os.Getenv("CONGORAG_DB_URL"),
 		ListenAddr:       envOr("CONGORAG_LISTEN_ADDR", defaultListenAddr),
-		Port:             envOr("CONGORAG_PORT", defaultPort),
 		DocumentsDir:     envOr("CONGORAG_DOCUMENTS_DIR", defaultDocumentsDir),
 		LogLevel:         envOr("CONGORAG_LOG_LEVEL", defaultLogLevel),
 		MasterKey:        os.Getenv("CONGORAG_MASTER_KEY"),

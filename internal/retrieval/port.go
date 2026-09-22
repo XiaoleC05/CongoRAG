@@ -17,7 +17,7 @@ import (
 // 有意义的字段（model.go 的注释：它同时服务"索引输入"和"检索输出"两种
 // 场景，检索结果不该意外携带一个几百维的向量数组一起被序列化）。
 // 所以向量单独用一个平行数组传，索引长度必须和 chunks 对应——
-// 这是 usecase.go 的 IndexDocument 内部保证的，Repo 只管接收。
+// 这是 usecase.go 的 ReplaceChunks 内部保证的，Repo 只管接收。
 type Repo interface {
 	InsertChunks(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk, vecs [][]float32, model string) error
 

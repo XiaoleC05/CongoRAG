@@ -9,7 +9,7 @@ info:
   #
   # 【必须加引号】不加的话 YAML 会把 2.0 解析成浮点数，而 info.version 的
   # 类型是 string——校验会报 "Incorrect type. Expected string"。
-  version: "3.0"
+  version: "5.0"
   description: |
     依靠上下文提供 RAG 服务的全栈开源工具
 
@@ -1185,6 +1185,11 @@ components:
         text:
           type: string
           minLength: 1
+          # 和 internal/conversation/usecase.go 的 MaxTextLen 保持一致
+          # （也是 internal/agent/usecase.go 的 maxInputLen 那个数字）：
+          # 正文会原样进模型上下文，超长在这里就按 invalid_argument 拒掉，
+          # 而不是等上游模型报错、被归到 upstream_llm_error（issue #109）。
+          maxLength: 8000
           example: ConGoRAG 的默认端口是多少？
 
     Message:
@@ -1736,6 +1741,13 @@ components:
         input:
           type: string
           minLength: 1
+          # 和 internal/agent/usecase.go 的 maxInputLen 保持一致。
+          # Agent 这条路径没有 ctxmgr 的 token 预算兜底，超长输入只能靠
+          # 这里拒掉；否则上游报的错会被归到 upstream_llm_error，前端按
+          # 那个 type 提示"检查 API Key 和配额"，排查方向从第一句话起
+          # 就是错的（issue #34 那类误报，issue #109 说的是它换到了这条
+          # 路径上）。
+          maxLength: 8000
           example: 3 个 128 的和乘以 2 是多少？
 
     AgentRun:

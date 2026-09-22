@@ -3,7 +3,7 @@
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Version](https://img.shields.io/badge/version-3.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-5.0-blue)](CHANGELOG.md)
 
 本地优先的 RAG 问答与 Agent 平台。文档、向量、API Key 全部留在你自己的机器上，
 模型服务由你提供（BYOK）。
@@ -11,9 +11,8 @@
 api 进程默认只监听 `127.0.0.1:3210`，不对局域网开放。API Key 用 AES-GCM 加密后
 存进本地数据库，主密钥在首次启动时生成并落盘。
 
-当前**已发布**的版本是 **v3.0**（2026-09-21）。`main` 上已经积累了下一版的
-改动——下文的能力与端点因此可能领先于你能下载到的最新 tag，逐条列在
-[CHANGELOG.md](CHANGELOG.md) 的 `Unreleased` 一节里。
+当前**已发布**的版本是 **v5.0**（2026-09-22），下文描述的就是这一版。
+之后落在 `main` 上的改动的逐条记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 界面
 
@@ -104,7 +103,7 @@ flowchart TB
 | 依赖 | 版本 | 用途 |
 | --- | --- | --- |
 | Go | 1.26.4（见 `go.mod`） | 编译 api 和 worker |
-| Docker | 任意近期版本 | 只用来跑 PostgreSQL，见 `deployments/docker/docker-compose.yml` |
+| Docker | 任意近期版本 | 跑 PostgreSQL（`make up`，见 `deployments/docker/docker-compose.yml`）；`make test-integration` 也用它起一次性容器 |
 | Node.js + pnpm | 22 / 11 | 构建前端；只在改前端时需要 |
 
 命令行工具装进 `GOPATH/bin`，`Makefile` 会自己把这个目录拼进 `PATH`：
@@ -237,7 +236,6 @@ flowchart LR
 | --- | --- | --- |
 | `CONGORAG_DB_URL` | 无（必填） | PostgreSQL 连接串 |
 | `CONGORAG_LISTEN_ADDR` | `127.0.0.1:3210` | api 监听地址。默认只绑回环 |
-| `CONGORAG_PORT` | `3210` | 对外端口，只用于日志提示 |
 | `CONGORAG_DOCUMENTS_DIR` | `./data/documents` | 上传文件的存储根目录 |
 | `CONGORAG_LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `CONGORAG_MASTER_KEY` | 空 | 主密钥的十六进制串；空则去密钥文件里读 |
@@ -294,7 +292,7 @@ Agent 那条流的**首帧永远是 `run_started`**（`data: {"runId": ...}`）�
 `null` 表示到底了。**游标是不透明的**——不要解析它，格式随时可能变（见契约里
 `Cursor` 参数的描述）。
 
-契约的 `info.version` 跟产品版本走（当前 `3.0` ↔ tag `v3.0`），由发布脚本在发布前
+契约的 `info.version` 跟产品版本走（当前 `5.0` ↔ tag `v5.0`），由发布脚本在发布前
 断言两者一致，见 [ADR-002](docs/adr/002-contract-versioning.md)。它不表示兼容性
 承诺——**兼容边界是路径里的 `/api/v1`**。
 
@@ -326,29 +324,33 @@ Agent 那条流的**首帧永远是 `run_started`**（`data: {"runId": ...}`）�
 ```bash
 make test                # 等价于 go test ./... + 前端单测
 make check               # build-go + vet + test + lint
-make test-integration    # 集成测试：需要真实 PostgreSQL，会重建独立测试库
+make test-integration    # 集成测试：自己起一个一次性的 PostgreSQL 容器
 ```
 
 大部分测试不连数据库。需要真实 PostgreSQL 的集成测试用 `CONGORAG_TEST_DB_URL`
 门控——没设这个变量就跳过，所以本地 `make test` 全绿**不代表那些 SQL 跑得起来**。
-`make test-integration` 消掉的就是这个反馈延迟：它复刻 CI 的 integration job
-（重建测试库 → 跑两套迁移 → 带变量跑全部测试）。
+`make test-integration` 消掉的就是这个反馈延迟：它设 `CONGORAG_TESTCONTAINERS=1`，
+由 `internal/testdb` 起一个容器（镜像与开发期用的是同一个）、灌好两套迁移，
+再带变量跑全部测试。**两条路径给的是同一个保证——返回时 schema 已就绪**，
+差别只剩库从哪来，写在那个包的注释里。
 
-**它会动 schema，但动的是独立测试库。** `internal/llm` 的集成测试会 `ALTER` 向量
-列类型（那个文件头部记录过一次真实事故：改动全局状态、副作用在测试通过之后才
-暴露）。所以这条 target 跑在**每次重建的 `congorag_test` 库**上，你的开发库完全
-不受影响。测试库跑完保留着便于排查，下一次跑会重建它。
+**它会动 schema，但动的是那个一次性容器。** `internal/llm` 的集成测试会 `ALTER`
+向量列类型（那个文件头部记录过一次真实事故：改动全局状态、副作用在测试通过之后
+才暴露）。容器跑完即销毁，所以它怎么改都不影响任何人——你的开发库和
+`make up` 起的那个 `congorag-postgres` 容器都不会被碰到。
 
-先决条件是 `make up` 起的 PostgreSQL 在跑；没起的话它会给出可操作的报错。
+**除 Go 工具链外，先决条件就只有 Docker**：不需要 `make up`、也不需要开发机上有
+PostgreSQL。第一次跑要拉镜像，会慢一些。
 要在本机也开竞态检测就加 `GO_TEST_FLAGS=-race`——但本机没有 gcc 时 `-race` 跑不
 起来（CI 的 ubuntu runner 才有），这是它与 CI 唯一的一处差异。
 
 只有 `evals/` 不在这条链路上：它测的是检索质量本身（语料、20 道题、指标脚本），
 与 `measure_recall.sh` 测的 HNSW 近似索引误差分工不同，见 [`evals/README.md`](evals/README.md)。
 
-CI 里有四个 job：Go 编译与单元测试（带 `-race`）、契约生成物是否最新、前端构建与
-`go:embed`、以及在真实 PostgreSQL 服务上跑集成测试。见
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml)。
+CI 里有六个 job：Go 编译与单元测试（带 `-race`）、契约生成物是否最新、契约本身的
+spectral lint、前端构建与 `go:embed`、在真实 PostgreSQL 服务上跑集成测试，以及
+交付形态的容器装配（构建三个镜像、校验两份 compose、把 migrate 镜像对着一个临时
+PostgreSQL 真跑一次）。见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)。
 
 ## 贡献
 

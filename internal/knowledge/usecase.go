@@ -26,7 +26,8 @@ import (
 //	kbRepo/docRepo   两张表各自的存取
 //	files            上传写路径（写临时文件 → fsync → rename）
 //	enq              把文档 ID 塞进 River 的处理队列
-//	indexer          【唯一跨包 port】把切好的分块交给 retrieval 去 embed + 落库
+//	indexer          【唯一跨包 port】把切好的分块交给 retrieval 去 embed + 落库；
+//	                 它的两半对事务的要求相反，见 ProcessDocument（issue #97）
 //	cleaner          异步清理磁盘上不再需要的文件
 //	sched            注册孤儿文件对账这个周期任务
 //	txm              圈定"写文件记录 + 入队"这类需要原子性的操作边界
@@ -525,8 +526,8 @@ func (u *Usecase) StartReconciler(ctx context.Context) {
 //   - 状态已经是 processing（说明上一次已经推进到这一步）→ 直接继续，
 //     不重新触发 queued->processing 那次 CAS（它现在会失败，但那是
 //     预期内的，不代表这次调用本身错了）
-//   - IndexDocument 内部先删后插（见 retrieval.Usecase.IndexDocument），
-//     所以重新跑一遍分块+落库不会留下重复数据
+//   - 落库那一半（ReplaceChunks）内部先删后插，所以重新跑一遍分块+落库
+//     不会留下重复数据
 //
 // 【失败时写不写终态，取决于这是不是最后一次 attempt】isLastAttempt 由
 // worker 按 River 的 job.Attempt/job.MaxAttempts 算好传进来：
@@ -611,8 +612,39 @@ func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID, isLastAt
 
 	chunks := parseAndChunk(content)
 
+	// 【issue #97：embedding 在事务外先算完，写库与状态置 ready 同事务】
+	// 索引一份文档是性质相反的两半，而它们对事务的要求正好相反：
+	//
+	//   - 一半是对上游 embedding 服务的 HTTP 调用，耗时完全由上游决定
+	//     （单份文档的处理上限是 30 分钟，见 river.go 的 Timeout）。
+	//     **必须在事务外做**：把这段等待包进 InTx 的代价不是"慢一点"，
+	//     是"事务开着的时候一直握着连接池的一个连接"——worker 的
+	//     MaxWorkers 是 10，连接池没配 pool_max_conns（pgx 默认
+	//     max(4, NumCPU)），10 个并发文档任务就能把池占满，把同一队列里的
+	//     文件清理、周期维护任务一并堵死。项目把这条规则写死在
+	//     internal/llm/usecase.go 和 internal/platform/db.go，Bootstrap
+	//     遵守了它（探测在事务开始之前）。
+	//
+	//   - 另一半是数据库里的先删后插 + 状态置 ready。**必须同事务**：分块
+	//     落库和状态更新分开做的话，中间失败会留下"旧分块删了、新的没插上"
+	//     的中间态，而文档还停在 processing——检索一条都命中不到它，直到
+	//     下一次成功索引才恢复。圈进一个事务之后，这个中间态要么整体提交、
+	//     要么整体回滚，不会留库。
+	//
+	// 所以这里是两次调用，不是一次：EmbedChunks 用连接池（u.db），
+	// ReplaceChunks 用事务（见 ChunkIndexer 的注释：两个方法的 q 语义不同）。
+	//
+	// 【失败语义没有变】embedding 失败时事务还没开始，文档仍是 processing，
+	// 错误交给 River 重投；事务里任何一步失败则整体回滚，文档同样还是
+	// processing。两条路都走 failProcessing：只有最后一次 attempt 才落
+	// 终态 failed。
+	vecs, model, err := u.indexer.EmbedChunks(ctx, u.db, docID, chunks)
+	if err != nil {
+		return u.failProcessing(ctx, docID, isLastAttempt, fmt.Errorf("embed document %s: %w", docID, err))
+	}
+
 	err = u.txm.InTx(ctx, func(q platform.Querier) error {
-		if err := u.indexer.IndexDocument(ctx, q, docID, chunks); err != nil {
+		if err := u.indexer.ReplaceChunks(ctx, q, docID, chunks, vecs, model); err != nil {
 			return fmt.Errorf("index document %s: %w", docID, err)
 		}
 		if err := u.docRepo.UpdateStatus(ctx, q, docID, StatusProcessing, StatusReady); err != nil {

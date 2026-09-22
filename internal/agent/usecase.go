@@ -29,6 +29,17 @@ const (
 	maxInstructionLen = 4000
 )
 
+// maxInputLen 是一次 Agent 运行输入的长度上限，按字符数算（同
+// maxNameLen 的理由：避免响应体随语言膨胀）。
+//
+// 【为什么它和别的上限一样必须存在】这条输入被原样拼进模型的上下文
+// （prepareRun → runAgent 的 input），而 Agent 这条路径**没有** ctxmgr
+// 那套 token 预算兜底（见 prepareRun 的注释）。超长输入让上游直接报错的
+// 时候，那个错误会被归到 upstream_llm_error，前端按 type 提示用户
+// "检查 API Key 和配额"——排查方向从第一句话起就是错的（issue #34 修掉
+// 的就是这类误报，issue #109 说的是它换到了 Agent 路径上）。
+const maxInputLen = 8000
+
 // finalizeTimeout 是"脱离请求生命周期"的收尾写入的上限——Run 的终结状态、
 // 客户端断开那一刻补写的 Step/checkpoint。和 knowledge.statusWriteTimeout
 // 同一个理由：这些写入必须活过请求，但也不能无界地活。
@@ -394,10 +405,24 @@ func (u *Usecase) Start(ctx context.Context, agentID uuid.UUID, input, idempoten
 }
 
 // prepareRun 做全部只读校验，返回一个可以立刻执行的 plan。
+//
+// 【它也是 Agent 路径上唯一能拒绝"太大的输入"的地方】一旦过了这里，
+// 输入就原样进了模型上下文，而那条路径没有 ctxmgr 的预算兜底——普通聊天
+// 那条走 ctxmgr.Build（系统提示 + 历史 + chunk 都在那里按 token 裁），
+// Agent 这条是一个由 Eino 驱动的 ReAct 循环，上下文每轮都在长，没有一个
+// 静态的"组装点"可以交给它。所以这里守住两头：输入本身的上限在这里判，
+// 工具结果的上限在工具边界上判（eino_adk.go 的 capToolResult）。
 func (u *Usecase) prepareRun(ctx context.Context, agentID uuid.UUID, input string) (*runPlan, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
 		return nil, fmt.Errorf("run input must not be empty: %w", platform.ErrInvalid)
+	}
+	// 【必须在建 run 行之前拒绝】run 行、幂等键的指纹都以它为输入；
+	// 而超长请求要是放进去，报错会发生在模型那一侧、被归成
+	// upstream_llm_error——前端会把用户引向"检查 API Key 和配额"（见
+	// maxInputLen 的注释，issue #109）。
+	if n := len([]rune(input)); n > maxInputLen {
+		return nil, fmt.Errorf("run input is too long (%d characters, max %d): %w", n, maxInputLen, platform.ErrInvalid)
 	}
 
 	ag, err := u.repo.GetAgent(ctx, u.db, agentID)
@@ -778,6 +803,20 @@ type pendingCall struct {
 	startedAt time.Time
 }
 
+// recordToolEffect 写一次工具效果账本——这条路径上最后一处必须脱离请求
+// ctx 的写（见 detachedWriteCtx）。
+//
+// 【为什么它不能跟着请求 ctx 走】客户端断开正是这个端点最常见的触发场景，
+// 那时 pgx 拿着一个已取消的 ctx 连 pgxpool.Acquire 都过不去，这次写入必然
+// 失败；而代码紧接着就把这一步标成 completed——于是账本在最需要它的那一刻
+// 静默地缺了一行。这和 insertStep / updateStep / checkpoint / emitRunEvent
+// 的处理是同一条规则，此前只有账本这一处例外（issue #107）。
+func (u *Usecase) recordToolEffect(ctx context.Context, stepID uuid.UUID, effectKey string) error {
+	wctx, cancelWrite := detachedWriteCtx(ctx)
+	defer cancelWrite()
+	return u.repo.RecordToolEffect(wctx, u.db, stepID, effectKey)
+}
+
 // consumeEvents 排空 adkEvent 流,每步落一行 agent_run_steps,把事件
 // 转成 SSE 推给 sink（同时持久化进 run_events）,返回累积的最终文本输出。
 //
@@ -902,9 +941,36 @@ func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, chatModelI
 	// closeOpenStepsOnExit 保证任何一条退出路径都不会留下"永远 running"的
 	// step：那些行本来是崩溃现场的记录，而这里是**正常返回**，正常返回
 	// 之后它们再也不会被更新。
+	//
+	// 【pending 里的工具步骤同样要关】它此前只关 llmStep，而 pending 里
+	// 那些以 Status=running 落库、结果还没回来的工具行一返回就永远是那个
+	// 样子（issue #106）。两个后果，第二个更重：
+	//
+	//  1. 轨迹页会为一条已经 cancelled/interrupted 的 run 永久显示一个
+	//     "运行中"的工具步骤；
+	//  2. ADR-007 崩溃表的第一判据就是"一行 running 的 step"。残留让
+	//     "有 running 的 step"不再等于"进程崩过"，而整条恢复链都建立在
+	//     这个判据上。
 	closeOpenStepsOnExit := func() {
 		if llmStep != nil {
 			closeLLMStep(StepInterrupted, "运行在收到 done 之前结束")
+		}
+		// pending 是 map，遍历顺序随机；这里逐个 UPDATE，顺序不影响结果。
+		// 顺手删掉条目，让这个函数可以被安全地重复调用。
+		closedPending := false
+		for id, p := range pending {
+			p.step.Status = StepInterrupted
+			if p.step.Error == "" {
+				p.step.Error = "运行在这次工具调用返回结果之前结束"
+			}
+			updateStep(p.step)
+			delete(pending, id)
+			closedPending = true
+		}
+		if closedPending {
+			// 与 closeLLMStep 的行为对齐：终态落库之后补一次 checkpoint，
+			// 让 run 上的 current_step 与刚落库的那几行一致。
+			checkpoint()
 		}
 	}
 
@@ -993,7 +1059,7 @@ func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, chatModelI
 			// 重放。反过来先写步骤的话，这个窗口里两个记录都没有，
 			// "工具跑了"和"工具根本没跑"就真的分不开了。
 			effectKey := EffectKey(event.toolName, toolArgs)
-			if err := u.repo.RecordToolEffect(ctx, u.db, toolStep.ID, effectKey); err != nil {
+			if err := u.recordToolEffect(ctx, toolStep.ID, effectKey); err != nil {
 				if errors.Is(err, platform.ErrToolEffectApplied) {
 					// 【看到这个冲突 = 工具被重复执行了 = resume 没生效】
 					// 项目文档 §9.5 就是这么判读的，而且特意提醒别搞反。
@@ -1004,8 +1070,22 @@ func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, chatModelI
 						"tool %q was invoked twice for step %s within run %s: %w",
 						event.toolName, toolStep.ID, runID, platform.ErrToolEffectApplied)
 				}
-				u.log(ctx).Error("failed to record tool effect",
-					"run_id", runID, "step_id", toolStep.ID, "tool", event.toolName, "error", err)
+				// 【记不上账 = 无法判定，不能继续】以前这里只记一行日志就往下走，
+				// 而紧接着这一步就被标成 completed——账本在最需要它的那一刻
+				// 静默缺一行。若进程随后被杀掉（步骤写没落库），现场就是
+				// "step running + 无账本"，恢复路径会判成"工具没跑过" → 重放 →
+				// 工具真的被第二次执行，全程无错误无日志（issue #107）。
+				//
+				// 这一步标 failed 而不是留在 running：它其实已经执行完了（结果就在
+				// 手里），无法判定的是"副作用发生过没有"。留在 running 的话既是
+				// issue #106 要消掉的那个现场，又会让它落进恢复的重放列表。
+				toolStep.Status = StepFailed
+				toolStep.Error = fmt.Sprintf("工具已经执行，但效果账本写不进去：%v", err)
+				toolStep.LatencyMS = latencyMS
+				updateStep(toolStep)
+				closeOpenStepsOnExit()
+				return output.String(), fmt.Errorf(
+					"record tool effect for step %s of run %s: %w", toolStep.ID, runID, err)
 			}
 
 			// ② 再补步骤的终态与结果。
@@ -1044,6 +1124,11 @@ func (u *Usecase) consumeEvents(ctx context.Context, runID uuid.UUID, chatModelI
 			// 在轨迹里看得见，而不是整个 run 一行 Step 都没有。
 			openLLMStep()
 			closeLLMStep(StepFailed, event.err.Error())
+			// 【这条也是退出路径】工具节点自己失败时（工具返回基础设施
+			// 错误 → ToolsNode 把它当致命错误）事件流会在这里结束，而那条
+			// 工具调用的 tool_result 永远不会到达——不关掉的话它就永远停在
+			// running，正是 issue #106 要消掉的那个现场。
+			closeOpenStepsOnExit()
 			// 【不能一律当成上游故障】这一条错误来自整张 ReAct 图，不只有
 			// provider：工具自己失败（knowledge_search 查不到那一行 →
 			// ErrNotFound）、请求 ctx 被取消，都会走到这里。一律 Join
@@ -1163,9 +1248,15 @@ func (u *Usecase) emitRunEvent(ctx context.Context, runID uuid.UUID, sink conver
 // 整个省掉——与 docs/sse-protocol.md 里"没有 id 的帧不参与发号"那条一致。
 // 编一个号会更糟：客户端会把游标推到一个不存在的位置。
 func (u *Usecase) emitUnpersisted(sink conversation.EventSink, cause error) {
+	// 【5xx 不把原文发给客户端（issue #112）】这条帧此前直接写 cause.Error()，
+	// 而它承载的正是 prepareRun / claimRun 那一段的失败——里面有 SQL 片段、
+	// 表名、连接串。type 与 detail 现在出自同一张表（platform.Classify）：
+	// 分类和执行"这句话能不能给客户端看"必须是同一个判据，各写一份的话，
+	// 同一个错误会一边说 conflict、一边把内部原文漏出去。
+	status, typ, _ := platform.Classify(cause)
 	body, err := marshalEvent("error", map[string]string{
-		"type":   platform.SSEErrorType(cause),
-		"detail": cause.Error(),
+		"type":   typ,
+		"detail": platform.SafeDetail(status, cause),
 	})
 	if err != nil {
 		return
@@ -1197,9 +1288,14 @@ func (u *Usecase) emitRunError(ctx context.Context, runID uuid.UUID, cause error
 	// 路径最常见的触发原因，用请求 ctx 连事件都写不下去。
 	wctx, cancel := detachedWriteCtx(ctx)
 	defer cancel()
+	// 【5xx 不把原文发给客户端（issue #112）】这条事件会被持久化进 run_events，
+	// 之后每次重订阅或幂等重放都会把它原样发给客户端——泄漏面比在线那一帧
+	// 更大（它在库里一直留着）。判据与在线帧共用 platform.Classify +
+	// platform.SafeDetail，两条路径不会各说各话。
+	status, typ, _ := platform.Classify(cause)
 	if _, err := u.emitRunEvent(wctx, runID, nopSink{}, "error", map[string]string{
-		"type":   platform.SSEErrorType(cause),
-		"detail": cause.Error(),
+		"type":   typ,
+		"detail": platform.SafeDetail(status, cause),
 	}); err != nil {
 		// 写不进去也不上抛：调用方正在返回那个更重要的原始错误。
 		u.log(ctx).Error("failed to record run error event", "run_id", runID, "error", err)
@@ -1512,8 +1608,9 @@ func (u *Usecase) Resume(ctx context.Context, plan *ResumePlan, sink conversatio
 		if err != nil {
 			// 重放失败：这一步没恢复成功，run 落 failed（不是 interrupted
 			// ——它已经尝试过了，再标 interrupted 会让用户以为还能再恢复一次
-			// 而结果只会一样）。
-			_ = u.repo.UpdateRunStatus(ctx, u.db, plan.run.ID, RunRunning, RunFailed)
+			// 而结果只会一样）。收尾写入必须脱离请求 ctx，理由见下面那个
+			// 方法的注释（issue #108）。
+			u.failResumedRun(ctx, plan.run, err)
 			return nil, err
 		}
 		turns = append(turns, turn)
@@ -1536,6 +1633,38 @@ func (u *Usecase) Resume(ctx context.Context, plan *ResumePlan, sink conversatio
 		u.log(ctx).Warn("resumed run ended with an error", "error", err)
 	}
 	return run, err
+}
+
+// failResumedRun 把一条恢复失败的 run 推进 failed（issue #108）。
+//
+// 【为什么不能跟着请求 ctx 走】恢复本身跑在一条 SSE 上，重放工具失败与
+// 客户端断开高度重合。ctx 一取消，那次 UPDATE 一条都不会执行（pgx 连
+// Acquire 都过不去），而 PrepareResume 只接受 interrupted —— 于是 run
+// 停在 running：既不可恢复，界面上又一直显示"运行中"，直到用户手动点
+// 取消或进程重启被 InterruptRunningRuns 扫到。这与 execute → finishRun
+// 的写法保持一致（那里早就是 detachedWriteCtx 了，只有恢复这条路径漏了）。
+//
+// 【错误不能再像以前那样被丢掉】原来这里是 `_ =`：写不写成功没人知道，
+// 而失败的表现恰好就是上面那个"卡在 running"。写不下去至少要留痕。
+//
+// 【ErrConflict 不当故障】CAS 失败说明并发地有另一个收尾（取消端点、启动
+// 扫描、或者另一条恢复）先把它推进了别的终态——那个终态才是权威的。这与
+// finishRun 对 ErrConflict 的处理对齐：不覆盖，也不把它报成错误。
+func (u *Usecase) failResumedRun(ctx context.Context, run *Run, cause error) {
+	wctx, cancelWrite := detachedWriteCtx(ctx)
+	defer cancelWrite()
+
+	if err := u.repo.UpdateRunStatus(wctx, u.db, run.ID, RunRunning, RunFailed); err != nil {
+		if errors.Is(err, platform.ErrConflict) {
+			u.log(ctx).Info("run reached a terminal state before the resume finalize",
+				"run_id", run.ID, "wanted", string(RunFailed), "error", cause)
+			return
+		}
+		u.log(ctx).Error("failed to mark run failed after a replay failure",
+			"run_id", run.ID, "error", err)
+		return
+	}
+	run.Status = RunFailed
 }
 
 // replayToolStep 直接重跑一个没走完的工具步骤（不经过模型）。
@@ -1561,8 +1690,15 @@ func (u *Usecase) replayToolStep(ctx context.Context, s *Step) (resumeTurn, erro
 	}
 
 	// 先记账本再写结果——与正常执行路径同一顺序，同一套判据
-	// （见 consumeEvents 里那段注释）。
-	if err := u.repo.RecordToolEffect(ctx, u.db, s.ID, EffectKey(s.ToolName, s.ToolArgs)); err != nil {
+	// （见 consumeEvents 里那段注释）。写库也走脱离请求 ctx 的那条路
+	// （recordToolEffect）：恢复一样跑在 SSE 上，断线时请求 ctx 一取消，
+	// 这条记账就写不下去了（issue #107）。
+	//
+	// 【这里非 23505 的失败仍然是记一行日志往下走】与 consumeEvents 不同：
+	// 工具的结果此刻已经在手里，紧接着就会把这一步标成 completed——而
+	// "这一步是完成的"本身就是恢复路径不会再重放它的依据。把它升级成运行
+	// 失败反而会把一次拿得到结果的恢复打断。
+	if err := u.recordToolEffect(ctx, s.ID, EffectKey(s.ToolName, s.ToolArgs)); err != nil {
 		if errors.Is(err, platform.ErrToolEffectApplied) {
 			// 检查与执行之间被另一个恢复抢先了。
 			return resumeTurn{}, fmt.Errorf("step %s was replayed concurrently: %w", s.ID, platform.ErrToolEffectApplied)

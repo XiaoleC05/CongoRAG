@@ -99,10 +99,15 @@ describe('MessageBubble 的 Markdown 渲染', () => {
     expect(screen.getByRole('button', { name: '复制回答' })).toBeTruthy()
   })
 
-  // rehype-highlight 对不认识的语言只记一条 vfile message 就返回（读过源码）。
-  // 【注意它仍然会给 code 加上 hljs 类名】那行 unshift 在 try 之前执行，
-  // 所以判据不能是"有没有 hljs 类"，而是"有没有 token 的 span"——
-  // 没有 span 就没有任何 hljs-* 类名，也就没有任何着色。
+  // 【这条只是一个弱版本】高亮插件是动态 import 的，这个文件里没有任何地方
+  // 等过它，所以断言跑在"插件还没到位"的那一帧上——它钉住的是"没有高亮时
+  // DOM 长什么样"，而不是"插件认不认识这个语言"。真正走异常分支的那条
+  // （先等子集内的语言着色，再断言子集外的语言零 token）在
+  // MarkdownContent.test.tsx 里，那个文件才是 issue #116 的回归面。
+  //
+  // 【判据为什么是"有没有 token 的 span"而不是"有没有 hljs 类名"】自实现的
+  // 插件给 code 加 hljs 类名那行在 try 之前（照抄 rehype-highlight 的行为，
+  // index.css 的底色判据依赖它），降级的块同样带这个类名。
   it('语言未知时不报错，回退成无高亮的等宽块', () => {
     const { container } = render(
       <MessageBubble role="assistant" content={'```没这个语言\nsome text\n```\n'} />,

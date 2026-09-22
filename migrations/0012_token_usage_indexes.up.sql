@@ -1,0 +1,31 @@
+-- token_usage 的两个外键索引 + UsageSummary 的 created_at 索引（issue #117）。
+--
+-- 0003 建这张表时只给 provider_id 建了索引，但表上还有两个外键：
+--
+--   model_id   ... ON DELETE CASCADE
+--   message_id ... ON DELETE SET NULL
+--
+-- 引用列没有索引时，Postgres 执行级联动作【只能对该表做全表扫描】——不是
+-- "慢一点"，而是"删一个模型、删一个会话都要扫完整张用量表"：
+--   * 删会话 → 级联删 messages 的每一行，每删一行扫一遍 token_usage
+--   * DeleteModel（internal/llm/usecase.go）做的是同一件事
+-- 开发库实测 `EXPLAIN SELECT 1 FROM token_usage WHERE model_id='…'` 就是
+-- Seq Scan。而这是全库唯一一张【每调用一次模型涨一行、必然越来越大】的表。
+--
+-- message_id 上的索引同时也是"按消息反查用量"的入口。这里只按最直接的形状
+-- 建，不做 (message_id, created_at) 之类的复合索引——现在没有那种查询。
+--
+-- ── 顺手把 created_at 的索引一起加上 ─────────────────────────────
+-- UsageSummary 按 created_at 做左闭右开区间过滤，一直没有对应索引。
+-- internal/llm/port.go 的 UsageRepo 注释里明确记着这是一条推迟决策，连索引名
+-- 和列序都写好了（"等到十万行再加 CREATE INDEX token_usage_created_at_idx ON
+-- token_usage (created_at DESC)"）。既然这条迁移已经要动这张表，就把同一批
+-- "行数涨上来才痛"的索引一次加完，省一次迁移。
+--
+-- 【不用 CONCURRENTLY】CONCURRENTLY 不能在事务里执行，而 golang-migrate 每条
+-- 迁移都包在事务里（0008 当初加索引时同理）。本项目的规模下这个锁是瞬时的；
+-- 真到了需要 CONCURRENTLY 的数据量，该做的是一次带锁时间窗的运维操作，
+-- 而不是把迁移从它的原子性里拿出来。
+CREATE INDEX token_usage_model_id_idx   ON token_usage (model_id);
+CREATE INDEX token_usage_message_id_idx ON token_usage (message_id);
+CREATE INDEX token_usage_created_at_idx ON token_usage (created_at DESC);

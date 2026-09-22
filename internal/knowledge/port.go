@@ -196,8 +196,52 @@ type Enqueuer interface {
 // ChunkIndexer 是【规则 A】的例子：knowledge 声明它需要什么，
 // retrieval.Usecase 实现它——knowledge 因此不需要 import llm
 // （embed 和落库都在 retrieval，见代码架构设计 §2.1 的警告）。
+//
+// 【为什么拆成 EmbedChunks / ReplaceChunks 两个方法（issue #97）】
+// 它们对应"索引一份文档"里性质完全相反的两半：EmbedChunks 只发对上游
+// embedding 服务的 HTTP 调用（单份文档的处理上限是 30 分钟，见 river.go
+// 的 Timeout），ReplaceChunks 只在数据库里先删后插。
+//
+// 合成一个方法的话，调用方只有两种选择，而两种都错：
+//   - 把整段网络往返包进 InTx：事务握着连接池的一个连接等 HTTP——worker
+//     的 MaxWorkers 是 10，连接池没配 pool_max_conns（pgx 默认
+//     max(4, NumCPU)），几个并发文档任务就能把池攥干，把同一队列里的文件
+//     清理、周期维护任务一起堵死。项目把"事务里不要做慢速网络调用"写死在
+//     internal/llm/usecase.go 和 internal/platform/db.go，Bootstrap 遵守了它。
+//   - 完全不开事务：DELETE 与 INSERT 之间失败会留下"旧分块删了、新的没插上"
+//     的中间态，而文档停在 processing——检索一条都命中不到它，直到下一次
+//     成功索引才恢复。
+//
+// 拆开之后调用方两头都要：EmbedChunks 在事务外，ReplaceChunks 与"状态置
+// ready"在同一个事务里（见 knowledge/usecase.go 的 ProcessDocument）。
+//
+// 因此两个方法的 q 语义不同，这也是 port 里唯一一处因方法而异的约定：
+//   - EmbedChunks 的 q 必须是**连接池**，不能是事务（它要发网络请求）；
+//   - ReplaceChunks 的 q 可以是事务——"删了旧分块但没插上新的"不留库，
+//     正是靠调用方把事务传进来实现的；repo 自己不 Committer 任何东西。
+//
+// DeleteByDocument 不碰网络，跟着 ReplaceChunks 的约定走（可以传事务）。
 type ChunkIndexer interface {
-	IndexDocument(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk) error
+	// EmbedChunks 计算分块的向量，只发对上游的 HTTP 调用，不写任何 SQL
+	// （读一次模型配置除外）。返回的 model 是落库时要写进 embedding_model
+	// 的人类可读模型名，vecs 与 chunks 按下标一一对应。
+	//
+	// 零个分块时返回 (nil, "", nil)：空文档没有要 embed 的东西，也不该
+	// 因为"还没配 embedding 模型"而失败——调用方仍然要清掉它的旧分块。
+	EmbedChunks(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk) (vecs [][]float32, model string, err error)
+
+	// ReplaceChunks 把文档上一次的分块换成本次的：先删后插。只有这一半
+	// 允许在事务里跑。
+	//
+	// 【零分块也要删】一份内容变成空的文档（被清空的文件、只剩空白字符）
+	// 必须把上一版的分块清掉，否则检索还会命中已经不存在的文本。
+	//
+	// 【先删后插是重试安全性的核心】River 的任务可能被重投，同一个文档会
+	// 重新跑一遍：不先清空的话，表里会留下上一次已经插入的部分分块，重试
+	// 一次就多一份重复数据。先删后插让这个方法本身对重试幂等。
+	ReplaceChunks(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk, vecs [][]float32, model string) error
+
+	// DeleteByDocument 删掉一个文档的全部分块（删文档、或单独清索引时用）。
 	DeleteByDocument(ctx context.Context, q platform.Querier, docID uuid.UUID) error
 }
 

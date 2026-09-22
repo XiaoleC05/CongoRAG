@@ -390,3 +390,112 @@ func TestPgRepo_EffectJudgementSurvivesJSONBRoundTrip(t *testing.T) {
 	assert.Equal(t, EffectKey("calculator", rawArgs), EffectKey("calculator", readBack),
 		"EffectKey 必须先规范化再哈希，否则两侧永远不同、23505 那道兜底永远不响")
 }
+
+// ── 保留窗口剪枝（issue #98）────────────────────────────────────
+
+// run_events 的剪枝只按 created_at 一条线删：窗口内的（另一条 run 的）
+// 事件一行都不能少。
+//
+// 【为什么必须真库】判据全压在一句 `DELETE ... WHERE created_at < $1` 上，
+// 而真表的 created_at 是数据库默认值——只能靠一条 UPDATE 把被测的那几条
+// 挪到窗口之外（生产代码里没有改这一列的入口，这是刻意的）。假 repo 那边
+// 是把同一个判据抄了一遍，抄错方向（比如写成 >）它照样绿。
+//
+// 这条也顺带钉住 migrations/0014 那条索引的存在：没有它，这句 DELETE 是
+// 一次全表顺序扫描——而这是全库增长最快的表（每个流式 token 一行）。
+func TestPgRepo_PruneRunEvents_OnlyDeletesOutsideTheWindow(t *testing.T) {
+	pool := testdb.Require(t)
+	ctx := context.Background()
+	repo := NewPgRepo()
+
+	old := seedRun(t, pool, RunCompleted, CurrentStateSchemaVersion)
+	fresh := seedRun(t, pool, RunRunning, CurrentStateSchemaVersion)
+
+	for i := int64(1); i <= 2; i++ {
+		require.NoError(t, repo.AppendRunEvent(ctx, pool, old.ID, RunEvent{
+			ID: i, Type: "token", Payload: json.RawMessage(`{"type":"token"}`),
+		}))
+	}
+	require.NoError(t, repo.AppendRunEvent(ctx, pool, fresh.ID, RunEvent{
+		ID: 1, Type: "token", Payload: json.RawMessage(`{"type":"token"}`),
+	}))
+
+	now := time.Now()
+	_, err := pool.Exec(ctx, `UPDATE run_events SET created_at = $2 WHERE run_id = $1`,
+		old.ID, now.Add(-48*time.Hour))
+	require.NoError(t, err)
+
+	deleted, err := repo.PruneRunEvents(ctx, pool, now.Add(-24*time.Hour))
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, deleted, int64(2), "窗口之外的事件必须被回收")
+
+	gone, err := repo.RunEventsAfter(ctx, pool, old.ID, 0)
+	require.NoError(t, err)
+	assert.Empty(t, gone, "窗口之外的事件必须被删干净")
+
+	kept, err := repo.RunEventsAfter(ctx, pool, fresh.ID, 0)
+	require.NoError(t, err)
+	assert.Len(t, kept, 1, "窗口内的、另一条 run 的事件一行都不能少")
+}
+
+// 【账本的回收判据是 run 已终态，不是 age】这句是三表 JOIN + DELETE USING，
+// 纸面上看不出对错：写成按 tool_effect_log.created_at 删的话，一条三天前
+// 被中断、今天才被恢复的 run 会读不到自己的账本，gateToolReplay 判成
+// "这一步没执行过" → 重放 → 副作用第二次生效，而且全程无错误无日志。
+//
+// 三种 run 各来一条，只有"终态且够久"的那条该被回收。
+func TestPgRepo_PruneToolEffectLog_OnlyTerminalRuns(t *testing.T) {
+	pool := testdb.Require(t)
+	ctx := context.Background()
+	repo := NewPgRepo()
+
+	// seedRun 造 run，这里再补一条工具步骤 + 一行账本。
+	stepLedger := func(t *testing.T, run *Run) *Step {
+		t.Helper()
+		s := &Step{ID: uuid.New(), RunID: run.ID, Seq: 1, Type: StepTypeTool,
+			Status: StepRunning, ToolName: "calculator", CreatedAt: time.Now()}
+		require.NoError(t, repo.InsertStep(ctx, pool, s))
+		require.NoError(t, repo.RecordToolEffect(ctx, pool, s.ID,
+			EffectKey("calculator", json.RawMessage(`{"a":1}`))))
+		return s
+	}
+	pushUpdatedAt := func(t *testing.T, run *Run, at time.Time) {
+		t.Helper()
+		_, err := pool.Exec(ctx, `UPDATE agent_runs SET updated_at = $2 WHERE id = $1`, run.ID, at)
+		require.NoError(t, err)
+	}
+
+	old := time.Now().Add(-48 * time.Hour)
+
+	// 终态且早就结束了：该回收。
+	done := seedRun(t, pool, RunCompleted, CurrentStateSchemaVersion)
+	pushUpdatedAt(t, done, old)
+	doneStep := stepLedger(t, done)
+
+	// 同样旧、但被中断：一行都不能动——它随时可能被用户点恢复。
+	interrupted := seedRun(t, pool, RunInterrupted, CurrentStateSchemaVersion)
+	pushUpdatedAt(t, interrupted, old)
+	interruptedStep := stepLedger(t, interrupted)
+
+	// 刚结束、还在保留期里：留一份完整现场供排查。
+	freshDone := seedRun(t, pool, RunCompleted, CurrentStateSchemaVersion)
+	freshStep := stepLedger(t, freshDone)
+
+	n, err := repo.PruneToolEffectLog(ctx, pool, time.Now().Add(-24*time.Hour))
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, n, int64(1), "至少那条老终态 run 的账本该被回收")
+
+	for _, tc := range []struct {
+		name string
+		step *Step
+		want bool
+	}{
+		{"终态且终态够久的 run", doneStep, false},
+		{"被中断的 run（恢复可能还要读它）", interruptedStep, true},
+		{"刚结束的 run（保留期还没过）", freshStep, true},
+	} {
+		applied, err := repo.ToolEffectApplied(ctx, pool, tc.step.ID)
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, applied, tc.name)
+	}
+}

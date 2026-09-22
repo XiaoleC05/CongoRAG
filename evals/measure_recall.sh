@@ -68,11 +68,32 @@ WHERE embedding IS NOT NULL AND embedding_model = '$CONGORAG_EMBED_MODEL'
 ORDER BY embedding <=> '$QVEC'::halfvec
 LIMIT $limit;
 SQL
-  docker exec -i congorag-postgres psql -U postgres -d congorag -t -A < "$SCRATCH/query.sql" | grep -v '^SET$' | grep -v '^$'
+  # 【psql 不能留在管道里】管道里 psql 的退出码和 grep 的"一行都没选中"都会
+  # 让整条管道非 0，而脚本是 set -euo pipefail——两者混在一起，就分不出
+  # "SQL 报错"和"结果本来就是空"。拆成两步：psql 的退出码单独判（报错就
+  # 明确报错并退出），过滤只决定输出内容。
+  # 【必须 -v ON_ERROR_STOP=1】没有它，SELECT 失败时 psql 的退出码仍是 0，
+  # 错误只走 stderr，stdout 只剩两条 SET——过滤掉之后就变成"空结果"，于是
+  # 报告里会出现一行看起来很正常的数字，而那个数字是在一个报错的查询上算的。
+  if ! docker exec -i congorag-postgres psql -U postgres -d congorag -t -A -v ON_ERROR_STOP=1 \
+      < "$SCRATCH/query.sql" > "$SCRATCH/rows.txt" 2> "$SCRATCH/psql-err.txt"; then
+    echo "" >&2
+    echo "✗ 查询失败（$mode, K=$limit），没有测到任何东西：" >&2
+    sed 's/^/  /' "$SCRATCH/psql-err.txt" >&2
+    echo "  · 确认迁移都跑过（document_chunks 表在不在、embedding_model 这个列名对不对）" >&2
+    echo "  · 确认 CONGORAG_EMBED_MODEL 和索引时写入用的模型一致（当前：$CONGORAG_EMBED_MODEL）" >&2
+    echo "  · 空库（表在、一行数据都没有）不会走到这里，那种情况会报 N/A" >&2
+    exit 1
+  fi
+  # 【收尾要 `|| true`】grep 一行都没选中时返回 1；"结果为空"在这个脚本里
+  # 是正常情形（刚 migrate up 完就是空库），不能让它终止脚本——否则下面那条
+  # "N/A（分块数为 0）"分支永远走不到，用户看到的是半路无输出地死掉。
+  grep -v '^SET$' "$SCRATCH/rows.txt" | grep -v '^$' || true
 }
 
 echo "K | recall@K | 精确扫描耗时 | ANN 耗时"
 echo "--|----------|--------------|----------"
+measured=0
 for K in 5 10 20; do
   t0=$(date +%s%N)
   exact_ids=$(run_query exact "$K")
@@ -89,8 +110,21 @@ for K in 5 10 20; do
   if [ "$total" -eq 0 ]; then
     recall="N/A（分块数为 0）"
   else
+    measured=$(( measured + 1 ))
     recall=$(node -e "console.log((($hit/$total)*100).toFixed(1) + '%')")
   fi
 
   echo "$K | $recall | ${exact_ms}ms | ${ann_ms}ms"
 done
+
+# 【一行都没测到就不能算"跑成功了"】这个脚本产出的是一组 recall 数字。分母
+# 为 0 时那张表里全是 N/A——它是一次**没做成的**测量，不是"recall 是 100%"
+# 也不是"没问题"。退出码必须把这两种情形分开，否则 CI 或人只看 $? 就会把
+# 空库/模型名写错当成通过（这正是 issue 里说的"退出码不是显式的失败"）。
+if [ "$measured" -eq 0 ]; then
+  echo "" >&2
+  echo "✗ 一行都没测到：document_chunks 里没有 embedding_model = '$CONGORAG_EMBED_MODEL' 的分块。" >&2
+  echo "  上面那张表全是 N/A，它不构成一次 recall 测量。先确认迁移跑过、文档已索引、" >&2
+  echo "  CONGORAG_EMBED_MODEL 和写入时用的模型是同一个。" >&2
+  exit 1
+fi

@@ -109,4 +109,30 @@ describe('工具调用折叠卡片（issue #80）', () => {
 
     expect(screen.getByText('结果')).toBeTruthy()
   })
+
+  // 【issue #114 的回归面】流式过程中每来一个 token 都会重渲染整条时间线，
+  // 而卡片收到的 props 引用一个都没变（时间线只换数组、条目对象还是那一批），
+  // 所以它不该重新做任何事——尤其是"把完整结果重新序列化一遍"。
+  //
+  // 判据用带 toJSON 的结果代替"几万字的文档"：JSON.stringify 遇到 toJSON
+  // 一定会调它，调用次数就是"重新序列化了几遍"。修复前这里是 3。
+  it('props 引用没变时不重新序列化结果（每个 token 一次的重算不复现）', () => {
+    let serialised = 0
+    const result = {
+      toJSON: () => {
+        serialised += 1
+        return { ok: true }
+      },
+    }
+    const args = { a: 1 }
+
+    const { rerender } = render(<ToolCallCard name="calculator" args={args} result={result} />)
+    expect(serialised).toBe(1)
+
+    // 时间线追加 token 时的真实形态：同样的条目对象，只换外层数组。
+    rerender(<ToolCallCard name="calculator" args={args} result={result} />)
+    rerender(<ToolCallCard name="calculator" args={args} result={result} />)
+
+    expect(serialised).toBe(1)
+  })
 })

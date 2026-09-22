@@ -459,6 +459,48 @@ func (r *PgRepo) ClearTerminalRunCheckpoints(ctx context.Context, q platform.Que
 	return tag.RowsAffected(), nil
 }
 
+// ── 保留窗口剪枝（issue #98）────────────────────────────────────
+
+// PruneRunEvents 见 port.go 的契约。
+//
+// 【为什么是一整条 DELETE，不分批】窗口由 retention.go 的 runEventsRetention
+// 定义，它把这张表限制在"最近 24 小时的事件"——本地单机一天的量。分批删除
+// 要自己维护游标、还要处理"删到一半失败"，换来的是省下一次本来就很快的删除。
+// （按 run 续传的读路径走主键 (run_id, event_id)；剪枝走
+// run_events_created_at_idx，见 migrations/0014。）
+func (r *PgRepo) PruneRunEvents(ctx context.Context, q platform.Querier, before time.Time) (int64, error) {
+	tag, err := q.Exec(ctx, `DELETE FROM run_events WHERE created_at < $1`, before)
+	if err != nil {
+		return 0, fmt.Errorf("prune run events before %s: %w", before, platform.WrapPgErr(err))
+	}
+	return tag.RowsAffected(), nil
+}
+
+// PruneToolEffectLog 见 port.go 的契约。
+//
+// 【为什么是三表 JOIN】判据落在 run 的状态上，而不是账本自己的 created_at：
+// 账本的读者只有恢复路径（gateToolReplay），而它只在 run 是 interrupted 时
+// 才跑。终态 run 的账本永远不会再被读到；interrupted 的 run 再旧都可能被
+// 恢复——按时间剪它等于把"这一步执行过"的证据删掉，恢复会据此重放一个
+// 已经生效过的副作用（ADR-007 那句话的反例）。所以这里必须问 run 要状态。
+//
+// 【为什么状态值走参数而不是写死在 SQL 里】和 ClearTerminalRunCheckpoints
+// 同一个写法：三个状态字面量只在 Go 侧的常量里定义一次，枚举改了不会漏。
+func (r *PgRepo) PruneToolEffectLog(ctx context.Context, q platform.Querier, olderThan time.Time) (int64, error) {
+	tag, err := q.Exec(ctx,
+		`DELETE FROM tool_effect_log t
+		  USING agent_run_steps s, agent_runs r
+		  WHERE t.step_id = s.id
+		    AND s.run_id = r.id
+		    AND r.status IN ($2, $3, $4)
+		    AND r.updated_at < $1`,
+		olderThan, string(RunCompleted), string(RunFailed), string(RunCancelled))
+	if err != nil {
+		return 0, fmt.Errorf("prune tool effect log of runs terminal before %s: %w", olderThan, platform.WrapPgErr(err))
+	}
+	return tag.RowsAffected(), nil
+}
+
 // ── 幂等键（issue #56 / ADR-008）────────────────────────────────
 
 var _ IdempotencyStore = (*PgIdempotencyStore)(nil)

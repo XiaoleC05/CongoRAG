@@ -1,0 +1,22 @@
+-- run_events 的剪枝索引（issue #98）。
+--
+-- ── 为什么是这张表需要索引，tool_effect_log 不需要 ──────────────
+-- 两张表的剪枝判据不同（理由见 internal/agent/retention.go）：
+--
+--   run_events       按 created_at < cutoff 删。主键是 (run_id, event_id)，
+--                    服务的是按 run 续传那条读路径，对 created_at 一点忙
+--                    帮不上——没有这条索引，每次剪枝都是**全表顺序扫描**。
+--   tool_effect_log  按"它那一步所属的 run 已经终态且够久"删，驱动表是
+--                    agent_runs（同一个 WHERE 形状 ClearTerminalRunCheckpoints
+--                    每小时已经在跑一次），再经 agent_run_steps(run_id) 与
+--                    tool_effect_log 的唯一索引 (step_id, effect_key) 走。
+--                    三跳用的都是既有索引，这里再给 created_at 建一条是白建。
+--
+-- ── run_events 为什么值得单独一条索引 ───────────────────────────
+-- 它是全库增长最快的表：每个流式 token 都落一行（consumeEvents 的
+-- adkEventToken 分支），一次长回答就是几百到几千行。而剪枝判据就是
+-- created_at 上的一个区间，索引让它变成一次范围扫描 + 一次按主键删除。
+--
+-- 【不用 CONCURRENTLY】理由同 0012：CONCURRENTLY 不能在事务里执行，而
+-- golang-migrate 把每条迁移都包在事务里。本项目的规模下这个锁是瞬时的。
+CREATE INDEX run_events_created_at_idx ON run_events (created_at);

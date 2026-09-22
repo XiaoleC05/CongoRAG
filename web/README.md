@@ -418,11 +418,8 @@ formatDateTime(kb.updatedAt)
 | 文档状态只有一个映射点 | `DocumentStatusBadge` 的四态与后端状态机一一对应 | `components/knowledge/DocumentStatusBadge.tsx` |
 | 窄屏下的侧栏是抽屉 | `<768px`（`use-mobile.ts` 的断点）点 `button[data-sidebar="trigger"]`，`[role="dialog"]` 从 0 变 1 | 390px 下实测过，见 §15 |
 | 引用展开有手指的等价物 | `CitationBadge` 是受控 `HoverCard` + 真 `button` 触发器；触屏点一下开、再点一下关 | `CitationBadge.test.tsx`；390px 下实测过，见 §15 |
-
-**审计发现、但本批次不修的缺口**（记在这里，免得下一轮重新发现一遍）：
-
-- `ConversationPage` / `AgentDetailPage` 的发送按钮只有图标、没有 `aria-label`；
-- 文档行上的删除按钮直接执行，没有确认框（属 issue #91）。
+| 发送 / 运行按钮有可访问名 | 只剩图标的按钮各自带 `aria-label`（发送 / 停止生成 / 运行 / 取消运行），那个位置换了功能时读屏听到的名字跟着换 | `ConversationPage.tsx`、`AgentDetailPage.tsx`；两条测试直接按可访问名取按钮（`ConversationPage.test.tsx` 的 `发送` / `停止生成`、`AgentDetailPage.test.tsx` 的 `运行` / `取消运行`） |
+| 文档行的删除要先确认 | 删除入口不直接执行，走 `DeleteDocumentDialog`（`AlertDialog`，默认焦点落在"取消"上）；失败该 toast 的 toast、该留在弹窗里的留在弹窗里 | `KnowledgeBaseDetailPage.tsx`、`components/knowledge/DeleteDocumentDialog.tsx`；`KnowledgeBaseDetailPage.test.tsx` 的「删除文档（issue #91）」 |
 
 ---
 

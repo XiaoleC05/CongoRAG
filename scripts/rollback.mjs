@@ -17,7 +17,7 @@
  *   node scripts/rollback.mjs --dir deployments/startup --backup deployments/startup/backups/2026-09-22T10-00-00 --yes
  */
 
-import { existsSync, readFileSync, statSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 import {
@@ -29,6 +29,7 @@ import {
   info,
   ok,
   pgSqlOn,
+  pickNewestBackup,
   readEnvFile,
   run,
   runWithInput,
@@ -90,7 +91,28 @@ const backupRoot = defaultBackupRoot(dir)
 // 变成"用当前目录当备份"，然后在找不到 manifest.json 时给出一个和真实
 // 原因无关的报错。先判空，再 resolve。
 const backupArg = argValue('--backup', '')
-const backupDir = backupArg ? resolve(backupArg) : pickNewestBackup(backupRoot)
+let backupDir
+if (backupArg) {
+  // 用户指了哪一份就是哪一份。就算它的清单读不出来，也该由下面的清单校验
+  // 给出针对**这一份**的报错，而不是在这里被"挑最新"的逻辑拦下来。
+  backupDir = resolve(backupArg)
+} else {
+  const picked = pickNewestBackup(backupRoot)
+  // 【清单损坏时必须拦下来，不能跳过它去选更旧的一份】回滚是最后一次机会：
+  // 悄悄退回到一份更旧的备份，用户以为在还原 A、实际还原了 B，比直接报错
+  // 糟得多。原来的写法是在 sort 的比较器里 JSON.parse——目录下任何一份清单
+  // 坏掉都会以解析异常崩在"选备份"这一步，看不出是哪个文件、也不知道还能
+  // 怎么办。这里把文件、原因、两条出路一起给出来。
+  if (picked.corrupt.length) {
+    fail(
+      `备份目录里有读不出清单的备份，不能替你在它们之间做选择：\n` +
+        picked.corrupt.map((c) => `  · ${c.path}\n    ${c.reason}`).join('\n') +
+        '\n\n  修好或删掉上面这些目录，或者用 --backup 明确指定要还原哪一份：\n' +
+        `    node scripts/rollback.mjs --dir ${dir} --backup <备份目录> --yes`,
+    )
+  }
+  backupDir = picked.dir
+}
 if (!backupDir || !existsSync(backupDir)) {
   fail(
     `找不到备份。\n` +
@@ -107,7 +129,21 @@ if (!existsSync(manifestPath)) {
       '  没有清单就无法知道这份备份来自哪个版本、对应哪个卷，回滚会靠猜。',
   )
 }
-const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+// 【清单读不出来要停在"能读懂这句话"的地方】文件在、但内容坏了（写了一半、
+// 被同步盘截断、手工编辑出错）时，裸的 JSON.parse 会抛一个带 node 内部路径的
+// SyntaxError 栈——用户看到的是 `file:///.../rollback.mjs:110:23`，而不是
+// "这份备份的清单坏了、你该换哪一份"。上面那条选备份的报错会把人指到 --backup，
+// 所以这条路径同样不能是一个未捕获的异常。
+let manifest
+try {
+  manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+} catch (err) {
+  fail(
+    `${manifestPath} 读不出来：${String(err.message ?? err)}\n` +
+      '  这份备份的清单已经损坏，回滚中止（**还没有动任何数据**）。\n' +
+      '  换一份备份：--backup <备份目录>；确定这份没用了就把它删掉。',
+  )
+}
 ok(`清单：${manifest.fromVersion} → ${manifest.toVersion}（备份于 ${manifest.createdAt}）`)
 
 // 【校验哈希，不是"文件在就行"】备份是在灾难发生**之前**做的，所以它有
@@ -298,17 +334,3 @@ console.log(`  数据卷      已还原（${volumeName}）`)
 console.log('')
 console.log('  打开界面确认数据回来了。')
 console.log('  【提醒】这次回滚丢掉了迁移之后新产生的数据——那是回滚的定义。')
-
-/** 在 backupRoot 下挑最新的一份备份目录（按清单里的 createdAt，不是目录名）。 */
-function pickNewestBackup(root) {
-  if (!existsSync(root)) return null
-  const candidates = readdirSync(root)
-    .map((name) => join(root, name))
-    .filter((p) => existsSync(join(p, 'manifest.json')))
-  if (candidates.length === 0) return null
-  return candidates.sort((a, b) => {
-    const ta = JSON.parse(readFileSync(join(a, 'manifest.json'), 'utf8')).createdAt
-    const tb = JSON.parse(readFileSync(join(b, 'manifest.json'), 'utf8')).createdAt
-    return tb.localeCompare(ta)
-  })[0]
-}

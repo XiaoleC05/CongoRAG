@@ -3,7 +3,7 @@
 - 状态：已采纳
 - 日期：2026-09-22
 - 相关：[ADR-006](006-checkpoint-layering.md)、`internal/agent/usecase.go`、
-  `internal/agent/model.go`、`migrations/0010_recovery.up.sql`
+  `internal/agent/model.go`、`migrations/0010_tool_effect_log.up.sql`
 
 ## 背景
 

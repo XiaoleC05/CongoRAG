@@ -223,8 +223,15 @@ if (!dryRun) {
 }
 
 // 4. tag 不能已经存在（--allow-existing-tag 用于补建历史版本的 Release）
+//
+// 【dry-run 不查远端】`git ls-remote` 要走 SSH 到 origin，而 --dry-run 的承诺是
+// "不碰 git、不联网"（脚本头、`make help`、docs/releasing.md 三处都这么写）。
+// 和上面 `git fetch` 那条同样的处理：真发布时必须查，dry-run 时只查本地 tag，
+// 并在输出里把"远端没查"这件事写出来——承诺被破坏的地方，正是它最该成立的地方。
+// 代价是 dry-run 的"新建还是补建"只按本地判断，所以输出里必须说明这一点，
+// 不能让一个没做过的检查看起来像做过了。
 const localTag = gitQuiet('rev-parse', '-q', '--verify', `refs/tags/${tag}`)
-const remoteTag = git('ls-remote', '--tags', 'origin', `refs/tags/${tag}`)
+const remoteTag = dryRun ? '' : git('ls-remote', '--tags', 'origin', `refs/tags/${tag}`)
 const tagExists = localTag.ok || remoteTag !== ''
 
 if (tagExists && !allowExistingTag) {
@@ -242,7 +249,8 @@ if (dryRun) {
   console.log(`\n=== dry-run：${tag} ===\n`)
   console.log(`契约版本检查：${gotContract} ✓`)
   console.log('与 origin/main 是否一致：未检查（dry-run 不联网）')
-  console.log(`tag 是否已存在：${tagExists ? '是（将走 PATCH 分支）' : '否（将新建）'}`)
+  console.log(`tag 是否已存在：${tagExists ? '是（将走 PATCH 分支）' : '否（将新建）'}——只查了本地 tag`)
+  console.log('远端是否已有这个 tag：未检查（dry-run 不联网）——上面 POST/PATCH 的选择只按本地判断')
   console.log(`凭据：${cred ? `来自 ${cred.from}` : '未找到（真发布会失败）'}`)
   console.log(`\n--- tag 消息 / Release 正文 ---\n${body}\n--- 正文结束 ---\n`)
   console.log('将要执行的命令：')

@@ -934,6 +934,57 @@ func TestPrepareResume_CarriesOriginalSeqForOrdering(t *testing.T) {
 		"已完成的那一轮要带原始 seq——恢复时重放出来的那些夹在中间，靠它排序")
 }
 
+// ════════════════════════════════════════════════════════════════
+// issue #108：重放失败时的收尾不能被请求 ctx 拖死
+// ════════════════════════════════════════════════════════════════
+
+// replayFailsTool 是只读、允许重放、但这次重放会失败的工具——用来走通
+// "重放失败 → run 落 failed"这条路径。
+//
+// 【为什么必须是 ReadOnly + RetrySafe】其余组合会被 gateToolReplay 挡在
+// PrepareResume 那一步，根本走不到重放。
+type replayFailsTool struct{ stubTool }
+
+func (s *replayFailsTool) Name() string { return "flaky" }
+func (s *replayFailsTool) Metadata() Metadata {
+	return Metadata{SideEffectLevel: ReadOnly, RetryPolicy: RetrySafe}
+}
+
+func (s *replayFailsTool) Invoke(ctx context.Context, args json.RawMessage) (json.RawMessage, error) {
+	return nil, errors.New("tool backend down")
+}
+
+// 【issue #108 的验收判据】重放失败 + 请求 ctx 已取消，run 最终必须落在 failed。
+//
+// 恢复本身跑在一条 SSE 上，重放工具失败与客户端断开高度重合。ctx 一取消，
+// 原来那次 UPDATE 一条都不会执行、错误还被 `_ =` 丢掉，于是 run 停在
+// running——而 PrepareResume 只接受 interrupted，它既不可恢复、界面上又一直
+// 显示"运行中"，直到用户手动点取消或进程重启被 InterruptRunningRuns 扫到。
+func TestResume_ReplayFailure_MarksRunFailedWithDetachedContext(t *testing.T) {
+	u, repo, run, _ := newResumeFixture(t, &replayFailsTool{}, CurrentStateSchemaVersion)
+	plan := mustPrepareResume(t, u, run.ID)
+	require.Len(t, plan.pendingToolSteps, 1, "崩在现场的那一步要被排进重放")
+
+	reqCtx, cancel := context.WithCancel(context.Background())
+	cancel() // 重放到一半客户端断开
+
+	_, err := u.Resume(reqCtx, plan, newFakeSink())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tool backend down")
+
+	got, err := repo.GetRun(context.Background(), nil, run.ID)
+	require.NoError(t, err)
+	assert.Equal(t, RunFailed, got.Status,
+		"已经重放过、并且失败的 run 必须落 failed：停在 running 上既不可恢复，也说不通")
+
+	require.Len(t, repo.updates, 2, "一次是恢复的 CAS，一次是重放失败后的收尾")
+	finalize := repo.updates[len(repo.updates)-1]
+	assert.Equal(t, RunRunning, finalize.from)
+	assert.Equal(t, RunFailed, finalize.to)
+	assert.NoError(t, finalize.ctxErr,
+		"收尾写入必须脱离请求 ctx——跟着它走的话这条 UPDATE 一条都不会执行")
+}
+
 // mustPrepareResume 是测试里的便利包装：PrepareResume 失败就直接结束测试。
 func mustPrepareResume(t *testing.T, u *Usecase, runID uuid.UUID) *ResumePlan {
 	t.Helper()

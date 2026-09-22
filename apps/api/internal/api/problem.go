@@ -11,7 +11,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -24,32 +23,34 @@ import (
 )
 
 // problemContentType 是契约里所有错误响应声明的媒体类型。
-const problemContentType = "application/problem+json; charset=utf-8"
+// 取值来自 platform——中间件写的是同一种媒体类型，定义只有一处。
+const problemContentType = platform.ProblemContentType
 
 // writeProblem 按 RFC 7807 写出错误响应。
 //
-// 【为什么不用 c.JSON】gin 的 c.JSON 固定写 application/json，
-// 而契约里所有错误声明的是 application/problem+json。用 c.Data 才能指定。
+// 【为什么是个薄适配层】实现是 platform.WriteProblem：中间件的错误体
+// （OriginCheck / Recovery）也要按契约写，而它不能 import 本包（方向反了，
+// 本包依赖 platform）。两边各写一份的话，媒体类型、status 字段、
+// Cache-Control 漏在某一条路径上不会编译失败，只会让客户端在那条路径上
+// 拿到形状不同的错误体（issue #112）。
 func writeProblem(c *gin.Context, status int, p Problem) {
-	body, err := json.Marshal(p)
-	if err != nil {
-		// Problem 是几个字符串和一个 int，序列化不会失败；真失败了也别再套一层错误。
-		c.Status(status)
-		return
+	// Problem 是生成器产出的类型（Title / Detail 是 *string），换成 platform
+	// 那份值类型——nil 和空串在 JSON 里同样是被省略。
+	pp := platform.Problem{Type: p.Type, Status: status}
+	if p.Title != nil {
+		pp.Title = *p.Title
 	}
-
-	// 【为什么每个错误响应都要带 no-store】404 和 503 属于启发式可缓存的
-	// 状态码，而拼错端点返回的正是 404（spa.go 的那条 API 前缀分支）。
-	// 不显式关掉的话，浏览器可能把「这个端点不存在」记下来，之后端点补上了
-	// 还是 404；503 同理——服务恢复了，用户还在看旧的「暂不可用」。
-	c.Header("Cache-Control", cacheNoStore)
-	c.Data(status, problemContentType, body)
+	if p.Detail != nil {
+		pp.Detail = *p.Detail
+	}
+	platform.WriteProblem(c, pp)
 }
 
 // fail 把业务层的错误翻译成 HTTP 响应并写出去。
 //
-// 这是全项目唯一把 error 变成 HTTP 的地方。其他层只用 %w 包错误往上传递，
-// 它们不 import net/http，也不知道 404 和 500 的区别。
+// 业务错误只有这一条出口。其他层只用 %w 包错误往上传递，它们不 import
+// net/http，也不知道 404 和 500 的区别。（中间件那条路径不走这里——
+// 请求还没进业务就被拒，写法见 platform.abortWithProblem。）
 func (s *Server) fail(c *gin.Context, err error) {
 	status, typ, title := classify(err)
 
@@ -63,7 +64,7 @@ func (s *Server) fail(c *gin.Context, err error) {
 			"path", c.Request.URL.Path,
 			"error", err,
 		)
-		detail := "服务内部错误"
+		detail := platform.InternalErrorDetail
 		writeProblem(c, status, Problem{
 			Type: typ, Status: status, Title: &title, Detail: &detail,
 		})
@@ -79,7 +80,11 @@ func (s *Server) fail(c *gin.Context, err error) {
 	//
 	// 那是服务端的内部调用路径，id 出现两次，对客户端没有意义。
 	// innermostMessage 只取最内层，得到 "knowledge base <id>: not found"。
-	detail := innermostMessage(err)
+	//
+	// 经 platform.SafeDetail 而不是直接调它会多一次判断（这里 status 必然
+	// < 500，走的就是透传那支），换来的是和 SSE 的 error 帧同一份判据——
+	// 两条协议不会各写一套"5xx 不说原文"。
+	detail := platform.SafeDetail(status, err)
 
 	// 4xx 也要记一条日志——否则"客户端说报 400 了"这类反馈无从查起。
 	// 用 Warn 不是 Error：4xx 是调用方的问题，不是服务的故障。
@@ -102,30 +107,12 @@ func (s *Server) fail(c *gin.Context, err error) {
 
 // innermostMessage 取错误包装链最内层的那句话。
 //
-// fmt.Errorf("a: %w", fmt.Errorf("b: %w", base)) 的 Error() 是 "a: b: base"，
-// 逐层 errors.Unwrap 到最后一个还带有自己文案的错误，得到 "b: base"。
-//
-// 【为什么不 unwrap 到底】最底下是 sentinel（platform.ErrNotFound，文案就是
-// "not found"），只剩它的话 detail 变成光秃秃的 "not found"，比 type 字段还少信息。
-// 所以停在【倒数第二层】——那一层是离业务最近、又不含调用路径的一句。
+// 实现是 platform.InnermostMessage：4xx 的 detail 和 SSE 主帧的
+// platform.SafeDetail 必须是同一份提取逻辑，否则同一个错误在 REST 和流式
+// 两种协议下的文案会不一样。这个名字留在本包是因为 server.go 的
+// writeFallbackError 也调用它。
 func innermostMessage(err error) string {
-	if err == nil {
-		return ""
-	}
-	prev := err
-	for {
-		next := errors.Unwrap(prev)
-		// next 为 nil：prev 是链的末端（sentinel），返回上一层。
-		// next.Error() == prev.Error()：这一层只做了 %w 没加文案，继续往下。
-		if next == nil {
-			return prev.Error()
-		}
-		if errors.Unwrap(next) == nil {
-			// next 是末端 sentinel，prev 是倒数第二层——正是要的那一层。
-			return prev.Error()
-		}
-		prev = next
-	}
+	return platform.InnermostMessage(err)
 }
 
 // BindErrorHandler 处理【生成器包装层】的参数绑定失败。
@@ -192,67 +179,32 @@ func bindErrorDetail(err error) string {
 	return "参数 " + name + " 的格式不正确"
 }
 
-// classify 把 sentinel 错误映射成 HTTP 状态码。
+// classify 把 error 翻译成 (HTTP 状态码, Problem.type, Problem.title)。
 //
-// 用 errors.Is 而不是 ==：错误一路上来被 %w 包了好几层，
-// errors.Is 会顺着包装往里找。
+// 只有两档在这里特判，其余全部走 platform.Classify——REST 的 Problem.type
+// 和 SSE error 帧的 type 共用那一张表，同一个错误不会在实时帧里是 conflict、
+// 在断线重放里变成 internal_error（issue #112）。
 //
-// 顺序从具体到笼统，放反了会先被笼统的那条接走。
+// 【为什么这两档不能挪到 platform】ctxmgr.ErrOverflow 和
+// llm.ErrEmbeddingResetRequired 是那两个包自己的领域概念，而它们都依赖
+// platform（反向 import 会成环），platform.Classify 认不了——和 conversation
+// 的 eventErrorType 特判 context_overflow 是同一个理由。两档都必须排在前面：
+// platform 那边有更宽的匹配（ErrConflict），顺序反了会被先接走。
 func classify(err error) (status int, typ, title string) {
 	switch {
-	// ctxmgr.ErrOverflow 排在最前面：它是本包（api）唯一引用的、
-	// platform 之外的 sentinel——技术方案 §九点名"Context 超预算返回
-	// context_overflow 错误类型"，这个类型属于 ctxmgr 的领域概念
-	//（代码架构设计 §9.1：「ctxmgr.ErrOverflow——这个属于 ctxmgr，
-	// 因为是它的领域概念」），不适合定义在 platform 里和别的 sentinel 混在一起。
+	// 技术方案 §九点名"Context 超预算返回 context_overflow 错误类型"，
+	// 这个类型属于 ctxmgr 的领域概念（代码架构设计 §9.1），不适合定义在
+	// platform 里和别的 sentinel 混在一起。
 	case errors.Is(err, ctxmgr.ErrOverflow):
 		return http.StatusBadRequest, "context_overflow", "上下文超出了模型窗口"
 
-	// llm.ErrEmbeddingResetRequired 和上面那条是同一个模式：包自己的
-	// sentinel 在这里特判一档（issue #39）。它必须是独立的 type——前端要按
-	// 它弹"确认清空并重建"的对话框，混进笼统的 conflict 里就分不出来。
-	// 排在任何 platform sentinel 之前，避免被更宽的匹配接走。
+	// llm.ErrEmbeddingResetRequired 是同一个模式（issue #39）。它必须是独立的
+	// type——前端要按它弹"确认清空并重建"的对话框，混进笼统的 conflict 里
+	// 就分不出来。
 	case errors.Is(err, llm.ErrEmbeddingResetRequired):
 		return http.StatusConflict, "embedding_change_requires_reindex", "换 embedding 模型需要先确认清空重建"
 
-	// 恢复被拒绝的两种原因，各给一个独立的 type（issue #65 / #63）。
-	// 它们和 embedding 那条同理：前端要按 type 给出不同的下一步动作提示，
-	// 混进笼统的 conflict 里，用户只会看到一句"状态冲突"而不知道该做什么。
-	// 排在 ErrConflict 之前，避免被更宽的那条先接走。
-	case errors.Is(err, platform.ErrStateSchemaVersionMismatch):
-		return http.StatusConflict, "state_schema_version_mismatch", "这条运行的快照版本与当前代码不兼容"
-
-	case errors.Is(err, platform.ErrToolEffectApplied):
-		return http.StatusConflict, "tool_effect_already_applied", "该步骤的副作用可能已经生效，不能自动重放"
-
-	case errors.Is(err, platform.ErrReplayUnsafe):
-		return http.StatusConflict, "replay_unsafe", "这一步的工具不允许被自动重放"
-
-	case errors.Is(err, platform.ErrInvalid):
-		return http.StatusBadRequest, "invalid_argument", "参数不合法"
-
-	case errors.Is(err, platform.ErrNotFound):
-		return http.StatusNotFound, "not_found", "资源不存在"
-
-	case errors.Is(err, platform.ErrDuplicateKey):
-		return http.StatusConflict, "conflict_duplicate_key", "资源已存在"
-
-	// ErrConflict 是更笼统的冲突（状态机不允许的转换、并发修改），
-	// 必须排在 ErrDuplicateKey 之后：重复键是冲突的一种特例，
-	// 放前面的话它会先被这条接走，前端拿不到 conflict_duplicate_key。
-	case errors.Is(err, platform.ErrConflict):
-		return http.StatusConflict, "conflict", "状态冲突"
-
-	case errors.Is(err, platform.ErrForeignKey):
-		// 引用的父行不存在，对客户端等价于"你要的东西找不到"。
-		return http.StatusNotFound, "not_found", "引用的资源不存在"
-
-	case errors.Is(err, platform.ErrUpstream):
-		// 502 而不是 500：错的不是我们，是上游模型服务。
-		// 这个区别决定了排查方向——502 看 API Key 和配额，500 看自己的代码。
-		return http.StatusBadGateway, "upstream_llm_error", "上游模型服务出错"
-
 	default:
-		return http.StatusInternalServerError, "internal_error", "服务内部错误"
+		return platform.Classify(err)
 	}
 }

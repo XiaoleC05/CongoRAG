@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -33,6 +35,22 @@ const recentMessagesLimit = 50
 // 按字符数算，避免响应体随语言膨胀。
 const maxTitleLen = 200
 
+// MaxTextLen 是一条聊天消息正文的长度上限，按字符数算（同 maxTitleLen
+// 的理由：按字节算会让一个纯中文的消息在 1/3 的长度上就被拒掉）。
+//
+// 【为什么这条上限必须存在】正文会原样拼进模型的上下文，而 ctxmgr 的预算
+// 是"按窗口裁"而不是"按输入拒"——它裁的是历史与分块，用户这一句本身没有
+// 任何上界。契约里 SendMessageRequest.text 与 StartAgentRunRequest.input
+// 的 maxLength 都是 8000（issue #109），这里落的也是同一个数字。
+//
+// 【为什么导出】handler 也做同样的校验时直接用它，别处再写一遍 8000
+// 迟早会漂移（同 MaxIdempotencyKeyLen 的理由）。
+//
+// 【为什么不能和 internal/agent 的 maxInputLen 共用一个常量】agent 包
+// import 了本包（它声明 ConversationSearcher port，由本包实现），本包反向
+// import 它会成环。两个数字必须一起改，这一条只能靠注释钉住。
+const MaxTextLen = 8000
+
 // checkpointInterval 是流式过程中落库的时间间隔——技术方案 §三：
 // "assistant 消息先落库（status=streaming），流式过程中按批次 checkpoint
 // （每 N 个 token 或每 500ms）更新内容"。这里选时间间隔而不是 token 数：
@@ -40,11 +58,56 @@ const maxTitleLen = 200
 // 的意义更直接（多久能看到内容在动）。
 const checkpointInterval = 500 * time.Millisecond
 
+// token 事件的攒批闸门（issue #98）：连续若干 chunk 的正文合成一条 token
+// 事件发出去，两个闸门先到先算。
+//
+// 【为什么不再一个 chunk 一条】原实现每个 chunk 都走一遍 NextEventID
+// （对 conversation_counters 的 UPSERT）+ AppendEvent（往
+// conversation_events 插一行），两次往返、一行永久留存。实测开发库：
+// 64 条消息攒下 5760 行 token 事件（占全表 97.7%），平均每条正文只有
+// 2 字节——一行事件的固定成本（SQL、索引、行头）远高于它承载的信息。
+//
+// 【攒批对协议和客户端是透明的】客户端收到 token 做的事是把 data.text
+// 追加到气泡里（docs/sse-protocol.md「事件类型」）。攒批只是把"一次追加
+// 一个 chunk"变成"一次追加几个 chunk"，挪动的是服务端的持久化粒度。
+// 也不能改成"发出但只存一部分"：客户端拿到的游标（id）和事件表里的行
+// 必须是同一批，否则断线续传会重发已经显示过的正文。
+//
+// 【两个闸门各自管什么】
+//   - tokenBatchInterval 管延迟：用户最多等这么久一定会看到新文本。
+//     300ms 是"肉眼看不出卡顿"与"行数够少"之间的取舍，约 3 次/秒。
+//   - tokenBatchBytes 管单条事件的重量：一条事件对应客户端一次追加 +
+//     一次渲染，1KiB 是渲染能舒服吸收的量级；再大就是往气泡里灌，
+//     没有好处。用字节数而不是字符数，因为限制的是这条事件的传输/存储
+//     重量，而不是它有多少个字（中文一个字 3 字节）。
+//
+// 【于是行数与 chunk 数脱钩】一轮对话的事件行数上界 =
+// 时长/tokenBatchInterval + 总字节数/tokenBatchBytes。实测一轮平均 4.1 秒、
+// 165 个 chunk、330 字节：现在约 8~14 行，而不是 165 行。
+const (
+	tokenBatchInterval = 300 * time.Millisecond
+	tokenBatchBytes    = 1024
+)
+
 // searchMessagesLimit 是 conversation_search 工具一次最多看多少条历史。
 //
 // 【为什么不是分页】那个工具要回答"我们之前聊过 X 吗"，按页找会让它只看到
 // 最近一段，给出错误的"没聊过"。上限只是防止一个几万条的会话把内存打满。
 const searchMessagesLimit = 500
+
+// searchMessagesMaxBytes 是 conversation_search 一次返回的正文总字节上限。
+//
+// 【为什么条数之外还要一个字节上限】searchMessagesLimit 管的是条数——防
+// 一个几万条的会话。它拦不住"少而巨大"：500 条里只要有几条是用户粘进来的
+// 长日志，拼起来就是几百 KB，一路原样进 Agent 的历史（issue #109）。条数与
+// 字节数是两个正交的上界，缺一个都不算有上界。
+//
+// 【为什么是 32 KiB，比工具边界那道 16 KiB 还宽】Agent 的工具边界上还有一道
+// 硬截断（internal/agent/eino_adk.go 的 capToolResult），它会在结果外面包一层
+// truncated/notice **明确告诉模型**"后面的被拿掉了"。本函数取两倍，是要让
+// "告诉模型"这件事仍然由那一层做（它拿得到完整的截断上下文），这里只负责在
+// 更早的位置止住结果集的重量——两道都不静默丢东西。
+const searchMessagesMaxBytes = 32 * 1024
 
 // 幂等键重放相关（issue #37）。
 const (
@@ -66,14 +129,25 @@ const (
 	// 同一个数字在契约之外只该有一处。
 	MaxIdempotencyKeyLen = 255
 
-	// replayPollInterval 是补发时轮询事件表的间隔。
+	// replayPollMin / replayPollMax 是补发时轮询事件表的间隔下界与上界。
 	//
 	// 【为什么是轮询而不是订阅】补发要等的是"这一轮什么时候产生下一条事件"，
 	// 而事件是由另一个请求（原请求那个进程/goroutine）写进去的。本进程没有
 	// 任何事件通知机制（没有 pg NOTIFY，也没有内存里的广播），所以只能轮询。
-	// 100ms 是"用户感觉不到延迟"与"每秒查库不超过 10 次"之间的取舍；
-	// 一次补发通常只有几轮查询（token 事件是成批写进去的）。
-	replayPollInterval = 100 * time.Millisecond
+	//
+	// 【为什么要退避（issue #119）】原来固定 100ms、最长 10 分钟：一个客户端
+	// 最坏查 6000 次，多标签页叠加，而且**这一轮其实早就死了**（原请求所在
+	// 进程被 Ctrl-C 杀掉）时，这 6000 次查询全是空转——占的是和用户正常聊天
+	// 同一个连接池。下界仍然取 100ms：生成还在推进时，间隔每次都会被重置回
+	// 下界（见 replayPollDelay），补发的延迟感觉不到变化。
+	//
+	// 【上界为什么是 1 秒】退避只该惩罚"什么都没等到"的那种轮次。上界再大
+	// 就会拖慢正常的边等边发：一轮的 token 事件现在大约每 300ms 写一条
+	//（tokenBatchInterval），1 秒的间隔最多让补发落后一条事件，用户看不出
+	// 区别；而它把 10 分钟窗口内的查询次数从 6000 压到 600 上下（见
+	// TestReplayPollDelay_CountOverTimeout）。
+	replayPollMin = 100 * time.Millisecond
+	replayPollMax = time.Second
 
 	// replayTimeout 是补发等待本轮终态事件的绝对上限。
 	//
@@ -285,13 +359,77 @@ func (u *Usecase) SearchMessages(ctx context.Context, convID uuid.UUID, query st
 	}
 
 	needle := strings.ToLower(query)
-	var out []domain.MessageSnippet
+	var matched []domain.MessageSnippet
 	for _, m := range msgs {
 		if strings.Contains(strings.ToLower(m.Content), needle) {
-			out = append(out, domain.MessageSnippet{Role: m.Role, Content: m.Content, SequenceNo: m.SequenceNo})
+			matched = append(matched, domain.MessageSnippet{Role: m.Role, Content: m.Content, SequenceNo: m.SequenceNo})
 		}
 	}
-	return out, nil
+	// 【先数完匹配再裁】裁掉了几条只有数完才知道。裁剪本身在 capSnippets 里，
+	// 它要在"保住了什么"和"丢掉了什么"之间给出一个模型看得见的交代。
+	return capSnippets(matched), nil
+}
+
+// capSnippets 把匹配结果裁到 searchMessagesMaxBytes 以内。
+//
+// 【为什么不静默丢】ctxmgr 那条路径的判据是"宁可报 context overflow 也不
+// 静默截断"（internal/ctxmgr/model.go）——因为模型不知道自己拿到的是一份
+// 残件。这里不能报错（检索工具报错等于整段历史都丢了，比给一份裁过的更糟），
+// 所以退一步：裁完之后附一条 role=system 的通知条目，把"匹配了多少、列了
+// 多少、为什么"原样写进去。模型据此可以换更具体的关键词重来，而不是以为
+// "历史里只有这些"——这正是 issue #109 要的"不要静默丢弃"。
+//
+// 【为什么通知单独成条，不并进上一条的正文】并进正文会让一条用户消息的
+// content 里多出一段用户没说过的话，角色的归属就错了；单独一条 SequenceNo=0
+// 的条目（0 不是任何真实消息的号，同 sse.go 对 event_id=0 的约定）读起来
+// 明确是"工具自己加的说明"。
+func capSnippets(matched []domain.MessageSnippet) []domain.MessageSnippet {
+	total, listed := 0, 0
+	for listed < len(matched) {
+		size := len(matched[listed].Content)
+		if total+size > searchMessagesMaxBytes {
+			break
+		}
+		total += size
+		listed++
+	}
+	if listed == len(matched) {
+		// 全放得下：原样返回，连通知都不加（模型不必知道这里有过一道闸门）。
+		return matched
+	}
+
+	// 【一条都放不下时至少给个开头】单条消息自己就超预算（粘贴了一大段
+	// 日志）是真实存在的：那时如果直接跳到通知，模型的检索结果里一条正文
+	// 都没有，等于这次调用白做。截到预算并按 rune 回退，别劈开多字节字符。
+	if listed == 0 {
+		matched[0].Content = truncateBytes(matched[0].Content, searchMessagesMaxBytes)
+		listed = 1
+	}
+
+	// 【三索引切片，避免 append 覆盖掉 matched[listed]】len==cap 时 append
+	// 必然另开一块数组；只是把"不会写到共享底层数组"这件事写在代码里。
+	out := matched[:listed:listed]
+	return append(out, domain.MessageSnippet{
+		Role: domain.RoleSystem,
+		Content: fmt.Sprintf(
+			"conversation_search 的结果被截断：共匹配 %d 条消息，只列出了前 %d 条（正文合计已到 %d 字节上限）。需要更全的历史请换更具体的关键词重试。",
+			len(matched), listed, searchMessagesMaxBytes),
+	})
+}
+
+// truncateBytes 把 s 截到 max 字节以内，且不劈开一个多字节字符。
+//
+// 【为什么按 rune 回退】直接切字节会把一个中文字符劈成两半，模型读到的是
+// U+FFFD 乱码，还看不出那是截断造成的——和 capToolResult 同一条理由。
+func truncateBytes(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	cut := s[:max]
+	for len(cut) > 0 && !utf8.ValidString(cut) {
+		cut = cut[:len(cut)-1]
+	}
+	return cut
 }
 
 // EventsAfter 给 GET /conversations/{id}/events 用——断线续传的入口
@@ -339,13 +477,21 @@ func (u *Usecase) Send(ctx context.Context, convID uuid.UUID, text, idempotencyK
 		err = u.replayRecordedTurn(ctx, convID, idempotencyKey, text, sink)
 	}
 	if err != nil {
+		// 【detail 走 SafeDetail，不能是 err.Error()】这一帧会被前端原样
+		// 渲染成 toast 的第二行（web/src/components/ErrorToast.tsx），而
+		// 5xx 的包装链里可能有 SQLSTATE、表名、连接串。判据和 REST 的
+		// fail() 是同一份（4xx 透传最内层那句、5xx 换成统一文案），它由
+		// platform.SafeDetail 实现，状态码从 eventErrorClass 拿——type 与
+		// status 必须同源，否则会出现"type 说 conflict、detail 却按 500
+		// 抹掉"这种自相矛盾的帧（issue #112）。
+		status, typ := eventErrorClass(err)
 		// 用 context.Background()：原始 ctx 可能已经因为客户端断开被取消，
 		// 但"至少尝试把错误原因发出去"这个动作应该不被那个取消影响——
 		// 发不出去也没关系（sink 内部会自己失败），不能因为这里出错
 		// 又产生一个新的、掩盖了原始错误的返回值。
 		_ = u.emitEvent(context.Background(), convID, sink, "error", errorPayload{
-			Type:   eventErrorType(err),
-			Detail: err.Error(),
+			Type:   typ,
+			Detail: platform.SafeDetail(status, err),
 		})
 	}
 	return err
@@ -361,17 +507,36 @@ func (u *Usecase) Send(ctx context.Context, convID uuid.UUID, text, idempotencyK
 // 服务的是两个不同的协议层（HTTP 状态码 vs SSE 事件），重复这几行
 // 换来的是 conversation 包不必认识 gin，这个代价对这个项目是值得付的。
 //
-// 【枚举本体已经挪到 platform.SSEErrorType】只有 context_overflow 这一档
-// 留在这里（ctxmgr 的 sentinel，platform 认不了），其余档位和 agent 包
-// 的 Agent 运行流共用同一个函数——同一套枚举只能有一处实现。
+// 【枚举本体已经挪到 platform.SSEErrorType】只有本包认识的那几档留在这里
+// （ctxmgr / llm 的 sentinel，platform 不能 import 它们），其余档位和 agent
+// 包的 Agent 运行流共用同一个函数——同一套枚举只能有一处实现。
 func eventErrorType(err error) string {
-	// context_overflow 是本包才认识的一档（ctxmgr 的 sentinel，platform
-	// 不能 import ctxmgr），其余档位统一走 platform.SSEErrorType——agent
-	// 包的运行流用的也是那个函数，两条流的 error type 不会各自漂移。
+	_, typ := eventErrorClass(err)
+	return typ
+}
+
+// eventErrorClass 给出一个 error 对应的 (HTTP 状态码, SSE error type)。
+//
+// 【为什么 type 和状态码必须由同一个函数给】error 帧里有两个字段是从错误
+// 推出来的：type 和 detail。detail 走 platform.SafeDetail，而它的判据是
+// **调用方给的状态码**——4xx 透传、5xx 换成统一文案。两者各判各的就会出
+// 现"type 说 conflict、detail 却按 500 抹掉"这种自相矛盾的帧，那正是
+// issue #112 要消灭的不一致。
+//
+// 【为什么状态码在这里现算，不交给 platform】SafeDetail 的注释写明了原因：
+// platform 认不出别的包的私有 sentinel（反向 import 会成环）。本包认识的
+// 两档——ctxmgr.ErrOverflow（400）和 llm.ErrEmbeddingResetRequired（409）
+// ——和 apps/api 的 classify() 里那两档是同一对。它们必须排在
+// platform.Classify 前面：那边的匹配更宽，顺序反了会被先接走。
+func eventErrorClass(err error) (status int, typ string) {
 	if errors.Is(err, ctxmgr.ErrOverflow) {
-		return "context_overflow"
+		return http.StatusBadRequest, "context_overflow"
 	}
-	return platform.SSEErrorType(err)
+	if errors.Is(err, llm.ErrEmbeddingResetRequired) {
+		return http.StatusConflict, "embedding_change_requires_reindex"
+	}
+	status, typ, _ = platform.Classify(err)
+	return status, typ
 }
 
 type errorPayload struct {
@@ -383,6 +548,15 @@ func (u *Usecase) send(ctx context.Context, convID uuid.UUID, text, idempotencyK
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return fmt.Errorf("message text must not be empty: %w", platform.ErrInvalid)
+	}
+	// 【长度校验必须在拿到锁之前】它属于"请求本身不合法"，在写任何消息
+	// （用户那条 + assistant 占位）之前就该拒掉，否则库里会留下一个永远
+	// 不会有回答的占位气泡。按 rune 数算：契约里的 maxLength 是字符数，
+	// 用 len(text) 会让一条纯中文消息在 1/3 的长度上被误拒（同 handler 对
+	// Idempotency-Key 的判据，见 server.go 的 SendMessage）。
+	if n := utf8.RuneCountInString(text); n > MaxTextLen {
+		return fmt.Errorf("message text is too long (%d characters, max %d): %w",
+			n, MaxTextLen, platform.ErrInvalid)
 	}
 
 	conv, err := u.repo.GetConversation(ctx, u.db, convID)
@@ -634,6 +808,13 @@ func (u *Usecase) replayRecordedTurn(ctx context.Context, convID uuid.UUID, key,
 	cursor := rec.FirstEventID
 	deadline := time.Now().Add(replayTimeout)
 
+	// 【复用一个 timer，不用 time.After（issue #119）】time.After 在循环里
+	// 每轮新建一个计时器，触发前不会被回收——一次 10 分钟的补发会攒下几千个
+	// 待触发的计时器。这里建一次、Reset 复用，退出时 Stop。
+	timer := time.NewTimer(replayPollMin)
+	defer timer.Stop()
+	delay := replayPollMin
+
 	for {
 		select {
 		case <-sink.Done():
@@ -674,21 +855,91 @@ func (u *Usecase) replayRecordedTurn(ctx context.Context, convID uuid.UUID, key,
 			return fmt.Errorf("waiting for the in-flight turn to finish timed out: %w", platform.ErrUpstream)
 		}
 
+		// 读到事件说明生成还在推进——间隔回到下界，补发的延迟感觉不到变化；
+		// 一条都没读到才退避（下一轮翻倍，封顶 replayPollMax）。
+		delay = replayPollDelay(delay, len(events) > 0)
+		timer.Reset(delay)
+
 		select {
 		case <-sink.Done():
 			return nil
 		case <-ctx.Done():
 			return nil
-		case <-time.After(replayPollInterval):
+		case <-timer.C:
 		}
 	}
 }
 
-// streamToClient 消费 Stream，每收到一个增量就 Emit 一个 token 事件，
-// 按 checkpointInterval 落库一次当前累积的全部内容。
+// replayPollDelay 给出下一次补发轮询的间隔：上一轮读到了事件就回到下界，
+// 空转一轮就把间隔翻倍、封顶在上界。
+//
+// 【为什么做成纯函数】"查询次数随等待时长怎么增长"是 issue #119 的验收点，
+// 而它完全由这个函数决定——纯函数就能直接对调度序列断言，不需要真的把
+// 10 分钟等出来（见 TestReplayPollDelay_*）。
+func replayPollDelay(prev time.Duration, gotEvents bool) time.Duration {
+	if gotEvents || prev <= 0 {
+		return replayPollMin
+	}
+	if next := prev * 2; next < replayPollMax {
+		return next
+	}
+	return replayPollMax
+}
+
+// tokenBatch 把连续若干 chunk 的正文攒成一条 token 事件。
+//
+// 【为什么攒的是正文而不是「chunk 计数」】事件最终要变成客户端气泡里的
+// 一段追加（tokenPayload.Text），攒计数只能知道"该发了"，攒正文才知道
+// 该发什么。
+//
+// 【闸门是在每次收到 chunk 之后判的，所以有一条有界的延迟】上游中途停顿
+// （换行前想得久、本地模型被别的进程挤掉）时，攒在手里那点正文要等下一个
+// chunk 到、或者流结束才发出去。攒着的量因此有上界（一个闸门的量，最多
+// 1KiB 或 300ms 的正文），显示上是"这一小段晚了一点"，不是越攒越多——
+// 要彻底消掉它就得让一个计时器和 Recv 抢，代价是这个循环的取消语义
+// 复杂一大截，不值得为一小段正文换来。
+//
+// 时间戳由调用方传进来（而不是内部读 time.Now）是刻意的：攒批的两个闸门
+// 是这条 issue 的验收点（行数上界），纯函数才测得了——测试用合成的时间戳
+// 直接问「这一批现在该不该发」，不需要真的睡 300ms。
+type tokenBatch struct {
+	buf  strings.Builder
+	size int
+	at   time.Time
+}
+
+func newTokenBatch(now time.Time) *tokenBatch {
+	return &tokenBatch{at: now}
+}
+
+func (b *tokenBatch) add(text string) {
+	b.buf.WriteString(text)
+	b.size += len(text)
+}
+
+func (b *tokenBatch) empty() bool { return b.size == 0 }
+
+// due 报告这一批该发出去了没有：攒够了单条事件的重量，或者距离上一批
+// 发出已经超过了延迟上界。
+func (b *tokenBatch) due(now time.Time) bool {
+	return b.size >= tokenBatchBytes || now.Sub(b.at) >= tokenBatchInterval
+}
+
+// take 取出攒下的正文并把这一批重置（计时从 now 重新起算）。
+func (b *tokenBatch) take(now time.Time) string {
+	text := b.buf.String()
+	b.buf.Reset()
+	b.size = 0
+	b.at = now
+	return text
+}
+
+// streamToClient 消费 Stream，按 tokenBatch 的闸门把增量合成 token 事件
+// 发出去，按 checkpointInterval 落库一次当前累积的全部内容。
 func (u *Usecase) streamToClient(ctx context.Context, convID uuid.UUID, msgID uuid.UUID, sink EventSink, stream llm.Stream) (string, error) {
 	var content strings.Builder
 	lastCheckpoint := time.Now()
+	batch := newTokenBatch(lastCheckpoint)
 
 	for {
 		select {
@@ -698,22 +949,40 @@ func (u *Usecase) streamToClient(ctx context.Context, convID uuid.UUID, msgID uu
 			// 写入时把这段内容落进 messages.content（终态是 failed，枚举
 			// 里没有"中断"这一档），前端重新打开会话时看到的是"生成中断
 			// 在这里"，而不是一个空的助手气泡。
+			//
+			// 【攒着没发的那点尾巴仍然尽力落一次库】连接没了，这一帧没人在
+			// 听；但 GET /conversations/{id}/events 的续传、以及同一个键的
+			// 重发读的都是事件表——落下来，下一个打开这个会话的人才能看到
+			// 这段正文。这里不能让它的错误盖住上面那条 ErrConflict：客户端
+			// 都走了，再报一次"写帧失败"只会把真正的原因换掉。
+			_ = u.flushTokenBatch(ctx, convID, sink, batch)
 			return content.String(), fmt.Errorf("client disconnected: %w", platform.ErrConflict)
 		default:
 		}
 
 		chunk, err := stream.Recv()
 		if err == io.EOF {
+			// 【收尾必须把这最后一批发出去】不足一个闸门的那点尾巴（比如
+			// 一次只说两个字就结束了）只有这里会落地——不发的话它既没进过
+			// 事件表、客户端也永远没收到，done 之后不会再有任何 token，
+			// 用户看到的是被剪短的答案。
+			if err := u.flushTokenBatch(ctx, convID, sink, batch); err != nil {
+				return content.String(), err
+			}
 			return content.String(), nil
 		}
 		if err != nil {
+			_ = u.flushTokenBatch(ctx, convID, sink, batch)
 			return content.String(), fmt.Errorf("receive stream chunk: %w", err)
 		}
 
 		content.WriteString(chunk.Content)
+		batch.add(chunk.Content)
 
-		if err := u.emitEvent(ctx, convID, sink, "token", tokenPayload{Text: chunk.Content}); err != nil {
-			return content.String(), err
+		if batch.due(time.Now()) {
+			if err := u.flushTokenBatch(ctx, convID, sink, batch); err != nil {
+				return content.String(), err
+			}
 		}
 
 		if time.Since(lastCheckpoint) >= checkpointInterval {
@@ -723,6 +992,17 @@ func (u *Usecase) streamToClient(ctx context.Context, convID uuid.UUID, msgID uu
 			lastCheckpoint = time.Now()
 		}
 	}
+}
+
+// flushTokenBatch 把攒下的正文作为一条 token 事件持久化并随流发出。
+//
+// 【空批不发】否则每一轮都会多出一条没有正文的 token 事件（上游一个 chunk
+// 都没给就 EOF 时必然如此），客户端多一次无意义的追加。
+func (u *Usecase) flushTokenBatch(ctx context.Context, convID uuid.UUID, sink EventSink, b *tokenBatch) error {
+	if b.empty() {
+		return nil
+	}
+	return u.emitEvent(ctx, convID, sink, "token", tokenPayload{Text: b.take(time.Now())})
 }
 
 // failMessage 是所有失败路径的收尾：把消息以失败终态落库、返回原始错误

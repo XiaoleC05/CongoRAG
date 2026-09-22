@@ -174,9 +174,15 @@ func (noopEnqueuer) EnqueueProcessingBatch(ctx context.Context, q platform.Queri
 	return nil
 }
 
+// noopChunkIndexer 满足 knowledge.ChunkIndexer 的全部三个方法（issue #97
+// 把原来的 IndexDocument 拆成了 EmbedChunks + ReplaceChunks）——api 进程
+// 从不触发文档处理，这里只需要方法集合对得上。
 type noopChunkIndexer struct{}
 
-func (noopChunkIndexer) IndexDocument(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk) error {
+func (noopChunkIndexer) EmbedChunks(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk) ([][]float32, string, error) {
+	return nil, "", nil
+}
+func (noopChunkIndexer) ReplaceChunks(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk, vecs [][]float32, model string) error {
 	return nil
 }
 func (noopChunkIndexer) DeleteByDocument(ctx context.Context, q platform.Querier, docID uuid.UUID) error {
@@ -695,4 +701,70 @@ func TestUploadDocument_ZeroLimitMeansUnlimited(t *testing.T) {
 	code, _ := uploadDocument(r, uuid.NewString(), body, contentType)
 
 	assert.Equal(t, http.StatusAccepted, code)
+}
+
+// ────────────────────────────────────────────────────────────────
+// JSON 请求体上限（bindJSON 里的 maxJSONBodyBytes）
+// ────────────────────────────────────────────────────────────────
+
+// oversizeKBNameBody 拼一条超过 maxJSONBodyBytes 的请求体。
+//
+// 【为什么长度塞在契约里没有的字段里，而不是塞进 name】这是这条用例能不能
+// 真的测到"上限"的关键：name 太长时 knowledge.cleanName 自己就会给 400，
+// 加不加请求体上限都是 400，用例变成自证的。多出来的那个字段名不在契约里，
+// gin 默认忽略未知字段（EnableDecoderDisallowUnknownFields 默认 false），
+// 所以【没有上限时这条请求会 201】——只有加上限它才变红。
+func oversizeKBNameBody(fillerLen int) string {
+	return `{"name":"ok","filler":"` + strings.Repeat("x", fillerLen) + `"}`
+}
+
+// 【这条是 #126 的回归测试】JSON 端点的请求体必须有上限。
+//
+// 没有上限时 ShouldBindJSON 会一路读到 EOF，一个几百 MB 的 body 整个进内存
+// （本机脚本跑飞、前端 bug 都可能触发）。上传那条路一直有上限，其余九个
+// JSON 端点没有——这条钉的是"十处都走 bindJSON，上限只加在一个地方"。
+func TestJSONBody_OversizeRejected(t *testing.T) {
+	r := newTestRouter(&fakeKBRepo{})
+
+	code, body := do(r, http.MethodPost, "/api/v1/knowledge-bases",
+		oversizeKBNameBody(int(maxJSONBodyBytes)))
+
+	// 400 而不是 500：body 太大是调用方的问题，不是服务故障。
+	require.Equal(t, http.StatusBadRequest, code, body)
+
+	var p Problem
+	require.NoError(t, json.Unmarshal([]byte(body), &p))
+	assert.Equal(t, "invalid_argument", p.Type)
+	require.NotNil(t, p.Detail)
+	// 【detail 里必须带上限值】这一条是"上限真的生效了"的判据：如果走的是
+	// 别的失败路径（比如 name 校验），detail 里不会有这个数字。
+	assert.Contains(t, *p.Detail, fmt.Sprintf("%d", maxJSONBodyBytes),
+		"报错要带上真实的上限值，方便调用方知道该缩到多小")
+}
+
+// 上限之内的 JSON body 照常受理——上面那条 400 必须是"太大"造成的，
+// 不是 body 形状本来就绑不上。
+func TestJSONBody_WithinLimitAccepted(t *testing.T) {
+	r := newTestRouter(&fakeKBRepo{})
+
+	code, body := do(r, http.MethodPost, "/api/v1/knowledge-bases",
+		oversizeKBNameBody(int(maxJSONBodyBytes)/2))
+
+	require.Equal(t, http.StatusCreated, code, body)
+	assert.Contains(t, body, `"ok"`)
+}
+
+// 上限只针对 JSON 端点：上传走的是 Deps.MaxUploadBytes 那条路，
+// 不能被 bindJSON 的 1 MiB 顺手也管住（32 MiB 的文件上传必须照常受理）。
+//
+// 【为什么这条单列】两条上限用的是同一个 http.MaxBytesReader，很容易在
+// 收敛时"顺手统一"，把上传偷偷降成 1 MiB——而那是编译和现有测试都发现
+// 不了的对外行为变更。
+func TestUploadDocument_NotSubjectToJSONBodyLimit(t *testing.T) {
+	r := newTestRouterWithUploadLimit(&fakeKBRepo{}, 32<<20)
+	body, contentType := multipartUpload(t, "big.txt", bytes.Repeat([]byte("x"), int(maxJSONBodyBytes)*2))
+
+	code, respBody := uploadDocument(r, uuid.NewString(), body, contentType)
+
+	require.Equal(t, http.StatusAccepted, code, respBody)
 }

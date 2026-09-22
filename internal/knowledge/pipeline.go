@@ -30,7 +30,7 @@ const maxChunkChars = 1200
 // 的事，M1 的验收只要求"文档上传落盘 + 入队链路可用"，不要求解析质量。
 //
 // 返回的 Chunk 只填 Content 一个字段——ID/DocumentID/Score 由调用方
-// （retrieval.Usecase.IndexDocument）在落库时补上，这里不需要知道
+// （retrieval.Usecase.ReplaceChunks）在落库时补上，这里不需要知道
 // 文档是哪一个、也不需要关心相关性分数（那是检索时才有意义的字段）。
 func parseAndChunk(content []byte) []domain.Chunk {
 	text := normalizeNewlines(string(content))

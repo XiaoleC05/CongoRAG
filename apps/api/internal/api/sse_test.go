@@ -110,6 +110,87 @@ func TestSendMessage_FallbackErrorFrameHasNoEventID(t *testing.T) {
 		"兜底帧没有对应的 event_id，不能编一个出来：%q", body)
 }
 
+// Emit 写不写 id: 那一行，取决于 ev.ID 是不是 0。
+//
+// 【为什么必须用真 sseSink】agent 那几条"run 根本没开始"的失败帧走的是
+// emitUnpersisted，它用 ID: 0 调 Emit。agent 包自己的单测用 fakeSink 直接收
+// conversation.Event 结构体——恰好把决定线路格式的这一层整个换掉了，所以
+// "写没写 id: 0"在那边永远测不到。这里是最靠近线路的一层。
+//
+// 【正反两条必须成对】只断言"ID: 0 不含 id: "是自证的：Emit 整个不写 id
+// 也能过。所以同一个用例里钉住 ID != 0 时必须写出来，两边一起才说明
+// "分支"真的存在。
+func TestSSESink_EmitIDLineOnlyForPersistedEvents(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, tc := range []struct {
+		name string
+		id   int64
+		want []string
+		not  []string
+	}{
+		{
+			name: "持久化事件照常写 id 行",
+			id:   7,
+			want: []string{"id: 7\nevent: error\ndata: {\"a\":1}\n\n"},
+		},
+		{
+			name: "ID 为 0 时整行省掉",
+			id:   0,
+			want: []string{"event: error\ndata: {\"a\":1}\n\n"},
+			not:  []string{"id: ", "id:0"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			// newSSESink 要读 c.Request.Context()（拿客户端断开信号），
+			// 只给 recorder 不给 Request 会在那一行空指针。
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/conversations/x/messages", nil)
+			sink := newSSESink(c)
+
+			require.NoError(t, sink.Emit(conversation.Event{
+				ID:      tc.id,
+				Type:    eventErrorName,
+				Payload: []byte(`{"a":1}`),
+			}))
+
+			body := w.Body.String()
+			for _, want := range tc.want {
+				assert.Contains(t, body, want, body)
+			}
+			for _, not := range tc.not {
+				assert.NotContains(t, body, not,
+					"0 表示这一帧没有对应的持久化事件，写了 id 会把续传游标退回起点：%q", body)
+			}
+		})
+	}
+}
+
+// 超限的请求体必须在 newSSESink 之前被拒。
+//
+// 【为什么这条必须单独钉】一旦切进 SSE 模式，响应就是 200 +
+// text/event-stream，再想回一个 400 Problem 已经来不及——头已经发出去了。
+// bindJSON 收敛成一行之后，"调用点在 newSSESink 之前"这条约束只剩注释在
+// 维持，把两行调换顺序不会有任何编译错误。这条用例就是那个约束的守卫：
+// 调换顺序后这里会拿到 200 + text/event-stream 而不是 400 + problem+json。
+func TestSendMessage_OversizeBodyIsRejectedBeforeSSEStarts(t *testing.T) {
+	r := newDBDownRouter()
+
+	oversized := `{"text":"` + strings.Repeat("x", int(maxJSONBodyBytes)) + `"}`
+	req := httptest.NewRequest(http.MethodPost,
+		"/api/v1/conversations/"+uuid.NewString()+"/messages",
+		strings.NewReader(oversized))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	assert.Contains(t, w.Header().Get("Content-Type"), "application/problem+json")
+	assert.NotContains(t, w.Header().Get("Content-Type"), "text/event-stream",
+		"被拒时响应不该已经切进 SSE 模式")
+}
+
 // Send 已经把 error 帧投递出去过时，兜底不能再补一条——两条 error 事件
 // 会让客户端把同一个失败提示两遍。
 func TestWriteFallbackError_DoesNotDuplicateDeliveredErrorFrame(t *testing.T) {

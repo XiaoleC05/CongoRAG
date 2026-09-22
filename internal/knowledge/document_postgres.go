@@ -35,10 +35,14 @@ func (r *PgDocRepo) Insert(ctx context.Context, q platform.Querier, d *Document)
 	return nil
 }
 
-// documentByIDSQL 和下面两条列表 SQL 一样带上了分块数的聚合
-// （issue #82）——同一个 Document 类型在三处被读出来，任何一处漏了
-// chunkCount 都会让"有的入口显示分块数、有的入口恒为 0"，
-// 而那种不一致在界面上很难被发现。
+// documentByIDSQL 也带上分块数（issue #82）——同一个 Document 类型在
+// 多处被读出来，任何一处漏了 chunkCount 都会让"有的入口显示分块数、
+// 有的入口恒为 0"，而那种不一致在界面上很难被发现。
+//
+// 【为什么只有它还留着 LEFT JOIN + GROUP BY】下面两条列表 SQL 已经改成
+// 关联子查询（issue #99 的原因写在 documentsSelectCols 上），这一条没有
+// 跟着改是因为它按主键取一行：聚合的输入只有一行，不存在"为了 LIMIT
+// 而先聚合全表"的形状，两种写法的计划没有区别，就没必要动。
 const documentByIDSQL = `SELECT d.id, d.knowledge_base_id, d.filename, d.storage_key,
 	        d.status, d.byte_size, d.created_at, d.updated_at,
 	        count(c.id)
@@ -155,13 +159,39 @@ func (r *PgDocRepo) markForReindexReturningIDs(ctx context.Context, q platform.Q
 	return out, nil
 }
 
-// documentsSelectCols 是三个列表查询共用的列（含下面的游标版本），
+// documentsSelectCols 是两条列表查询共用的列（第一页和游标版），
 // 免得列顺序在几处各写一份、改一处漏一处。
+//
+// 【分块数为什么是关联子查询，而不是 LEFT JOIN + GROUP BY（issue #99）】
+// 0008 建的 documents_kb_created_id_idx (knowledge_base_id, created_at DESC,
+// id DESC) 只有一个用途：让 `WHERE knowledge_base_id = $1 ORDER BY
+// created_at DESC, id DESC LIMIT n` 沿索引取够 n 行就停下。聚合把这个
+// 用途整个抵消掉了——planner 必须先把该知识库的**每一份**文档聚合完、
+// 再排序、才轮得到 LIMIT：
+//
+//	Limit
+//	  ->  Sort
+//	        ->  HashAggregate
+//	              ->  <documents 与 document_chunks 的连接>
+//
+// （实际计划里 Limit 之下那两层的形状随统计信息变——实测在 3000 份文档的
+// 库上是 `Hash Right Join + Seq Scan on documents`，issue 正文记的是
+// `Nested Loop Left Join`。不变的是 Limit 之下一定有 Sort，也就是一定
+// 先处理完整个知识库再取前 n 行。）
+//
+// 翻第 2 页的谓词 `(created_at, id) < 游标` 仍然会命中库内几乎全部文档，
+// 于是每翻一页的代价是 O(库内文档数 × 分块查找)。本地小库看不出来，
+// 但它决定了单个知识库能装多少文档——而那正是这个产品的核心场景。
+//
+// 关联子查询只对**真正返回的那几行**各做一次索引查找
+// （document_chunks_document_id_idx，见 0001_init），计划变回
+// `Limit -> Index Scan using documents_kb_created_id_idx`，LIMIT 重新
+// 变成"取了这几行就收工"。子查询里 count(*) 不数 NULL 行也无所谓：
+// 没有分块的文档要的正是 0。
 const documentsSelectCols = `SELECT d.id, d.knowledge_base_id, d.filename, d.storage_key,
 	        d.status, d.byte_size, d.created_at, d.updated_at,
-	        count(c.id)
-	 FROM documents d
-	 LEFT JOIN document_chunks c ON c.document_id = d.id`
+	        (SELECT count(*) FROM document_chunks c WHERE c.document_id = d.id)
+	 FROM documents d`
 
 // listDocumentsWithCursorSQL 用行值比较做 keyset 分页。
 //
@@ -174,23 +204,24 @@ const documentsSelectCols = `SELECT d.id, d.knowledge_base_id, d.filename, d.sto
 // 【方向必须和索引一致】索引是 (knowledge_base_id, created_at DESC, id DESC)，
 // ORDER BY 也是 DESC, DESC。不一致的话 Postgres 会退化成「索引扫 + Sort」，
 // 分页的意义就没了。
-// 【加了分块数聚合之后，列名一律带 d. 前缀、并在末尾 GROUP BY d.id】
-// documents 和 document_chunks 都有 id 与 created_at 两列，不带前缀的
-// `WHERE knowledge_base_id = ...` 会因为 document_chunks 没有那一列而
-// 直接报错（42703），但 `ORDER BY created_at` 不会——它会变成一个有歧义的
-// 引用，只在某些写法下才报错。全部带前缀是唯一不需要逐条推敲的写法。
 //
-// 按 d.id 分组是合法的：它是 documents 的主键，Postgres 允许在选择同表
-// 其它列时只按主键分组（函数依赖）。这也正是 LEFT JOIN + count 的常规写法。
+// 【为什么列名仍旧一律带 d. 前缀】现在 FROM 里只有 documents 一张表，
+// 前缀在语法上已经可有可无（歧义来自 JOIN 进来的 document_chunks，见
+// documentsSelectCols 的注释）。留着是因为它把"这一列属于哪张表"写死在
+// 每一行上：将来再有人往这条查询里加 JOIN 时，不需要逐个回头确认每个
+// 裸列名的归属——`ORDER BY created_at` 这种写法在加了 JOIN 之后不会报错，
+// 只会变成一个语义已经变了的歧义引用。
+//
+// 【没有 GROUP BY 了】分块数改成关联子查询之后，外层就只有 documents
+// 一行一份的一对一投影，不再需要"按主键分组把 JOIN 出来的多行收成一行"
+// 这件事——而正是那个分组让 LIMIT 失去提前终止的能力（issue #99）。
 const listDocumentsWithCursorSQL = documentsSelectCols + `
 	 WHERE d.knowledge_base_id = $1 AND (d.created_at, d.id) < ($2, $3)
-	 GROUP BY d.id
 	 ORDER BY d.created_at DESC, d.id DESC
 	 LIMIT $4`
 
 const listDocumentsSQL = documentsSelectCols + `
 	 WHERE d.knowledge_base_id = $1
-	 GROUP BY d.id
 	 ORDER BY d.created_at DESC, d.id DESC
 	 LIMIT $2`
 

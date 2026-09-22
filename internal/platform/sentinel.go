@@ -4,8 +4,10 @@ import "errors"
 
 // sentinel 错误——全项目只在这里声明一次，各包一律用 %w 包装，不各自重声明。
 //
-// handler 是唯一把 error 翻译成 HTTP 的地方（apps/api/internal/api/problem.go），
-// 它靠 errors.Is 认这些值。新增一个 sentinel 就要同步更新那张映射表。
+// 本包的 Classify 是唯一那张"错误 → 客户端看到什么"的表（HTTP 状态码、
+// Problem.type、SSE error 帧的 type 都从它取值），它靠 errors.Is 认这些值。
+// 新增一个 sentinel 就要同步更新那张表——漏了不会编译失败，只会静默落进
+// internal_error。
 var (
 	ErrNotFound     = errors.New("not found")
 	ErrConflict     = errors.New("conflict")

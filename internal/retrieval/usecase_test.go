@@ -83,7 +83,7 @@ func (f *fakeRepo) Search(ctx context.Context, q platform.Querier, kbID uuid.UUI
 	return f.searchResult, nil
 }
 
-// fakeRegistry 只实现 IndexDocument 真正用到的 Embedder；其余方法
+// fakeRegistry 只实现 EmbedChunks 真正用到的 Embedder；其余方法
 // 用不到，返回错误而不是零值——用到了就会在测试里立刻炸出来。
 var _ llm.Registry = (*fakeRegistry)(nil)
 
@@ -231,11 +231,30 @@ func chatModel(id uuid.UUID, createdAt time.Time) *llm.Model {
 	return &llm.Model{ID: id, ModelID: "gpt-x", Kind: llm.KindChat, CreatedAt: createdAt}
 }
 
+// embedAndReplace 复刻 knowledge.ProcessDocument 的调用顺序：先 EmbedChunks
+// 再 ReplaceChunks（生产代码里这两步中间夹着一个事务，这里不测事务本身——
+// 那是 knowledge 包的测试范围）。
+//
+// 【为什么要这个辅助函数】issue #97 把 IndexDocument 拆成两半之后，
+// "整条索引路径跑通"这件事要写两行才看得到；用例里关心的是拆分后的整体
+// 行为（落库内容、分批、幂等），不是某一半，所以合成一处。
+//
+// q 同时喂给两半：单测传 nil（假 repo 不看它），集成测试传真连接池。
+// 生产代码里两半拿到的 q 不同（连接池 vs 事务），但连接池对两者都合法。
+func embedAndReplace(t *testing.T, uc *Usecase, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk) error {
+	t.Helper()
+	vecs, model, err := uc.EmbedChunks(context.Background(), q, docID, chunks)
+	if err != nil {
+		return err
+	}
+	return uc.ReplaceChunks(context.Background(), q, docID, chunks, vecs, model)
+}
+
 // ════════════════════════════════════════════════════════════════
-// activeEmbeddingModel（通过 IndexDocument 间接测，它是私有方法）
+// activeEmbeddingModel（通过 EmbedChunks 间接测，它是私有方法）
 // ════════════════════════════════════════════════════════════════
 
-func TestIndexDocument_UsesLatestEmbeddingModel(t *testing.T) {
+func TestEmbedChunks_UsesLatestEmbeddingModel(t *testing.T) {
 	older := embeddingModel(uuid.New(), "old-embed", time.Now().Add(-time.Hour))
 	newer := embeddingModel(uuid.New(), "new-embed", time.Now())
 	ignoredChat := chatModel(uuid.New(), time.Now().Add(time.Hour)) // 时间更新但 kind 不对，必须被忽略
@@ -247,28 +266,29 @@ func TestIndexDocument_UsesLatestEmbeddingModel(t *testing.T) {
 	uc := NewUsecase(repo, registry, configRepo, nil)
 
 	chunks := []domain.Chunk{{Content: "a"}, {Content: "b"}}
-	err := uc.IndexDocument(context.Background(), nil, uuid.New(), chunks)
+	_, model, err := uc.EmbedChunks(context.Background(), nil, uuid.New(), chunks)
 
 	require.NoError(t, err)
 	assert.Equal(t, newer.ID.String(), registry.lastModelID, "必须选最近创建的那个 embedding 模型，且不能被更晚创建的 chat 模型抢走")
+	assert.Equal(t, newer.ModelID, model, "返回的模型名是落库要写进 embedding_model 的那一个")
 }
 
-func TestIndexDocument_NoEmbeddingModelConfigured(t *testing.T) {
+func TestEmbedChunks_NoEmbeddingModelConfigured(t *testing.T) {
 	repo := newFakeRepo()
 	registry := &fakeRegistry{embedder: &fakeEmbedder{}}
 	configRepo := &fakeConfigRepo{models: []*llm.Model{chatModel(uuid.New(), time.Now())}}
 	uc := NewUsecase(repo, registry, configRepo, nil)
 
-	err := uc.IndexDocument(context.Background(), nil, uuid.New(), []domain.Chunk{{Content: "a"}})
+	_, _, err := uc.EmbedChunks(context.Background(), nil, uuid.New(), []domain.Chunk{{Content: "a"}})
 
 	assert.ErrorIs(t, err, platform.ErrNotFound)
 }
 
 // ════════════════════════════════════════════════════════════════
-// IndexDocument —— 先删后插的幂等性 + 落库内容
+// EmbedChunks + ReplaceChunks —— 先删后插的幂等性 + 落库内容
 // ════════════════════════════════════════════════════════════════
 
-func TestIndexDocument_Success(t *testing.T) {
+func TestEmbedThenReplace_Success(t *testing.T) {
 	model := embeddingModel(uuid.New(), "embed-1", time.Now())
 	repo := newFakeRepo()
 	registry := &fakeRegistry{embedder: &fakeEmbedder{}}
@@ -278,7 +298,7 @@ func TestIndexDocument_Success(t *testing.T) {
 	docID := uuid.New()
 	chunks := []domain.Chunk{{Content: "第一段"}, {Content: "第二段"}}
 
-	err := uc.IndexDocument(context.Background(), nil, docID, chunks)
+	err := embedAndReplace(t, uc, nil, docID, chunks)
 
 	require.NoError(t, err)
 	assert.Equal(t, chunks, repo.chunks[docID])
@@ -288,7 +308,7 @@ func TestIndexDocument_Success(t *testing.T) {
 
 // 【先删后插是重试安全性的核心】不先清空的话，同一个文档被 worker
 // 重新处理一次（River 重试），表里会堆积两份重复的分块。
-func TestIndexDocument_ClearsExistingChunksFirst(t *testing.T) {
+func TestReplaceChunks_ClearsExistingChunksFirst(t *testing.T) {
 	model := embeddingModel(uuid.New(), "embed-1", time.Now())
 	repo := newFakeRepo()
 	registry := &fakeRegistry{embedder: &fakeEmbedder{}}
@@ -299,14 +319,16 @@ func TestIndexDocument_ClearsExistingChunksFirst(t *testing.T) {
 	// 模拟"上一次已经写过一份旧数据"。
 	repo.chunks[docID] = []domain.Chunk{{Content: "旧的、应该被清掉的分块"}}
 
-	err := uc.IndexDocument(context.Background(), nil, docID, []domain.Chunk{{Content: "新分块"}})
+	chunks := []domain.Chunk{{Content: "新分块"}}
+	vecs := [][]float32{{0.1}}
+	err := uc.ReplaceChunks(context.Background(), nil, docID, chunks, vecs, model.ModelID)
 
 	require.NoError(t, err)
 	require.Len(t, repo.chunks[docID], 1, "重新索引之后应该只有新的那一份，不是新旧累加")
 	assert.Equal(t, "新分块", repo.chunks[docID][0].Content)
 }
 
-func TestIndexDocument_EmptyChunks_StillClearsOldOnes(t *testing.T) {
+func TestReplaceChunks_EmptyChunks_StillClearsOldOnes(t *testing.T) {
 	model := embeddingModel(uuid.New(), "embed-1", time.Now())
 	repo := newFakeRepo()
 	registry := &fakeRegistry{embedder: &fakeEmbedder{}}
@@ -316,21 +338,45 @@ func TestIndexDocument_EmptyChunks_StillClearsOldOnes(t *testing.T) {
 	docID := uuid.New()
 	repo.chunks[docID] = []domain.Chunk{{Content: "旧的"}}
 
-	err := uc.IndexDocument(context.Background(), nil, docID, nil)
+	err := uc.ReplaceChunks(context.Background(), nil, docID, nil, nil, "")
 
 	require.NoError(t, err)
 	assert.NotContains(t, repo.chunks, docID, "空文档（比如一个空文件）应该清空旧分块，不该保留")
 	assert.False(t, registry.embedderCalled(), "零个分块不该发一次空的 embedding 请求")
 }
 
-func TestIndexDocument_EmbedFails(t *testing.T) {
+// 【这条钉的是 issue #97 的写顺序】写语句只允许出现在全部 embedding
+// 返回之后：embedding 是对上游的 HTTP 调用，调用方（knowledge.ProcessDocument）
+// 曾经把整条索引路径包在写事务里，那段往返的每一秒都占着连接池的一个
+// 连接。拆分之后这一半只发网络请求、不碰库（除了那次 ListModels 读），
+// 于是"上游失败时旧分块一条都没被动过"成了可断言的性质——以前这条性质
+// 是靠事务回滚给的，现在靠"写只在另一半里"给。
+func TestEmbedChunks_Fails_LeavesExistingChunksUntouched(t *testing.T) {
 	model := embeddingModel(uuid.New(), "embed-1", time.Now())
 	repo := newFakeRepo()
 	registry := &fakeRegistry{embedder: &fakeEmbedder{failEmbed: true}}
 	configRepo := &fakeConfigRepo{models: []*llm.Model{model}}
 	uc := NewUsecase(repo, registry, configRepo, nil)
 
-	err := uc.IndexDocument(context.Background(), nil, uuid.New(), []domain.Chunk{{Content: "a"}})
+	docID := uuid.New()
+	repo.chunks[docID] = []domain.Chunk{{Content: "上一次成功索引的分块"}}
+	repo.models[docID] = model.ModelID
+
+	_, _, err := uc.EmbedChunks(context.Background(), nil, docID, []domain.Chunk{{Content: "a"}})
+
+	require.Error(t, err)
+	require.Contains(t, repo.chunks, docID, "embedding 失败时不该先删掉旧分块——文档还要靠它们被检索到")
+	assert.Equal(t, "上一次成功索引的分块", repo.chunks[docID][0].Content)
+}
+
+func TestEmbedChunks_Fails(t *testing.T) {
+	model := embeddingModel(uuid.New(), "embed-1", time.Now())
+	repo := newFakeRepo()
+	registry := &fakeRegistry{embedder: &fakeEmbedder{failEmbed: true}}
+	configRepo := &fakeConfigRepo{models: []*llm.Model{model}}
+	uc := NewUsecase(repo, registry, configRepo, nil)
+
+	_, _, err := uc.EmbedChunks(context.Background(), nil, uuid.New(), []domain.Chunk{{Content: "a"}})
 
 	require.Error(t, err)
 }
@@ -364,10 +410,10 @@ func (e *cappedEmbedder) Embed(ctx context.Context, texts []string) ([][]float32
 
 func (e *cappedEmbedder) Dim() int { return 1 }
 
-// 【这条是#16的回归测试】以前 IndexDocument 把整篇文档的所有分块塞进一次
+// 【这条是#16的回归测试】以前整条索引路径把整篇文档的所有分块塞进一次
 // embedder.Embed，一份切出几千块的文档必然 400：事务回滚、文档标 failed，
 // 重传还是同样的块数、同样失败，用户手上没有任何可调的杠杆。
-func TestIndexDocument_LargeDocument_IsBatched(t *testing.T) {
+func TestEmbedChunks_LargeDocument_IsBatched(t *testing.T) {
 	model := embeddingModel(uuid.New(), "embed-1", time.Now())
 	repo := newFakeRepo()
 	// 上限故意设得远小于分块数，确保不分批就一定失败。
@@ -384,7 +430,7 @@ func TestIndexDocument_LargeDocument_IsBatched(t *testing.T) {
 		chunks[i] = domain.Chunk{Content: strings.Repeat("x", i+1)}
 	}
 
-	err := uc.IndexDocument(context.Background(), nil, docID, chunks)
+	err := embedAndReplace(t, uc, nil, docID, chunks)
 
 	require.NoError(t, err, "分块数超过单次请求上限时应该自动分批，而不是把错误抛给上游")
 	require.Len(t, embedder.calls, 3, "3 批：256 + 256 + 7")
@@ -403,7 +449,7 @@ func TestIndexDocument_LargeDocument_IsBatched(t *testing.T) {
 }
 
 // 分批不能改变"上游返回条数不对就报错"这条防线——每一批都要查。
-func TestIndexDocument_BatchedMismatchStillFails(t *testing.T) {
+func TestEmbedChunks_BatchedMismatchStillFails(t *testing.T) {
 	model := embeddingModel(uuid.New(), "embed-1", time.Now())
 	repo := newFakeRepo()
 	registry := &fakeRegistry{embedder: &fakeEmbedder{mismatch: true}}
@@ -415,26 +461,26 @@ func TestIndexDocument_BatchedMismatchStillFails(t *testing.T) {
 		chunks[i] = domain.Chunk{Content: "x"}
 	}
 
-	err := uc.IndexDocument(context.Background(), nil, uuid.New(), chunks)
+	_, _, err := uc.EmbedChunks(context.Background(), nil, uuid.New(), chunks)
 
 	assert.ErrorIs(t, err, platform.ErrUpstream)
 }
 
 // embedder 返回的向量数量和送进去的文本数量不一致——必须显式报错，
 // 不能假装对齐、把某一段的向量错配给另一段。
-func TestIndexDocument_EmbedderReturnsMismatchedCount(t *testing.T) {
+func TestEmbedChunks_EmbedderReturnsMismatchedCount(t *testing.T) {
 	model := embeddingModel(uuid.New(), "embed-1", time.Now())
 	repo := newFakeRepo()
 	registry := &fakeRegistry{embedder: &fakeEmbedder{mismatch: true}}
 	configRepo := &fakeConfigRepo{models: []*llm.Model{model}}
 	uc := NewUsecase(repo, registry, configRepo, nil)
 
-	err := uc.IndexDocument(context.Background(), nil, uuid.New(), []domain.Chunk{{Content: "a"}, {Content: "b"}})
+	_, _, err := uc.EmbedChunks(context.Background(), nil, uuid.New(), []domain.Chunk{{Content: "a"}, {Content: "b"}})
 
 	assert.ErrorIs(t, err, platform.ErrUpstream)
 }
 
-func TestIndexDocument_InsertFails(t *testing.T) {
+func TestReplaceChunks_InsertFails(t *testing.T) {
 	model := embeddingModel(uuid.New(), "embed-1", time.Now())
 	repo := newFakeRepo()
 	repo.failInsert = true
@@ -442,7 +488,8 @@ func TestIndexDocument_InsertFails(t *testing.T) {
 	configRepo := &fakeConfigRepo{models: []*llm.Model{model}}
 	uc := NewUsecase(repo, registry, configRepo, nil)
 
-	err := uc.IndexDocument(context.Background(), nil, uuid.New(), []domain.Chunk{{Content: "a"}})
+	err := uc.ReplaceChunks(context.Background(), nil, uuid.New(),
+		[]domain.Chunk{{Content: "a"}}, [][]float32{{0.1}}, model.ModelID)
 
 	require.Error(t, err)
 }
