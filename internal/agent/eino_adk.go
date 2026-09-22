@@ -33,6 +33,25 @@ import (
 // 不依赖对方的默认值不变。
 const maxIterations = 20
 
+// resumeTurn 是恢复时重建历史要用的一轮工具调用。
+//
+// 【为什么要重建历史，而不是让 Eino 接着跑】ADR-006 决定了不接 Eino 的
+// CheckPointStore，所以编排 runtime 的状态在崩溃时就没了——重启后没有任何
+// 东西能让那张 ReAct 图"接着上次"往下走。能重建的只有**业务事实**：
+// agent_run_steps 里那些已经完成的工具调用（工具名、参数、结果）。
+// 把它们拼成"这个会话已经发生过这些事"的历史交给模型，模型自然会往下做
+// 而不是从头再来——这就是 §9.3 说的"从下一个 Step 重放"。
+//
+// 【没有 assistant 的正文】agent_run_steps 不存模型每一轮的文本输出
+// （只存 type=llm 这一行本身）。而 ReAct 里真正驱动下一步的是工具调用与
+// 结果，所以重建重点是这两样——正文缺失不影响模型继续，它看到的是
+// "这些工具已经调过、结果如下"。
+type resumeTurn struct {
+	ToolName   string
+	ToolArgs   json.RawMessage
+	ToolResult json.RawMessage
+}
+
 // adkEvent 是 Eino ADK 事件流的中性投影,usecase.go 消费的是这个类型,
 // 从未导入任何 Eino 包。
 type adkEvent struct {
@@ -128,6 +147,7 @@ func runAgent(
 	ag *Agent,
 	tools []Tool,
 	input string,
+	priorTurns []resumeTurn,
 ) (<-chan adkEvent, error) {
 	baseURL, apiKey, modelName, err := registry.ResolveChatEndpoint(ctx, chatModelID)
 	if err != nil {
@@ -162,8 +182,41 @@ func runAgent(
 		return nil, fmt.Errorf("build chat model agent: %w", err)
 	}
 
+	// 【故意不传 CheckPointStore】ADR-006 的决定：Eino 那层的 checkpoint
+	// 只在中断点写，进程被 KILL 时一个字节都不会落，接上它对崩溃恢复
+	// 贡献为零。恢复的唯一权威是业务层（agent_runs + agent_run_steps）。
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: chatAgent, EnableStreaming: true})
-	iter := runner.Query(ctx, input)
+
+	// 【两条路径分开走，不合并】全新运行继续用 Query——它与 ADK 内部
+	// 构造首条用户消息的方式完全一致。带历史时走 Run，因为只有它接受
+	// 一批现成的消息。合并成一条 Run(msgs) 看起来更整齐，但会让全新运行
+	// 这条主路径也依赖"我们自己拼的首条消息和 ADK 拼的一样"这个假设。
+	var iter *adk.AsyncIterator[*adk.AgentEvent]
+	if len(priorTurns) == 0 {
+		iter = runner.Query(ctx, input)
+	} else {
+		msgs := make([]*schema.Message, 0, 1+2*len(priorTurns))
+		msgs = append(msgs, schema.UserMessage(input))
+		for i, turn := range priorTurns {
+			// 【工具调用 id 是这里编的】agent_run_steps 不存 Eino 给的
+			// toolCallID（那是编排层的东西），但 assistant 消息里的
+			// ToolCalls 与随后的 tool 消息必须靠 id 配对。编一个稳定的
+			// id 就够了——模型读到的是一个"叫什么名字、结果是什么"的
+			// 历史，而不是要拿它去查什么东西。
+			callID := fmt.Sprintf("resume_%d", i)
+			msgs = append(msgs,
+				schema.AssistantMessage("", []schema.ToolCall{{
+					ID: callID,
+					Function: schema.FunctionCall{
+						Name:      turn.ToolName,
+						Arguments: string(turn.ToolArgs),
+					},
+				}}),
+				schema.ToolMessage(string(turn.ToolResult), callID),
+			)
+		}
+		iter = runner.Run(ctx, msgs)
+	}
 
 	// 带一点缓冲：终结的 done/error 事件不该在接收方刚好慢一拍时卡住
 	// 生产者，取消也被这一层吸收掉。

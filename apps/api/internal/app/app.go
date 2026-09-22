@@ -185,7 +185,30 @@ func Run(webFS embed.FS) error {
 	toolReg.Register(agent.NewCalculator())
 	toolReg.Register(agent.NewKnowledgeSearch(retrievalUC))
 	toolReg.Register(agent.NewConversationSearch(convUC))
-	agentUC := agent.NewUsecase(agentRepo, agent.NewPgCheckpointStore(), toolReg, registry, pool)
+	agentUC := agent.NewUsecase(
+		agentRepo,
+		agent.NewPgCheckpointStore(),
+		toolReg,
+		registry,
+		agent.NewPgIdempotencyStore(),
+		platform.NewTxManager(pool),
+		logger,
+		pool,
+	)
+
+	// 【升级时的在途 run：启动扫描，且必须在开始收请求之前】ADR-007 决策二：
+	// 升级时正在飞的 run 标 interrupted（不是 failed）——语义准确，且与
+	// Resume 入口衔接。为什么"刚启动"这个时刻是安全的：一次 run 的执行
+	// 生命周期绑在**一条活的 SSE 请求**上（StartAgentRun handler 就跑在
+	// 这个进程里），所以进程刚起来时不可能有真正在飞的 run。
+	//
+	// 【失败不阻断启动】扫描写不进去意味着数据库现在有问题，而那不是
+	// "不该启动"的理由（/readyz 会让编排器知道）；把它记成日志即可。
+	if n, err := agentUC.InterruptRunningRuns(ctx); err != nil {
+		logger.Warn("startup sweep of in-flight agent runs failed", "error", err)
+	} else if n > 0 {
+		logger.Info("marked agent runs left running by a previous process as interrupted", "count", n)
+	}
 
 	// 还有别的模块要装配时，加在这里。
 	// 接不上就说明某个包的依赖方向错了——这段代码同时是依赖图的可执行校验。
@@ -216,6 +239,7 @@ func Run(webFS embed.FS) error {
 		LLM:            llmUC,
 		Conversation:   convUC,
 		Agent:          agentUC,
+		Retrieval:      retrievalUC,
 		MaxUploadBytes: cfg.MaxUploadBytes,
 		// pool 是 *pgxpool.Pool，结构性地满足 platform.Pinger；/readyz 用它
 		// 探数据库（上面那个 Ping 只在启动时跑一次，数据库中途挂掉它看不出来）。

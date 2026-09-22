@@ -1,8 +1,11 @@
 package platform
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -96,13 +99,65 @@ func TestWrapPgErr_FindsPgErrorThroughWrapping(t *testing.T) {
 	assert.ErrorIs(t, WrapPgErr(wrapped), ErrDuplicateKey)
 }
 
-// 【防退化】约束名一旦和迁移里实际生成的对不上，分流会静默失效：
-// 幂等键冲突会被当成普通的 409。
+// tool_effect_log 的唯一冲突是第三种 23505 语义（issue #63）：
+// 它不是"这次请求不该成功"，而是"这个副作用已经发生过了"。
+// 恢复路径靠它决定跳过重放——被错分成 ErrDuplicateKey 的话，
+// resume 的判据就没了，工具会被重复执行而且不报错。
+func TestWrapPgErr_ToolEffectAppliedIsNotDuplicateKey(t *testing.T) {
+	in := &pgconn.PgError{Code: "23505", ConstraintName: constraintToolEffectLog}
+
+	out := WrapPgErr(in)
+
+	assert.ErrorIs(t, out, ErrToolEffectApplied)
+	assert.NotErrorIs(t, out, ErrDuplicateKey, "工具效果已生效不该被当成业务冲突")
+	assert.NotErrorIs(t, out, ErrIdempotentHit, "它和幂等命中是两件事")
+}
+
+// 【防退化】约束名一旦和迁移文件里写的对不上，分流会静默失效：
+// 幂等键冲突会被当成普通的 409，工具效果冲突会变成一次假的 500。
 //
-// PRIMARY KEY (endpoint, idempotency_key) 在 PostgreSQL 里默认生成
-// <表名>_pkey。做幂等表那张迁移时，如果表名不叫 idempotency_keys，
-// 或者改成了命名约束，这里必须同步改——这条测试会提醒你。
-func TestConstraintNameMatchesMigrationConvention(t *testing.T) {
+// 【为什么读文件而不是再断言一次字面量】断言常量等于它自己永远通过，
+// 拦不住"迁移里改了约束名、常量没跟着改"这个真实故障。这里直接去
+// migrations/ 里找那个名字——它才是真相。
+func TestConstraintNamesMatchMigrations(t *testing.T) {
+	// 本测试文件在 internal/platform/，迁移在仓库根的 migrations/。
+	migrations := filepath.Join("..", "..", "migrations")
+
+	cases := []struct {
+		name  string
+		files []string
+	}{
+		// idempotency_keys_pkey 是 Postgres 给 PRIMARY KEY (endpoint,
+		// idempotency_key) 生成的默认名，迁移里不会出现这个字面量，
+		// 所以这里查的是"表名 + 主键声明"这个组合。
+		{name: "idempotency_keys_pkey", files: []string{
+			filepath.Join(migrations, "0003_conversations.up.sql"),
+		}},
+		// tool_effect_log 的约束是显式命名的，名字必须能在迁移里找到。
+		{name: constraintToolEffectLog, files: []string{
+			filepath.Join(migrations, "0010_tool_effect_log.up.sql"),
+		}},
+	}
+
+	// constraintIdempotencyKey 必须仍然是那个默认名形状——改表的写法就会失配。
 	require.Equal(t, "idempotency_keys_pkey", constraintIdempotencyKey,
 		"要和 migrations 里 idempotency_keys 表的主键约束名一致")
+
+	for _, tc := range cases {
+		found := false
+		for _, f := range tc.files {
+			body, err := os.ReadFile(f)
+			require.NoError(t, err, "读不到迁移文件 %s", f)
+			// 幂等表那条查的是表名（默认约束名由它派生），
+			// 工具效果那条查的就是约束名字面量。
+			needle := tc.name
+			if needle == constraintIdempotencyKey {
+				needle = "idempotency_keys"
+			}
+			if bytes.Contains(body, []byte(needle)) {
+				found = true
+			}
+		}
+		assert.True(t, found, "迁移文件里找不到 %s——constraint 名字漂了，23505 分流会静默失效", tc.name)
+	}
 }

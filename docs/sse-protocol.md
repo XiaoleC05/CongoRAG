@@ -33,13 +33,24 @@ data: {}
 - `data`：一行 JSON，`event` 决定它的形状
 - 心跳：服务端每 15 秒发一条注释行 `: heartbeat\n\n`（以 `:` 开头的行是 SSE 规范里的注释，客户端应当忽略，只用来防止连接被中间设备当成空闲连接掐断）
 
-**唯一的例外：`id` 可以缺席。** 有一条 error 帧是由"事件根本没能落库"这个
-故障本身触发的——那正是分配 `event_id` 的那一步失败了（见
-`apps/api/internal/api/sse.go` 的写失败兜底分支）。它照 `event:` / `data:`
-两行发出去，没有 `id`。**客户端必须容忍这一点，而且不能因为收到它就推进
-续传游标**：这一帧不代表任何一条已持久化的事件，拿它当游标会让断线续传
-从头跳过一批还没收到的事件。判据很简单——`id` 缺席的帧不参与发号，只用于
-把失败告诉用户。
+**唯一的例外：`id` 可以缺席。** 有两条路径会发出没有 `id` 的 error 帧，
+共同点是**这一帧没有对应的持久化事件**：
+
+1. **事件没能落库**——分配 `event_id` 的那一步失败了（见
+   `apps/api/internal/api/sse.go` 的写失败兜底分支）。
+2. **运行根本没开始**——空输入、Agent 不存在、当前没有可用的聊天模型、
+   模型不支持工具调用。这些失败发生在分配 `run_id` 之前，`run_events`
+   里没有可挂的行（见 `internal/agent/usecase.go` 的 `emitUnpersisted`）。
+
+它照 `event:` / `data:` 两行发出去，没有 `id`。**客户端必须容忍这一点，
+而且不能因为收到它就推进续传游标**：这一帧不代表任何一条已持久化的事件，
+拿它当游标会让断线续传从头跳过一批还没收到的事件。判据很简单——`id`
+缺席的帧不参与发号，只用于把失败告诉用户。
+
+**线路层怎么区分这两种帧**：`internal/agent` 用 `event_id = 0` 表示
+"未持久化"，`sseSink.Emit` 见到 0 就整行省掉 `id:`。0 不是任何一条真实
+事件的号——两张计数器表（`conversation_counters` / `run_counters`）的
+`next_event_id` 都从 1 开始。
 
 **一帧可能跨两次 `read()`**——TCP 不保证一次 `read` 刚好读到一个完整帧的边界。
 解析器必须维护一个缓冲区，按 `\n\n` 切出完整帧，切不出来的部分留到下一次
@@ -48,6 +59,12 @@ data: {}
 ## 事件类型
 
 ```text
+run_started  Agent 运行的身份。data: {"runId": string}
+             **只出现在 Agent 的运行流上（POST /api/v1/agents/{id}/runs 与
+             POST /api/v1/runs/{runId}/resume），而且永远是首帧。**
+             新建与幂等重放两种情况都会发，形状完全相同——客户端凭它拿到
+             这次运行的 id，取消、run 级重订阅、跳转到运行详情都要用它。
+             普通聊天没有 Run，不会出现这一帧。
 token        文本增量。data: {"text": string}
 citation     一次引用命中。data: {"chunkId": string, "documentId": string,
                               "filename": string, "snippet": string, "score": number}
@@ -101,9 +118,25 @@ RETURNING next_event_id;
 ② 连接断开（网络抖动、页面刷新前的重连尝试）
 ③ 客户端重新发起请求：
      GET /api/v1/conversations/{id}/events?after_event_id={lastEventId}
-④ 服务端从 conversation_events 表按 event_id > after_event_id 查出补发的部分，
+     GET /api/v1/runs/{runId}/events?after_event_id={lastEventId}   ← Agent 运行
+④ 服务端从对应的事件表按 event_id > after_event_id 查出补发的部分，
    发完就结束响应
 ```
+
+### 两张事件表、两套编号（run 维度是 v4.0 加的）
+
+**发号维度跟着流的所有者走**，所以两条路径各有自己的表与计数器：
+
+| | 普通聊天 | Agent 运行 |
+| --- | --- | --- |
+| 事件表 | `conversation_events` | `run_events` |
+| 计数器 | `conversation_counters` | `run_counters` |
+| 编号空间 | 按**会话**发号 | 按 **run** 发号 |
+| 重订阅 | `GET /conversations/{id}/events` | `GET /runs/{runId}/events` |
+
+两张表并存、各自独立编号，**不搬迁、不合并**（项目文档 §8.6 定的方案）。
+`run_events` 的 `event_id` 从 1 开始，所以"从头补发整个 run"就是
+`after_event_id=0`。
 
 **第 ④ 步发完历史就结束，不会继续持有连接等新事件。** 这一点与本文档早期
 版本写的「发完历史再继续实时推送」不同——那条承诺从来没有被实现，而且
@@ -124,14 +157,22 @@ RETURNING next_event_id;
 **这就是 `fetch` 而非 `EventSource` 的主要理由**——`EventSource` 发不了
 自定义请求头（见本文开头）。
 
+**Agent 运行那一侧是同一个机制**：`POST /api/v1/agents/{id}/runs` 也接受
+`Idempotency-Key`，命中时补发那条 run 已经记录的事件，首帧是
+`run_started`（带的是**原来那条 run 的 id**）。详见
+`docs/adr/008-idempotency-replay-window.md`。
+
 ### 作用域与保留窗口
 
-- **作用域 = 同一个会话 + 同一个键。** 键落在 `idempotency_keys` 表，
-  主键是 `(endpoint, idempotency_key)`，而 `endpoint` 里编了会话 id
-  （`POST /api/v1/conversations/<uuid>/messages`）。同一个键在另一个
-  会话里不会命中。
-- **保留 24 小时。** 超过之后同一个键可以重新执行——这是有意的产品语义，
-  因为隔了一天之后的重试本来就没有意义了。过期行在每次预留时顺手清掉。
+- **作用域 = 同一个端点（含资源 id）+ 同一个键。** 键落在
+  `idempotency_keys` 表，主键是 `(endpoint, idempotency_key)`，而
+  `endpoint` 里编了会话/Agent 的 id（`POST /api/v1/conversations/<uuid>/messages`、
+  `POST /api/v1/agents/<uuid>/runs`）。同一个键在另一个会话、另一个 Agent
+  上都不会命中。
+- **保留 24 小时，两条路径共用同一个值**
+  （`platform.IdempotencyKeyTTL`）。超过之后同一个键可以重新执行——这是
+  有意的产品语义，因为隔了一天之后的重试本来就没有意义了。过期行在每次
+  预留时顺手清掉。
 
 ### 命中时客户端收到什么
 

@@ -21,6 +21,7 @@ import (
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
 
+	"github.com/XiaoleC05/CongoRAG/internal/agent"
 	"github.com/XiaoleC05/CongoRAG/internal/conversation"
 	"github.com/XiaoleC05/CongoRAG/internal/ctxmgr"
 	"github.com/XiaoleC05/CongoRAG/internal/knowledge"
@@ -61,6 +62,16 @@ const (
 	// 【必须有上限】`<-riverClient.Stopped()` 本身是无界的，两次 Stop 都
 	// 失败时会永远挂在这里——那正好是用户最需要它能退出的时候。
 	workerFinalWait = 5 * time.Second
+
+	// checkpointPruneInterval 是 Agent checkpoint 回收周期（issue #67）的
+	// 执行间隔。
+	//
+	// 【为什么是小时级而不是和摘要维护一样的分钟级】回收的判据是
+	// "终态之后 24 小时"（internal/agent 的 checkpointRetention），
+	// 也就是说一小时跑一次和一分钟跑一次筛出来的行几乎完全一样——
+	// 更短只会让这条整表 UPDATE 白跑。它要防的是"表随时间单调膨胀"，
+	// 而那个问题的时间尺度是天，不是分钟。
+	checkpointPruneInterval = time.Hour
 )
 
 // Run 装配并启动 worker 进程，阻塞到收到关停信号或出错。
@@ -205,6 +216,37 @@ func Run() error {
 		pool,
 	)
 	convUC.StartMemoryMaintenance(ctx, sched)
+
+	// checkpoint 回收（issue #67）。它和上面那个"孤儿文件对账"是同一类问题
+	// 的两侧：那个回收磁盘上没人认领的文件，这个回收数据库里已经没人会读的
+	// checkpoint 快照。
+	//
+	// 【为什么放在 worker】它是周期性的整理工作，不是请求路径的一部分；
+	// api 进程不该为了清理去起一个定时器。worker 本来就是"没有 HTTP、
+	// 只消费队列"的进程，这里多注册一个周期任务不需要任何新机制
+	// （platform.PeriodicScheduler）。
+	//
+	// 【为什么是置空 state_snapshot 而不是删 run 行】见 port.go 里
+	// ClearTerminalRunCheckpoints 的注释：run 的历史还有价值
+	// （轨迹页要读、用量要统计），膨胀的只有快照那一列。
+	agentUC := agent.NewUsecase(
+		agent.NewPgRepo(),
+		agent.NewPgCheckpointStore(),
+		agent.NewToolRegistry(), // 回收任务不碰工具，注册表留空
+		registry,
+		agent.NewPgIdempotencyStore(),
+		txm,
+		logger,
+		pool,
+	)
+	// RegisterPeriodic 要的是 func(ctx) error，而 PruneCheckpoints 返回回收
+	// 行数（它自己有日志）。这层薄包装把签名对上，顺带让"回收失败"这件事
+	// 走周期任务的正常失败路径（River 会记下这次 job 失败）。
+	sched.RegisterPeriodic("agent-checkpoint-prune", checkpointPruneInterval,
+		func(ctx context.Context) error {
+			_, err := agentUC.PruneCheckpoints(ctx)
+			return err
+		})
 
 	logger.Info("starting river client")
 	if err := riverClient.Start(ctx); err != nil {

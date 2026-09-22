@@ -32,6 +32,10 @@ import (
 type fakeLLMRegistry struct {
 	model    *llm.Model
 	modelErr error
+	// endpointErr 非空时，ResolveChatEndpoint 返回它——用来让一次运行走到
+	// "建了 run 行、发了 run_started、然后失败收尾"这条路径，
+	// 而不需要真的去连一个模型（见那个方法的注释）。
+	endpointErr error
 	// usages 收集 RecordUsage 的调用——ADK 路径的用量记账只能由调用方上报
 	// （见 eino_adk.go 的文件头注释），所以这条路径的断言落在它身上。
 	usages []llm.Usage
@@ -71,7 +75,15 @@ func (f *fakeLLMRegistry) Capabilities(ctx context.Context, modelID string) (llm
 	panic("fakeLLMRegistry.Capabilities: 这个测试不该走到这里")
 }
 
+// ResolveChatEndpoint 默认 panic——走到它说明这个测试真的想跑一次模型。
+//
+// 【endpointErr 非空时改成返回它】`Start` 的测试关心的不是模型输出，而是
+// "建 run 行 → 发 run_started → 收尾"这条路径的形状；给一个必失败的
+// endpoint 就能走完整条路径，而不需要真的去连一个模型。
 func (f *fakeLLMRegistry) ResolveChatEndpoint(ctx context.Context, modelID string) (string, string, string, error) {
+	if f.endpointErr != nil {
+		return "", "", "", f.endpointErr
+	}
 	panic("fakeLLMRegistry.ResolveChatEndpoint: 这个测试不该走到这里")
 }
 
@@ -87,6 +99,15 @@ func newChatModel(humanName string, toolCalling bool) *llm.Model {
 	}
 }
 
+// newTestUsecase 装一个依赖齐全的 Usecase。
+//
+// 【必须走 NewUsecase，不能裸写结构体】Usecase 现在持有在途运行表与事务
+// 管理器（run 维度事件流要用），裸结构体那两个是 nil——发事件时会以
+// "assignment to entry in nil map" 或空指针的形式炸在离原因很远的地方。
+func newTestUsecase(repo Repo, cp CheckpointStore, tools Registry, reg llm.Registry) *Usecase {
+	return NewUsecase(repo, cp, tools, reg, newFakeIdempotencyStore(), fakeTx{}, nil, nil)
+}
+
 // newGatedUsecase 造一个装好了工具与模型的 Usecase，供门控测试用。
 func newGatedUsecase(t *testing.T, toolCalling bool) (*Usecase, *fakeRepo) {
 	t.Helper()
@@ -94,7 +115,7 @@ func newGatedUsecase(t *testing.T, toolCalling bool) (*Usecase, *fakeRepo) {
 	tools := NewToolRegistry()
 	tools.Register(NewCalculator())
 	reg := &fakeLLMRegistry{model: newChatModel("test-model", toolCalling)}
-	return &Usecase{repo: repo, cp: &fakeCheckpointStore{}, tools: tools, registry: reg}, repo
+	return newTestUsecase(repo, &fakeCheckpointStore{}, tools, reg), repo
 }
 
 // 声明了工具、而生效模型没有 tool_calling → 创建被拒，且什么都没落库。
@@ -164,7 +185,7 @@ func TestStart_ModelWithoutToolCalling_RejectedBeforeRunInserted(t *testing.T) {
 	repo.mu.Unlock()
 
 	sink := newFakeSink()
-	_, err = u.Start(context.Background(), a.ID, "算一下 1+1", sink)
+	_, err = u.Start(context.Background(), a.ID, "算一下 1+1", "", sink)
 
 	require.ErrorIs(t, err, platform.ErrInvalid)
 
@@ -194,8 +215,8 @@ func TestCreateAgent_NoActiveModel_IsNotFound(t *testing.T) {
 	repo := newFakeRepo()
 	tools := NewToolRegistry()
 	tools.Register(NewCalculator())
-	u := &Usecase{repo: repo, cp: &fakeCheckpointStore{}, tools: tools,
-		registry: &fakeLLMRegistry{modelErr: fmt.Errorf("no chat model: %w", platform.ErrNotFound)}}
+	u := newTestUsecase(repo, &fakeCheckpointStore{}, tools,
+		&fakeLLMRegistry{modelErr: fmt.Errorf("no chat model: %w", platform.ErrNotFound)})
 
 	_, err := u.CreateAgent(context.Background(), "计算助手", "", "", []string{"calculator"})
 
@@ -215,7 +236,7 @@ func TestCreateAgent_NoActiveModel_IsNotFound(t *testing.T) {
 func TestConsumeEvents_UsageEventIsRecorded(t *testing.T) {
 	repo := newFakeRepo()
 	reg := &fakeLLMRegistry{model: newChatModel("test-model", true)}
-	u := &Usecase{repo: repo, cp: &fakeCheckpointStore{}, tools: NewToolRegistry(), registry: reg}
+	u := newTestUsecase(repo, &fakeCheckpointStore{}, NewToolRegistry(), reg)
 	sink := newFakeSink()
 
 	events := make(chan adkEvent, 10)
@@ -224,8 +245,7 @@ func TestConsumeEvents_UsageEventIsRecorded(t *testing.T) {
 	events <- adkEvent{kind: adkEventDone}
 	close(events)
 
-	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+	_, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
 
 	require.NoError(t, err)
 	require.Len(t, reg.usages, 1, "每一轮的 usage 都要记一次")
@@ -237,7 +257,7 @@ func TestConsumeEvents_UsageEventIsRecorded(t *testing.T) {
 func TestConsumeEvents_NoUsageEventRecordsNothing(t *testing.T) {
 	repo := newFakeRepo()
 	reg := &fakeLLMRegistry{model: newChatModel("test-model", true)}
-	u := &Usecase{repo: repo, cp: &fakeCheckpointStore{}, tools: NewToolRegistry(), registry: reg}
+	u := newTestUsecase(repo, &fakeCheckpointStore{}, NewToolRegistry(), reg)
 	sink := newFakeSink()
 
 	events := make(chan adkEvent, 10)
@@ -245,8 +265,7 @@ func TestConsumeEvents_NoUsageEventRecordsNothing(t *testing.T) {
 	events <- adkEvent{kind: adkEventDone}
 	close(events)
 
-	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+	_, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
 
 	require.NoError(t, err)
 	assert.Empty(t, reg.usages)

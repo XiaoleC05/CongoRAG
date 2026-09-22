@@ -502,6 +502,12 @@ func TestEverySentinelHasAnExplicitMapping(t *testing.T) {
 		{platform.ErrForeignKey, http.StatusNotFound, "not_found"},
 		{platform.ErrUpstream, http.StatusBadGateway, "upstream_llm_error"},
 		{ctxmgr.ErrOverflow, http.StatusBadRequest, "context_overflow"},
+		// 恢复被拒绝的两条（issue #65 / #63）。它们必须是独立 type：
+		// 前端按它给出"重新发起一次"或"这一步不能自动重放"这两种不同的
+		// 下一步动作，落到笼统的 conflict 里就分不出来了。
+		{platform.ErrStateSchemaVersionMismatch, http.StatusConflict, "state_schema_version_mismatch"},
+		{platform.ErrToolEffectApplied, http.StatusConflict, "tool_effect_already_applied"},
+		{platform.ErrReplayUnsafe, http.StatusConflict, "replay_unsafe"},
 		// 【包自己的 sentinel 也要进这张表】漏掉它不会编译失败、也不会红，
 		// 只会让换 embedding 模型那条路径静默变成 500——而正确答案是 409，
 		// 且前端要靠这个 type 弹确认框（issue #39）。

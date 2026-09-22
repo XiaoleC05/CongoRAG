@@ -320,6 +320,14 @@ type Conversation struct {
 	UpdatedAt       time.Time           `json:"updatedAt"`
 }
 
+// ConversationPage defines model for ConversationPage.
+type ConversationPage struct {
+	Items []Conversation `json:"items"`
+
+	// NextCursor 下一页的游标；null 表示没有更多了。
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
 // CreateAgentRequest defines model for CreateAgentRequest.
 type CreateAgentRequest struct {
 	Description *string `json:"description,omitempty"`
@@ -377,8 +385,19 @@ type CreateProviderRequest struct {
 
 // Document defines model for Document.
 type Document struct {
-	ByteSize  int64     `json:"byteSize"`
-	CreatedAt time.Time `json:"createdAt"`
+	ByteSize int64 `json:"byteSize"`
+
+	// ChunkCount 这份文档当前的向量分块数（issue #82）。
+	//
+	// 【为什么它是"检索质量的第一个可观察量"】切分策略不合适时分块数
+	// 会明显异常（一份 10 页的 PDF 切出 3 块、或者切出 8000 块）。
+	// 它也是"文档到底处理完没有"的第二个信号：status 是 ready 但
+	// chunkCount 是 0，说明切分或向量化那一轮实际上什么都没产出。
+	//
+	// 未处理完的文档是 0——不是 null。null 会让前端多写一条分支，
+	// 而"还没有分块"和"没有这个字段"对用户是同一件事。
+	ChunkCount int64     `json:"chunkCount"`
+	CreatedAt  time.Time `json:"createdAt"`
 
 	// Filename 用户上传时的原始文件名
 	Filename        string             `json:"filename"`
@@ -409,6 +428,41 @@ type KnowledgeBase struct {
 	Id        openapi_types.UUID `json:"id"`
 	Name      string             `json:"name"`
 	UpdatedAt time.Time          `json:"updatedAt"`
+}
+
+// KnowledgeSearchHit defines model for KnowledgeSearchHit.
+type KnowledgeSearchHit struct {
+	ChunkId    openapi_types.UUID `json:"chunkId"`
+	DocumentId openapi_types.UUID `json:"documentId"`
+
+	// Filename 这个分块来自哪份文档（检索 SQL 里 JOIN documents 拿到）
+	Filename string `json:"filename"`
+
+	// Score 余弦相似度，越大越相关
+	Score float64 `json:"score"`
+
+	// Snippet 分块正文
+	Snippet string `json:"snippet"`
+}
+
+// KnowledgeSearchRequest Example: {"query":"ConGoRAG 的向量检索用的是什么类型？","topK":5}
+type KnowledgeSearchRequest struct {
+	// Query 要检索的文本。会先被当前生效的 embedding 模型变成向量。
+	Query string `json:"query"`
+
+	// TopK 最多返回多少个命中分块。省略时用 5。
+	//
+	// 【越界返回 400，不静默夹取】夹取会让人以为"只命中这么多"，
+	// 而实际是被服务端截断了——调试视图上这个区别很关键。
+	TopK *int `json:"topK,omitempty"`
+}
+
+// KnowledgeSearchResult defines model for KnowledgeSearchResult.
+type KnowledgeSearchResult struct {
+	// Hits 按相似度从高到低。可能是空数组（这个知识库没有任何向量，
+	// 或者 query 与所有分块都不相关）——空数组与"检索失败"是两件事，
+	// 前者前端应显示"没有命中"，后者是一个 4xx/5xx。
+	Hits []KnowledgeSearchHit `json:"hits"`
 }
 
 // Message defines model for Message.
@@ -600,6 +654,39 @@ type ListAgentRunsParams struct {
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// StartAgentRunParams defines parameters for StartAgentRun.
+type StartAgentRunParams struct {
+	// IdempotencyKey 客户端生成的去重键。同一个 Agent 上带同一个键重复提交时，
+	// 服务端不重新执行这次运行，而是把该 run 已记录的事件补发出来
+	// （首帧仍是 run_started，带的是原来那条 run 的 id）。
+	//
+	// 省略这个头时行为与没有幂等能力时完全一样（每次都真正执行）。
+	// 同一个键配不同的 input 会返回 invalid_argument 的错误帧，
+	// 而不是把上一次运行的结果重放一遍。
+	//
+	// 保留窗口与会话消息那条路径共用同一个值（24 小时，见
+	// docs/adr/008-idempotency-replay-window.md）。过期之后同一个键
+	// 可以重新执行——这是有意的产品语义，不是缺陷。
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// ListConversationsParams defines parameters for ListConversations.
+type ListConversationsParams struct {
+	// Limit 一页最多返回多少条。省略时用 50；允许 1..200，越界返回 400
+	// （不静默夹取——那会让你以为拿满了，实际少了一半）。
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor 上一页响应里 nextCursor 的值，用来取下一页。第一页省略它。
+	//
+	// **不透明**：不要解析它的内容、也不要自己构造。它的格式（目前是
+	// base64）随时可能变，按内容分支的客户端会在某次升级后静默拿到
+	// 错的一页。解不出来时服务端返回 400。
+	//
+	// 方向：nextCursor 的含义是「更旧的一页」（这三个列表都是按时间
+	// 倒序、或按消息序号往回翻），不是「第 N+1 页」。
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // SubscribeConversationEventsParams defines parameters for SubscribeConversationEvents.
 type SubscribeConversationEventsParams struct {
 	// AfterEventId 只返回这个 id 之后的事件；省略或传 0 表示从头开始
@@ -657,6 +744,12 @@ type UploadDocumentMultipartBody struct {
 	File openapi_types.File `json:"file"`
 }
 
+// SubscribeRunEventsParams defines parameters for SubscribeRunEvents.
+type SubscribeRunEventsParams struct {
+	// AfterEventId 只补发 event_id 严格大于它的那些事件。
+	AfterEventId *int64 `form:"after_event_id,omitempty" json:"after_event_id,omitempty"`
+}
+
 // GetUsageSummaryParams defines parameters for GetUsageSummary.
 type GetUsageSummaryParams struct {
 	// Since 起始时间（含）。RFC3339 格式。省略表示不限。
@@ -687,6 +780,9 @@ type RenameKnowledgeBaseJSONRequestBody = RenameKnowledgeBaseRequest
 // UploadDocumentMultipartRequestBody defines body for UploadDocument for multipart/form-data ContentType.
 type UploadDocumentMultipartRequestBody UploadDocumentMultipartBody
 
+// SearchKnowledgeBaseJSONRequestBody defines body for SearchKnowledgeBase for application/json ContentType.
+type SearchKnowledgeBaseJSONRequestBody = KnowledgeSearchRequest
+
 // CreateProviderJSONRequestBody defines body for CreateProvider for application/json ContentType.
 type CreateProviderJSONRequestBody = CreateProviderRequest
 
@@ -706,11 +802,27 @@ type ServerInterface interface {
 	ListAgentRuns(c *gin.Context, id openapi_types.UUID, params ListAgentRunsParams)
 	// StartAgentRun 启动一次 Agent 执行，响应是 SSE 流（text/event-stream）——
 	// 和 sendMessage 同一个模式,帧格式见 docs/sse-protocol.md。
-	// 这一轮没有 run 维度的断线重订阅（M4-B 才做),这次连接就是
-	// 唯一能实时看到过程的机会,执行记录本身（agent_runs/
-	// agent_run_steps）落库后可以事后通过 GET .../runs/{runId}/steps 查。
+	//
+	// **流的首帧永远是 `run_started`**（data: {"runId": ...}），
+	// 新建与命中幂等键重放两种情况都会发。取消、run 级重订阅、
+	// 跳转到运行详情都要用这个 id，而此前五种事件里没有任何一种带它。
+	//
+	// 带 Idempotency-Key 重复提交时不会重新执行：服务端把那条 run
+	// 已记录的事件补发一遍（同样的 event 类型、同样的真实 event_id）。
+	// 作用的范围是「同一个 Agent + 同一个键」，键保留 24 小时。
 	// (POST /api/v1/agents/{id}/runs)
-	StartAgentRun(c *gin.Context, id openapi_types.UUID)
+	StartAgentRun(c *gin.Context, id openapi_types.UUID, params StartAgentRunParams)
+	// ListConversations 列出会话（keyset 分页），按**最近活动时间**倒序。
+	//
+	// 【为什么排序键不是 createdAt】这个列表的用处是"回到刚才那个会话"，
+	// 而一个三天前建的会话可能刚刚才被用过。按创建时间排会让它沉到列表
+	// 底部，用户每次都得往下翻——列表的意义正好没了。
+	//
+	// 【形状与另外三个列表一致】items + nextCursor，不是裸数组
+	// （v3.0 把三个列表端点统一成了这个形状，新端点跟着走，
+	// 否则会出现两种列表形状并存）。
+	// (GET /api/v1/conversations)
+	ListConversations(c *gin.Context, params ListConversationsParams)
 	// CreateConversation 新建一个会话
 	// (POST /api/v1/conversations)
 	CreateConversation(c *gin.Context)
@@ -765,12 +877,53 @@ type ServerInterface interface {
 	// ReindexKnowledgeBase 重新索引一个知识库下的全部文档
 	// (POST /api/v1/knowledge-bases/{id}/reindex)
 	ReindexKnowledgeBase(c *gin.Context, id openapi_types.UUID)
+	// SearchKnowledgeBase 在指定知识库里做一次向量检索，返回命中的分块与相似度
+	// (POST /api/v1/knowledge-bases/{id}/search)
+	SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID)
 	// ListProviders 列出已配置的模型接入（Key 不会出现在响应里）
 	// (GET /api/v1/providers)
 	ListProviders(c *gin.Context)
 	// CreateProvider 保存一个模型接入配置（引导页"保存并开始"）
 	// (POST /api/v1/providers)
 	CreateProvider(c *gin.Context)
+	// CancelAgentRun 取消一次在途的 Agent 运行。
+	//
+	// 取消后 run 的状态是 `cancelled`（不是 `failed`）——两者对用户的含义
+	// 完全不同：前者是他自己要求的，后者是出错了。已经跑到终态的 run
+	// 不可取消（409 conflict），没跑完的那一步保持 `interrupted`
+	// （取消发生在 run 层，step 没有 cancelled 这一态）。
+	//
+	// 响应里带的是**取消生效之后**的状态，不是取消前的快照。
+	// (POST /api/v1/runs/{runId}/cancel)
+	CancelAgentRun(c *gin.Context, runId openapi_types.UUID)
+	// SubscribeRunEvents 补发一条 run 已经记录的事件（run 维度的断线重订阅）。
+	//
+	// **补发完已有的历史就结束响应**，不持有连接等新事件——与会话维度那条
+	// GET /conversations/{id}/events 是同一条语义。要看后续内容就再连一次。
+	//
+	// `after_event_id` 省略时从 0 开始，也就是把这条 run 的事件从头补发
+	// 一遍（run 的事件号从 1 开始，按 run 独立发号）。
+	// (GET /api/v1/runs/{runId}/events)
+	SubscribeRunEvents(c *gin.Context, runId openapi_types.UUID, params SubscribeRunEventsParams)
+	// ResumeAgentRun 从断点恢复一次被中断的运行（第二步起）。响应是 SSE 流，
+	// 首帧同样是 run_started。
+	//
+	// **先检查再开流**：所有拒绝理由都在这条请求变成流之前判掉，
+	// 所以下面那三种 409 是正常的 Problem 响应，而不是流里的一帧——
+	// 客户端能按 type 给出准确的下一步提示。
+	//
+	// 拒绝的三种情况：
+	//   - `conflict`：只有 interrupted 的 run 可以恢复（别的状态要么已经
+	//     结束、要么正在跑）。
+	//   - `state_schema_version_mismatch`：这条 run 的快照是旧版本的代码
+	//     写的，结构已经不兼容——明确拒绝并提示重新发起，而不是硬解出
+	//     一个半截状态。
+	//   - `tool_effect_already_applied` / `replay_unsafe`：没跑完的那一步
+	//     不允许被平台自动重放（副作用可能已经生效，或工具自己声明了
+	//     不可重放）。方案 §8 的恢复边界明说了不保证这类工具被安全重放。
+	//
+	// (POST /api/v1/runs/{runId}/resume)
+	ResumeAgentRun(c *gin.Context, runId openapi_types.UUID)
 	// ListRunSteps 列出一次执行的全部步骤（执行轨迹页用）
 	// (GET /api/v1/runs/{runId}/steps)
 	ListRunSteps(c *gin.Context, runId openapi_types.UUID)
@@ -907,6 +1060,30 @@ func (siw *ServerInterfaceWrapper) StartAgentRun(c *gin.Context) {
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params StartAgentRunParams
+
+	headers := c.Request.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for Idempotency-Key, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter Idempotency-Key: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
 		if c.IsAborted() {
@@ -914,7 +1091,42 @@ func (siw *ServerInterfaceWrapper) StartAgentRun(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.StartAgentRun(c, id)
+	siw.Handler.StartAgentRun(c, id, params)
+}
+
+// ListConversations operation middleware
+func (siw *ServerInterfaceWrapper) ListConversations(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListConversationsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", c.Request.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter cursor: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListConversations(c, params)
 }
 
 // CreateConversation operation middleware
@@ -1329,6 +1541,31 @@ func (siw *ServerInterfaceWrapper) ReindexKnowledgeBase(c *gin.Context) {
 	siw.Handler.ReindexKnowledgeBase(c, id)
 }
 
+// SearchKnowledgeBase operation middleware
+func (siw *ServerInterfaceWrapper) SearchKnowledgeBase(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SearchKnowledgeBase(c, id)
+}
+
 // ListProviders operation middleware
 func (siw *ServerInterfaceWrapper) ListProviders(c *gin.Context) {
 
@@ -1353,6 +1590,92 @@ func (siw *ServerInterfaceWrapper) CreateProvider(c *gin.Context) {
 	}
 
 	siw.Handler.CreateProvider(c)
+}
+
+// CancelAgentRun operation middleware
+func (siw *ServerInterfaceWrapper) CancelAgentRun(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runId" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runId", c.Param("runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter runId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CancelAgentRun(c, runId)
+}
+
+// SubscribeRunEvents operation middleware
+func (siw *ServerInterfaceWrapper) SubscribeRunEvents(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runId" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runId", c.Param("runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter runId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SubscribeRunEventsParams
+
+	// ------------- Optional query parameter "after_event_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after_event_id", c.Request.URL.Query(), &params.AfterEventId, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter after_event_id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SubscribeRunEvents(c, runId, params)
+}
+
+// ResumeAgentRun operation middleware
+func (siw *ServerInterfaceWrapper) ResumeAgentRun(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runId" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runId", c.Param("runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter runId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ResumeAgentRun(c, runId)
 }
 
 // ListRunSteps operation middleware
@@ -1491,9 +1814,11 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/api/v1/knowledge-bases/:id/documents", wrapper.ListDocuments)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/documents", wrapper.UploadDocument)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/reindex", wrapper.ReindexKnowledgeBase)
+	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/search", wrapper.SearchKnowledgeBase)
 	router.DELETE(options.BaseURL+"/api/v1/documents/:id", wrapper.DeleteDocument)
 	router.GET(options.BaseURL+"/api/v1/documents/:id", wrapper.GetDocument)
 	router.POST(options.BaseURL+"/api/v1/documents/:id/reindex", wrapper.ReindexDocument)
+	router.GET(options.BaseURL+"/api/v1/conversations", wrapper.ListConversations)
 	router.POST(options.BaseURL+"/api/v1/conversations", wrapper.CreateConversation)
 	router.GET(options.BaseURL+"/api/v1/conversations/:id/messages", wrapper.ListConversationMessages)
 	router.POST(options.BaseURL+"/api/v1/conversations/:id/messages", wrapper.SendMessage)
@@ -1507,5 +1832,8 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/api/v1/agents/:id", wrapper.GetAgent)
 	router.GET(options.BaseURL+"/api/v1/agents/:id/runs", wrapper.ListAgentRuns)
 	router.POST(options.BaseURL+"/api/v1/agents/:id/runs", wrapper.StartAgentRun)
+	router.GET(options.BaseURL+"/api/v1/runs/:runId/events", wrapper.SubscribeRunEvents)
+	router.POST(options.BaseURL+"/api/v1/runs/:runId/cancel", wrapper.CancelAgentRun)
+	router.POST(options.BaseURL+"/api/v1/runs/:runId/resume", wrapper.ResumeAgentRun)
 	router.GET(options.BaseURL+"/api/v1/runs/:runId/steps", wrapper.ListRunSteps)
 }

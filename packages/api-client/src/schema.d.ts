@@ -116,6 +116,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge-bases/{id}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 在指定知识库里做一次向量检索，返回命中的分块与相似度 */
+        post: operations["searchKnowledgeBase"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{id}": {
         parameters: {
             query?: never;
@@ -162,7 +181,18 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * 列出会话（keyset 分页），按**最近活动时间**倒序。
+         *
+         *     【为什么排序键不是 createdAt】这个列表的用处是"回到刚才那个会话"，
+         *     而一个三天前建的会话可能刚刚才被用过。按创建时间排会让它沉到列表
+         *     底部，用户每次都得往下翻——列表的意义正好没了。
+         *
+         *     【形状与另外三个列表一致】items + nextCursor，不是裸数组
+         *     （v3.0 把三个列表端点统一成了这个形状，新端点跟着走，
+         *     否则会出现两种列表形状并存）。
+         */
+        get: operations["listConversations"];
         put?: never;
         /** 新建一个会话 */
         post: operations["createConversation"];
@@ -326,11 +356,107 @@ export interface paths {
         /**
          * 启动一次 Agent 执行，响应是 SSE 流（text/event-stream）——
          *     和 sendMessage 同一个模式,帧格式见 docs/sse-protocol.md。
-         *     这一轮没有 run 维度的断线重订阅（M4-B 才做),这次连接就是
-         *     唯一能实时看到过程的机会,执行记录本身（agent_runs/
-         *     agent_run_steps）落库后可以事后通过 GET .../runs/{runId}/steps 查。
+         *
+         *     **流的首帧永远是 `run_started`**（data: {"runId": ...}），
+         *     新建与命中幂等键重放两种情况都会发。取消、run 级重订阅、
+         *     跳转到运行详情都要用这个 id，而此前五种事件里没有任何一种带它。
+         *
+         *     带 Idempotency-Key 重复提交时不会重新执行：服务端把那条 run
+         *     已记录的事件补发一遍（同样的 event 类型、同样的真实 event_id）。
+         *     作用的范围是「同一个 Agent + 同一个键」，键保留 24 小时。
          */
         post: operations["startAgentRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{runId}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * 补发一条 run 已经记录的事件（run 维度的断线重订阅）。
+         *
+         *     **补发完已有的历史就结束响应**，不持有连接等新事件——与会话维度那条
+         *     GET /conversations/{id}/events 是同一条语义。要看后续内容就再连一次。
+         *
+         *     `after_event_id` 省略时从 0 开始，也就是把这条 run 的事件从头补发
+         *     一遍（run 的事件号从 1 开始，按 run 独立发号）。
+         */
+        get: operations["subscribeRunEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{runId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 取消一次在途的 Agent 运行。
+         *
+         *     取消后 run 的状态是 `cancelled`（不是 `failed`）——两者对用户的含义
+         *     完全不同：前者是他自己要求的，后者是出错了。已经跑到终态的 run
+         *     不可取消（409 conflict），没跑完的那一步保持 `interrupted`
+         *     （取消发生在 run 层，step 没有 cancelled 这一态）。
+         *
+         *     响应里带的是**取消生效之后**的状态，不是取消前的快照。
+         */
+        post: operations["cancelAgentRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{runId}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 从断点恢复一次被中断的运行（第二步起）。响应是 SSE 流，
+         *     首帧同样是 run_started。
+         *
+         *     **先检查再开流**：所有拒绝理由都在这条请求变成流之前判掉，
+         *     所以下面那三种 409 是正常的 Problem 响应，而不是流里的一帧——
+         *     客户端能按 type 给出准确的下一步提示。
+         *
+         *     拒绝的三种情况：
+         *     - `conflict`：只有 interrupted 的 run 可以恢复（别的状态要么已经
+         *       结束、要么正在跑）。
+         *     - `state_schema_version_mismatch`：这条 run 的快照是旧版本的代码
+         *       写的，结构已经不兼容——明确拒绝并提示重新发起，而不是硬解出
+         *       一个半截状态。
+         *     - `tool_effect_already_applied` / `replay_unsafe`：没跑完的那一步
+         *       不允许被平台自动重放（副作用可能已经生效，或工具自己声明了
+         *       不可重放）。方案 §8 的恢复边界明说了不保证这类工具被安全重放。
+         */
+        post: operations["resumeAgentRun"];
         delete?: never;
         options?: never;
         head?: never;
@@ -410,6 +536,46 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        /**
+         * @example {
+         *       "query": "ConGoRAG 的向量检索用的是什么类型？",
+         *       "topK": 5
+         *     }
+         */
+        KnowledgeSearchRequest: {
+            /** @description 要检索的文本。会先被当前生效的 embedding 模型变成向量。 */
+            query: string;
+            /**
+             * @description 最多返回多少个命中分块。省略时用 5。
+             *
+             *     【越界返回 400，不静默夹取】夹取会让人以为"只命中这么多"，
+             *     而实际是被服务端截断了——调试视图上这个区别很关键。
+             */
+            topK?: number | null;
+        };
+        KnowledgeSearchHit: {
+            /** Format: uuid */
+            chunkId: string;
+            /** Format: uuid */
+            documentId: string;
+            /** @description 这个分块来自哪份文档（检索 SQL 里 JOIN documents 拿到） */
+            filename: string;
+            /** @description 分块正文 */
+            snippet: string;
+            /**
+             * Format: double
+             * @description 余弦相似度，越大越相关
+             */
+            score: number;
+        };
+        KnowledgeSearchResult: {
+            /**
+             * @description 按相似度从高到低。可能是空数组（这个知识库没有任何向量，
+             *     或者 query 与所有分块都不相关）——空数组与"检索失败"是两件事，
+             *     前者前端应显示"没有命中"，后者是一个 4xx/5xx。
+             */
+            hits: components["schemas"]["KnowledgeSearchHit"][];
+        };
         Document: {
             /** Format: uuid */
             id: string;
@@ -425,6 +591,19 @@ export interface components {
             status: "queued" | "processing" | "ready" | "failed";
             /** Format: int64 */
             byteSize: number;
+            /**
+             * Format: int64
+             * @description 这份文档当前的向量分块数（issue #82）。
+             *
+             *     【为什么它是"检索质量的第一个可观察量"】切分策略不合适时分块数
+             *     会明显异常（一份 10 页的 PDF 切出 3 块、或者切出 8000 块）。
+             *     它也是"文档到底处理完没有"的第二个信号：status 是 ready 但
+             *     chunkCount 是 0，说明切分或向量化那一轮实际上什么都没产出。
+             *
+             *     未处理完的文档是 0——不是 null。null 会让前端多写一条分支，
+             *     而"还没有分块"和"没有这个字段"对用户是同一件事。
+             */
+            chunkCount: number;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -444,6 +623,11 @@ export interface components {
         };
         AgentRunPage: {
             items: components["schemas"]["AgentRun"][];
+            /** @description 下一页的游标；null 表示没有更多了。 */
+            nextCursor?: string | null;
+        };
+        ConversationPage: {
+            items: components["schemas"]["Conversation"][];
             /** @description 下一页的游标；null 表示没有更多了。 */
             nextCursor?: string | null;
         };
@@ -1018,6 +1202,44 @@ export interface operations {
             500: components["responses"]["InternalError"];
         };
     };
+    searchKnowledgeBase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description 命中的分块，按相似度从高到低 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeSearchResult"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            /** @description 上游模型服务出错 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getDocument: {
         parameters: {
             query?: never;
@@ -1086,6 +1308,45 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listConversations: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 一页最多返回多少条。省略时用 50；允许 1..200，越界返回 400
+                 *     （不静默夹取——那会让你以为拿满了，实际少了一半）。
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description 上一页响应里 nextCursor 的值，用来取下一页。第一页省略它。
+                 *
+                 *     **不透明**：不要解析它的内容、也不要自己构造。它的格式（目前是
+                 *     base64）随时可能变，按内容分支的客户端会在某次升级后静默拿到
+                 *     错的一页。解不出来时服务端返回 400。
+                 *
+                 *     方向：nextCursor 的含义是「更旧的一页」（这三个列表都是按时间
+                 *     倒序、或按消息序号往回翻），不是「第 N+1 页」。
+                 */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 一页会话（按最近活动时间倒序） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversationPage"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -1448,7 +1709,22 @@ export interface operations {
     startAgentRun: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description 客户端生成的去重键。同一个 Agent 上带同一个键重复提交时，
+                 *     服务端不重新执行这次运行，而是把该 run 已记录的事件补发出来
+                 *     （首帧仍是 run_started，带的是原来那条 run 的 id）。
+                 *
+                 *     省略这个头时行为与没有幂等能力时完全一样（每次都真正执行）。
+                 *     同一个键配不同的 input 会返回 invalid_argument 的错误帧，
+                 *     而不是把上一次运行的结果重放一遍。
+                 *
+                 *     保留窗口与会话消息那条路径共用同一个值（24 小时，见
+                 *     docs/adr/008-idempotency-replay-window.md）。过期之后同一个键
+                 *     可以重新执行——这是有意的产品语义，不是缺陷。
+                 */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 id: string;
             };
@@ -1471,6 +1747,83 @@ export interface operations {
             };
             400: components["responses"]["InvalidArgument"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    subscribeRunEvents: {
+        parameters: {
+            query?: {
+                /** @description 只补发 event_id 严格大于它的那些事件。 */
+                after_event_id?: number;
+            };
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSE 流（补发完即结束） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    cancelAgentRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 取消后的运行记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRun"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    resumeAgentRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSE 流开始 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
         };
     };

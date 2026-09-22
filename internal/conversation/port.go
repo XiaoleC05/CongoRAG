@@ -102,6 +102,24 @@ type Repo interface {
 	// 生成的全部内容（不是增量），status 通常是 MsgStreaming 或终态。
 	UpdateMessageContent(ctx context.Context, q platform.Querier, id uuid.UUID, content string, status MessageStatus) error
 
+	// TouchConversation 把会话的 updated_at 推到给定的时刻（issue #78）。
+	//
+	// 【updated_at 在会话表上的含义是"最近活动时间"】它在建会话那一刻写
+	// 一次，之后每收到一条消息就更新一次。会话列表按它倒序，所以它就是
+	// 这个列表的排序键——这也是 ListConversations 的 keyset 游标依据。
+	//
+	// 【必须在 WithConversationLock 的事务里调用】见 Send 里那段注释：
+	// 它和消息写入是同一个事实，分开提交会留下"消息在、时间没动"的
+	// 中间态，而那个中间态不报错，只让列表顺序偶尔不对。
+	TouchConversation(ctx context.Context, q platform.Querier, id uuid.UUID, at time.Time) error
+
+	// ListConversations 取一页会话，按 updated_at 倒序、keyset 分页。
+	//
+	// cur 为 nil 表示第一页；返回的 bool 是 hasMore（还有没有下一页）。
+	// 排序键是 (updated_at, id)——带上 id 的理由和另外三个列表一样：
+	// 同一毫秒更新的两行会稳定地多出现或少出现一次，而那个错误不报错。
+	ListConversations(ctx context.Context, q platform.Querier, cur *platform.ListCursor, limit int) ([]*Conversation, bool, error)
+
 	// NextEventID 在给定会话的计数器上原子地取下一个号并返回。
 	// 必须和调用方那一次的消息写入在同一个事务里调用——
 	// docs/sse-protocol.md「事件与续传」一节解释了为什么。

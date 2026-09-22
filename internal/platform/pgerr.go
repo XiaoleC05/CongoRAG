@@ -12,8 +12,15 @@ import (
 // 这是唯一认识 SQLSTATE 的地方。各模块的 postgres.go 里所有 Exec/Query
 // 的错误都要过一遍它，上层才能用 errors.Is 判断。
 //
-// 23505 按约束名分流：幂等键的重复不是错误，而是"返回已创建资源"。
-// 一律映射成 409 的话，用户重复提交会看到报错而不是既有结果。
+// 23505 按约束名分流。**三个约束、三种含义**，只看 SQLSTATE 一律映射成
+// 409 的话，两种"不是错误"的路径都会被说成冲突：
+//
+//	幂等键重复        → 返回已创建资源（不是错误）
+//	tool_effect_log   → 这个副作用已经发生了（resume 要据此跳过重放，不是错误）
+//	其余唯一约束       → 真正的业务冲突（409）
+//
+// 每加一个"23505 但不是错误"的约束，都要在这里加一条分支，
+// 否则它会静默地走成 409 或 500（issue #58）。
 func WrapPgErr(err error) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
@@ -24,6 +31,9 @@ func WrapPgErr(err error) error {
 	case "23505": // unique_violation
 		if pgErr.ConstraintName == constraintIdempotencyKey {
 			return fmt.Errorf("%w: %s", ErrIdempotentHit, pgErr.ConstraintName)
+		}
+		if pgErr.ConstraintName == constraintToolEffectLog {
+			return fmt.Errorf("%w: %s", ErrToolEffectApplied, pgErr.ConstraintName)
 		}
 		return fmt.Errorf("%w: %s", ErrDuplicateKey, pgErr.ConstraintName)
 
@@ -45,3 +55,9 @@ func WrapPgErr(err error) error {
 // PRIMARY KEY (endpoint, idempotency_key) 默认生成 idempotency_keys_pkey——
 // 改表名或改成命名约束时，这里必须同步改。
 const constraintIdempotencyKey = "idempotency_keys_pkey"
+
+// constraintToolEffectLog 是 migrations/0010_tool_effect_log.up.sql 里
+// 显式命名的那个 UNIQUE 约束。**没有用默认名**：Postgres 给
+// UNIQUE (step_id, effect_key) 生成的默认名是 tool_effect_log_step_id_effect_key_key，
+// 而这里的分流逻辑依赖这个名字，显式命名比依赖生成规则更稳。
+const constraintToolEffectLog = "tool_effect_log_step_effect_unique"

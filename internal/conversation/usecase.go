@@ -50,16 +50,16 @@ const searchMessagesLimit = 500
 const (
 	// idempotencyKeyTTL 是一个幂等键的保留窗口。超过它之后，带同一个键再来
 	// 一次会真的重新执行生成——这也是产品语义的一部分，写进了
-	// web/README 与 docs/sse-protocol.md。
-	//
-	// 【为什么是 24 小时】超过这个窗口的"重试"本身已经没有意义（用户不会
-	// 隔一天之后还在等那次失败的发送结果），而永不清理的代价是这张表随
-	// 消息量单调增长，且客户端一旦把键写死就再也拿不到新回答。
+	// docs/sse-protocol.md。
 	//
 	// 【清理方式】每次预留时顺手删掉过期的行（见 ReserveIdempotencyKey）。
 	// 不用 River 周期任务是刻意的：那要单开一条 issue、还要动 worker 的
 	// 装配根，而这里只需要一条带索引的 DELETE。
-	idempotencyKeyTTL = 24 * time.Hour
+	//
+	// 【值本身不在这个包里】它和 Agent run 那条幂等路径共用同一个常量
+	// （platform.IdempotencyKeyTTL）——两条端点都叫「幂等」，各写一个
+	// 24 小时的话，将来改一个忘一个不会有任何东西报错。理由见 ADR-008。
+	idempotencyKeyTTL = platform.IdempotencyKeyTTL
 
 	// MaxIdempotencyKeyLen 是幂等键的长度上限，与契约里 Idempotency-Key
 	// 请求头的 maxLength 保持一致。导出是因为 handler 也要用它——
@@ -182,6 +182,32 @@ func (u *Usecase) CreateConversation(ctx context.Context, title string, kbID *uu
 		return nil, fmt.Errorf("create conversation: %w", err)
 	}
 	return c, nil
+}
+
+// ListConversations 取一页会话，按最近活动时间倒序（issue #78）。
+//
+// 第二个返回值是下一页的游标，没有下一页时为空串。
+func (u *Usecase) ListConversations(ctx context.Context, rawCursor string, limit int) ([]*Conversation, string, error) {
+	limit, err := platform.ClampListLimit(limit)
+	if err != nil {
+		return nil, "", err
+	}
+	cur, err := platform.ParseCursor(rawCursor)
+	if err != nil {
+		return nil, "", err
+	}
+
+	convs, hasMore, err := u.repo.ListConversations(ctx, u.db, cur, limit)
+	if err != nil {
+		return nil, "", fmt.Errorf("list conversations: %w", err)
+	}
+
+	next := ""
+	if len(convs) > 0 {
+		last := convs[len(convs)-1]
+		next = platform.EncodeNextCursor(hasMore, last.UpdatedAt.Format(time.RFC3339Nano), last.ID.String())
+	}
+	return convs, next, nil
 }
 
 // ListMessages 给 GET /conversations/{id}/messages 用——取一个会话最新的一页
@@ -518,7 +544,21 @@ func (u *Usecase) lockAndWriteInitialMessages(ctx context.Context, convID uuid.U
 			ID: assistantMsgID, ConversationID: convID, Role: domain.RoleAssistant,
 			Content: "", Status: MsgStreaming, SequenceNo: assistantSeq, CreatedAt: time.Now(),
 		}
-		return u.repo.AppendMessage(ctx, q, assistantMsg)
+		if err := u.repo.AppendMessage(ctx, q, assistantMsg); err != nil {
+			return err
+		}
+
+		// 把会话的 updated_at 推到此刻（issue #78）。
+		//
+		// 【为什么必须在这里做】会话列表按**最近活动时间**倒序，而
+		// conversations.updated_at 在此之前只有创建那一刻写过一次——直接用它
+		// 排序等于按创建时间排，一个三天前建、刚刚才用过的会话会沉到底部，
+		// 而列表的用处正是"回到刚才那个会话"。
+		//
+		// 放在同一把 advisory lock 的事务里：它和消息写入是同一个事实
+		// （"这个会话刚刚有活动"），分开提交会留下"消息在、时间没动"的
+		// 中间态，而那个中间态不会报错，只会让列表顺序偶尔不对。
+		return u.repo.TouchConversation(ctx, q, convID, time.Now())
 	})
 	if err != nil {
 		return uuid.Nil, 0, fmt.Errorf("write initial messages: %w", err)

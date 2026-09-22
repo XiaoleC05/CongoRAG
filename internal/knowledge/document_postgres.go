@@ -35,14 +35,24 @@ func (r *PgDocRepo) Insert(ctx context.Context, q platform.Querier, d *Document)
 	return nil
 }
 
+// documentByIDSQL 和下面两条列表 SQL 一样带上了分块数的聚合
+// （issue #82）——同一个 Document 类型在三处被读出来，任何一处漏了
+// chunkCount 都会让"有的入口显示分块数、有的入口恒为 0"，
+// 而那种不一致在界面上很难被发现。
+const documentByIDSQL = `SELECT d.id, d.knowledge_base_id, d.filename, d.storage_key,
+	        d.status, d.byte_size, d.created_at, d.updated_at,
+	        count(c.id)
+	 FROM documents d
+	 LEFT JOIN document_chunks c ON c.document_id = d.id
+	 WHERE d.id = $1
+	 GROUP BY d.id`
+
 func (r *PgDocRepo) ByID(ctx context.Context, q platform.Querier, id uuid.UUID) (*Document, error) {
 	d := &Document{}
 	var status string
-	err := q.QueryRow(ctx,
-		`SELECT id, knowledge_base_id, filename, storage_key, status, byte_size, created_at, updated_at
-		 FROM documents
-		 WHERE id = $1`, id,
-	).Scan(&d.ID, &d.KnowledgeBaseID, &d.Filename, &d.StorageKey, &status, &d.ByteSize, &d.CreatedAt, &d.UpdatedAt)
+	err := q.QueryRow(ctx, documentByIDSQL, id).Scan(
+		&d.ID, &d.KnowledgeBaseID, &d.Filename, &d.StorageKey, &status, &d.ByteSize,
+		&d.CreatedAt, &d.UpdatedAt, &d.ChunkCount)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("document %s: %w", id, platform.ErrNotFound)
@@ -147,9 +157,11 @@ func (r *PgDocRepo) markForReindexReturningIDs(ctx context.Context, q platform.Q
 
 // documentsSelectCols 是三个列表查询共用的列（含下面的游标版本），
 // 免得列顺序在几处各写一份、改一处漏一处。
-const documentsSelectCols = `SELECT id, knowledge_base_id, filename, storage_key,
-	        status, byte_size, created_at, updated_at
-	 FROM documents`
+const documentsSelectCols = `SELECT d.id, d.knowledge_base_id, d.filename, d.storage_key,
+	        d.status, d.byte_size, d.created_at, d.updated_at,
+	        count(c.id)
+	 FROM documents d
+	 LEFT JOIN document_chunks c ON c.document_id = d.id`
 
 // listDocumentsWithCursorSQL 用行值比较做 keyset 分页。
 //
@@ -162,14 +174,24 @@ const documentsSelectCols = `SELECT id, knowledge_base_id, filename, storage_key
 // 【方向必须和索引一致】索引是 (knowledge_base_id, created_at DESC, id DESC)，
 // ORDER BY 也是 DESC, DESC。不一致的话 Postgres 会退化成「索引扫 + Sort」，
 // 分页的意义就没了。
+// 【加了分块数聚合之后，列名一律带 d. 前缀、并在末尾 GROUP BY d.id】
+// documents 和 document_chunks 都有 id 与 created_at 两列，不带前缀的
+// `WHERE knowledge_base_id = ...` 会因为 document_chunks 没有那一列而
+// 直接报错（42703），但 `ORDER BY created_at` 不会——它会变成一个有歧义的
+// 引用，只在某些写法下才报错。全部带前缀是唯一不需要逐条推敲的写法。
+//
+// 按 d.id 分组是合法的：它是 documents 的主键，Postgres 允许在选择同表
+// 其它列时只按主键分组（函数依赖）。这也正是 LEFT JOIN + count 的常规写法。
 const listDocumentsWithCursorSQL = documentsSelectCols + `
-	 WHERE knowledge_base_id = $1 AND (created_at, id) < ($2, $3)
-	 ORDER BY created_at DESC, id DESC
+	 WHERE d.knowledge_base_id = $1 AND (d.created_at, d.id) < ($2, $3)
+	 GROUP BY d.id
+	 ORDER BY d.created_at DESC, d.id DESC
 	 LIMIT $4`
 
 const listDocumentsSQL = documentsSelectCols + `
-	 WHERE knowledge_base_id = $1
-	 ORDER BY created_at DESC, id DESC
+	 WHERE d.knowledge_base_id = $1
+	 GROUP BY d.id
+	 ORDER BY d.created_at DESC, d.id DESC
 	 LIMIT $2`
 
 func (r *PgDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID, cur *platform.ListCursor, limit int) ([]*Document, bool, error) {
@@ -206,7 +228,8 @@ func (r *PgDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier,
 	for rows.Next() {
 		d := &Document{}
 		var status string
-		if err := rows.Scan(&d.ID, &d.KnowledgeBaseID, &d.Filename, &d.StorageKey, &status, &d.ByteSize, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.KnowledgeBaseID, &d.Filename, &d.StorageKey, &status,
+			&d.ByteSize, &d.CreatedAt, &d.UpdatedAt, &d.ChunkCount); err != nil {
 			return nil, false, fmt.Errorf("scan document: %w", err)
 		}
 		d.Status = Status(status)

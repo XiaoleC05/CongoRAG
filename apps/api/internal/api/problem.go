@@ -215,6 +215,19 @@ func classify(err error) (status int, typ, title string) {
 	case errors.Is(err, llm.ErrEmbeddingResetRequired):
 		return http.StatusConflict, "embedding_change_requires_reindex", "换 embedding 模型需要先确认清空重建"
 
+	// 恢复被拒绝的两种原因，各给一个独立的 type（issue #65 / #63）。
+	// 它们和 embedding 那条同理：前端要按 type 给出不同的下一步动作提示，
+	// 混进笼统的 conflict 里，用户只会看到一句"状态冲突"而不知道该做什么。
+	// 排在 ErrConflict 之前，避免被更宽的那条先接走。
+	case errors.Is(err, platform.ErrStateSchemaVersionMismatch):
+		return http.StatusConflict, "state_schema_version_mismatch", "这条运行的快照版本与当前代码不兼容"
+
+	case errors.Is(err, platform.ErrToolEffectApplied):
+		return http.StatusConflict, "tool_effect_already_applied", "该步骤的副作用可能已经生效，不能自动重放"
+
+	case errors.Is(err, platform.ErrReplayUnsafe):
+		return http.StatusConflict, "replay_unsafe", "这一步的工具不允许被自动重放"
+
 	case errors.Is(err, platform.ErrInvalid):
 		return http.StatusBadRequest, "invalid_argument", "参数不合法"
 

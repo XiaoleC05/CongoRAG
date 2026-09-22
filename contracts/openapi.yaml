@@ -271,6 +271,57 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── 检索调试（Hit Testing，issue #77）─────────────────────────
+  #
+  # 【为什么需要它】这是 RAG 项目里唯一能直接看见检索质量的地方：用户能
+  # 看到的通常只有最终答案和 citation 徽标，"为什么这个问题答错了"完全
+  # 无法自查——是没检索到、排序不对，还是检索对了而生成跑偏。离线 eval
+  # 是批量测量，这个是单次在线探查，两者测的层次不同。
+  #
+  # 【按知识库限定范围】与 POST /knowledge-bases/{id}/reindex 同一条既有
+  # 语义：请求路径里的 id 就是检索范围，不会跨知识库命中。
+  /api/v1/knowledge-bases/{id}/search:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: searchKnowledgeBase
+      summary: 在指定知识库里做一次向量检索，返回命中的分块与相似度
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeSearchRequest'
+      responses:
+        '200':
+          description: 命中的分块，按相似度从高到低
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeSearchResult'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        # 检索要先把 query 变成向量，而这一步模型侧会失败（Key 不对、
+        # 配额用完、网络不通）——那和聊天路径上的上游故障是同一类，
+        # 502 而不是 500：错的不是我们，排查方向也不同。
+        '502':
+          description: 上游模型服务出错
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ── 文档：单个 ──────────────────────────────────────────────
   /api/v1/documents/{id}:
 
@@ -356,6 +407,33 @@ paths:
 
   # ── 会话 ────────────────────────────────────────────────────
   /api/v1/conversations:
+
+    get:
+      operationId: listConversations
+      summary: |
+        列出会话（keyset 分页），按**最近活动时间**倒序。
+
+        【为什么排序键不是 createdAt】这个列表的用处是"回到刚才那个会话"，
+        而一个三天前建的会话可能刚刚才被用过。按创建时间排会让它沉到列表
+        底部，用户每次都得往下翻——列表的意义正好没了。
+
+        【形状与另外三个列表一致】items + nextCursor，不是裸数组
+        （v3.0 把三个列表端点统一成了这个形状，新端点跟着走，
+        否则会出现两种列表形状并存）。
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: 一页会话（按最近活动时间倒序）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationPage'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
     post:
       operationId: createConversation
@@ -702,9 +780,33 @@ paths:
       summary: |
         启动一次 Agent 执行，响应是 SSE 流（text/event-stream）——
         和 sendMessage 同一个模式,帧格式见 docs/sse-protocol.md。
-        这一轮没有 run 维度的断线重订阅（M4-B 才做),这次连接就是
-        唯一能实时看到过程的机会,执行记录本身（agent_runs/
-        agent_run_steps）落库后可以事后通过 GET .../runs/{runId}/steps 查。
+
+        **流的首帧永远是 `run_started`**（data: {"runId": ...}），
+        新建与命中幂等键重放两种情况都会发。取消、run 级重订阅、
+        跳转到运行详情都要用这个 id，而此前五种事件里没有任何一种带它。
+
+        带 Idempotency-Key 重复提交时不会重新执行：服务端把那条 run
+        已记录的事件补发一遍（同样的 event 类型、同样的真实 event_id）。
+        作用的范围是「同一个 Agent + 同一个键」，键保留 24 小时。
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            客户端生成的去重键。同一个 Agent 上带同一个键重复提交时，
+            服务端不重新执行这次运行，而是把该 run 已记录的事件补发出来
+            （首帧仍是 run_started，带的是原来那条 run 的 id）。
+
+            省略这个头时行为与没有幂等能力时完全一样（每次都真正执行）。
+            同一个键配不同的 input 会返回 invalid_argument 的错误帧，
+            而不是把上一次运行的结果重放一遍。
+
+            保留窗口与会话消息那条路径共用同一个值（24 小时，见
+            docs/adr/008-idempotency-replay-window.md）。过期之后同一个键
+            可以重新执行——这是有意的产品语义，不是缺陷。
+          schema:
+            type: string
+            maxLength: 255
       requestBody:
         required: true
         content:
@@ -722,6 +824,134 @@ paths:
           $ref: '#/components/responses/InvalidArgument'
         '404':
           $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── run 维度：重订阅 / 取消 / 恢复 ─────────────────────────────
+  #
+  # 【为什么是 /runs/{runId}/... 而不是文档里写的 /agents/{id}/runs/{runId}/...】
+  # runId 是全局唯一的，Agent id 在这个路径上是冗余的；而本契约里已经有一条
+  # /api/v1/runs/{runId}/steps，把新端点放在同一个前缀下才是一致的形状。
+  # （另有一条实际的理由：/agents/runs/{runId}/events 与 /agents/{id} 在同一层
+  # 上混用静态段和路径参数，那个歧义没必要引入。）
+  /api/v1/runs/{runId}/events:
+
+    parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: subscribeRunEvents
+      summary: |
+        补发一条 run 已经记录的事件（run 维度的断线重订阅）。
+
+        **补发完已有的历史就结束响应**，不持有连接等新事件——与会话维度那条
+        GET /conversations/{id}/events 是同一条语义。要看后续内容就再连一次。
+
+        `after_event_id` 省略时从 0 开始，也就是把这条 run 的事件从头补发
+        一遍（run 的事件号从 1 开始，按 run 独立发号）。
+      parameters:
+        - name: after_event_id
+          in: query
+          required: false
+          description: 只补发 event_id 严格大于它的那些事件。
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: SSE 流（补发完即结束）
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/runs/{runId}/cancel:
+
+    parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: cancelAgentRun
+      summary: |
+        取消一次在途的 Agent 运行。
+
+        取消后 run 的状态是 `cancelled`（不是 `failed`）——两者对用户的含义
+        完全不同：前者是他自己要求的，后者是出错了。已经跑到终态的 run
+        不可取消（409 conflict），没跑完的那一步保持 `interrupted`
+        （取消发生在 run 层，step 没有 cancelled 这一态）。
+
+        响应里带的是**取消生效之后**的状态，不是取消前的快照。
+      responses:
+        '200':
+          description: 取消后的运行记录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRun'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        # 已经结束的运行不可取消。
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/runs/{runId}/resume:
+
+    parameters:
+      - name: runId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: resumeAgentRun
+      summary: |
+        从断点恢复一次被中断的运行（第二步起）。响应是 SSE 流，
+        首帧同样是 run_started。
+
+        **先检查再开流**：所有拒绝理由都在这条请求变成流之前判掉，
+        所以下面那三种 409 是正常的 Problem 响应，而不是流里的一帧——
+        客户端能按 type 给出准确的下一步提示。
+
+        拒绝的三种情况：
+        - `conflict`：只有 interrupted 的 run 可以恢复（别的状态要么已经
+          结束、要么正在跑）。
+        - `state_schema_version_mismatch`：这条 run 的快照是旧版本的代码
+          写的，结构已经不兼容——明确拒绝并提示重新发起，而不是硬解出
+          一个半截状态。
+        - `tool_effect_already_applied` / `replay_unsafe`：没跑完的那一步
+          不允许被平台自动重放（副作用可能已经生效，或工具自己声明了
+          不可重放）。方案 §8 的恢复边界明说了不保证这类工具被安全重放。
+      responses:
+        '200':
+          description: SSE 流开始
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -851,9 +1081,72 @@ components:
 
     # ── 文档 ──────────────────────────────────────────────────
 
+    # ── 检索调试（Hit Testing）────────────────────────────────
+    #
+    # 请求体没有复用按知识库重建那条的语义：这里只需要一句 query。
+    KnowledgeSearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: 要检索的文本。会先被当前生效的 embedding 模型变成向量。
+        topK:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 50
+          description: |
+            最多返回多少个命中分块。省略时用 5。
+
+            【越界返回 400，不静默夹取】夹取会让人以为"只命中这么多"，
+            而实际是被服务端截断了——调试视图上这个区别很关键。
+      example:
+        query: ConGoRAG 的向量检索用的是什么类型？
+        topK: 5
+
+    # 命中分块。字段与 SSE 的 citation 事件逐个对应（chunkId/documentId/
+    # filename/snippet/score），这样前端的引用卡片组件可以直接复用，
+    # 不需要为调试视图再做一套展示。
+    KnowledgeSearchHit:
+      type: object
+      required: [chunkId, documentId, filename, snippet, score]
+      properties:
+        chunkId:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        filename:
+          type: string
+          description: 这个分块来自哪份文档（检索 SQL 里 JOIN documents 拿到）
+        snippet:
+          type: string
+          description: 分块正文
+        score:
+          type: number
+          format: double
+          description: 余弦相似度，越大越相关
+
+    KnowledgeSearchResult:
+      type: object
+      required: [hits]
+      properties:
+        hits:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeSearchHit'
+          description: |
+            按相似度从高到低。可能是空数组（这个知识库没有任何向量，
+            或者 query 与所有分块都不相关）——空数组与"检索失败"是两件事，
+            前者前端应显示"没有命中"，后者是一个 4xx/5xx。
+
     Document:
       type: object
-      required: [id, knowledgeBaseId, filename, status, byteSize, createdAt, updatedAt]
+      required: [id, knowledgeBaseId, filename, status, byteSize, chunkCount, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -873,6 +1166,19 @@ components:
         byteSize:
           type: integer
           format: int64
+        chunkCount:
+          type: integer
+          format: int64
+          description: |
+            这份文档当前的向量分块数（issue #82）。
+
+            【为什么它是"检索质量的第一个可观察量"】切分策略不合适时分块数
+            会明显异常（一份 10 页的 PDF 切出 3 块、或者切出 8000 块）。
+            它也是"文档到底处理完没有"的第二个信号：status 是 ready 但
+            chunkCount 是 0，说明切分或向量化那一轮实际上什么都没产出。
+
+            未处理完的文档是 0——不是 null。null 会让前端多写一条分支，
+            而"还没有分块"和"没有这个字段"对用户是同一件事。
         createdAt:
           type: string
           format: date-time
@@ -919,6 +1225,19 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AgentRun'
+        nextCursor:
+          type: string
+          nullable: true
+          description: 下一页的游标；null 表示没有更多了。
+
+    ConversationPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Conversation'
         nextCursor:
           type: string
           nullable: true

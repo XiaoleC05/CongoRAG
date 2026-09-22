@@ -20,6 +20,15 @@ type ContextKey int
 const (
 	// CtxRequestID 是本次请求的追踪 ID。
 	CtxRequestID ContextKey = iota
+
+	// CtxAgentRunID 是一次 Agent 运行的追踪 ID（issue #71）。
+	//
+	// 【为什么需要第二个追踪 ID】request_id 的作用域是**一次 HTTP 请求**，
+	// 而一次 Agent run 会横跨 API 进程（发起）与多轮工具/模型调用。
+	// 排查「这次 run 为什么慢/为什么失败」时，缺的正是把散落在多处的
+	// 日志行聚成一条时间线的那个字段——尤其在这个 run 被 KILL 掉、
+	// 请求 ctx 早就没了之后（M4-C 的崩溃现场）。
+	CtxAgentRunID ContextKey = iota
 )
 
 // RequestID 给每个请求分配一个 ID，塞进 context 和响应头。
@@ -40,6 +49,60 @@ func RequestID() gin.HandlerFunc {
 func RequestIDFrom(ctx context.Context) string {
 	id, _ := ctx.Value(CtxRequestID).(string)
 	return id
+}
+
+// WithAgentRunID 把 run id 塞进 context。
+//
+// 【谁调用它】agent.Usecase 在 run 行落库之后、执行开始之前调用一次，
+// 之后这条运行路径上的每一层（工具调用、终态写入、错误处理）都能用
+// AgentRunIDFrom 取到它——和 request_id 由中间件注入是同一个机制，
+// 只是注入点是业务层（Agent run 不是 HTTP 请求，没有中间件可挂）。
+func WithAgentRunID(ctx context.Context, runID string) context.Context {
+	return context.WithValue(ctx, CtxAgentRunID, runID)
+}
+
+// AgentRunIDFrom 从 context 里取 agent_run_id，没有就返回空串。
+//
+// 【为什么返回空串而不是零值 uuid】调用方要把它直接当 slog 的键值对用，
+// 空串在日志里读作「这条日志不属于任何 run」（比如文档处理的 River job），
+// 而 uuid.Nil 会读成一个看起来像真 id 的东西。
+func AgentRunIDFrom(ctx context.Context) string {
+	id, _ := ctx.Value(CtxAgentRunID).(string)
+	return id
+}
+
+// LogAttrs 返回打日志时该带的追踪字段。
+//
+// 【为什么做成一个函数，而不是每个调用点写两行】"每条日志都带 request_id
+// 和 agent_run_id"这件事靠纪律维持，而纪律会在新增调用点时断掉——断掉
+// 不会报错，只会让某一条日志在排查时对不上时间线。抽成一个函数之后，
+// 新增调用点只要用了它就不会漏（issue #71）。
+//
+// 两个字段都缺席时不返回任何 attr，日志行不会出现两个空串。
+func LogAttrs(ctx context.Context) []any {
+	var attrs []any
+	if id := RequestIDFrom(ctx); id != "" {
+		attrs = append(attrs, "request_id", id)
+	}
+	if id := AgentRunIDFrom(ctx); id != "" {
+		attrs = append(attrs, "agent_run_id", id)
+	}
+	return attrs
+}
+
+// LoggerFrom 返回一个已经把追踪字段绑好的 logger。
+//
+// 【为什么不是"每处自己 LogAttrs(ctx)..."】那要求每个调用点都记得展开切片，
+// 展开错（比如忘了 `...`）会把整个切片当成一个值打进日志，读起来是一串
+// 方括号，而且不报错。绑定一次比每处展开一次更难写错。
+func LoggerFrom(ctx context.Context, base *slog.Logger) *slog.Logger {
+	if base == nil {
+		base = slog.Default()
+	}
+	if attrs := LogAttrs(ctx); len(attrs) > 0 {
+		return base.With(attrs...)
+	}
+	return base
 }
 
 // OriginCheck 校验 Origin 和 Host 头，拦住跨站请求和 DNS rebinding。

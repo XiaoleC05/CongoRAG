@@ -23,9 +23,11 @@ import (
 
 	"github.com/XiaoleC05/CongoRAG/internal/agent"
 	"github.com/XiaoleC05/CongoRAG/internal/conversation"
+	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/knowledge"
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
+	"github.com/XiaoleC05/CongoRAG/internal/retrieval"
 )
 
 // Deps 是 Server 需要的全部依赖，由装配根填入。
@@ -36,6 +38,11 @@ type Deps struct {
 	LLM          *llm.Usecase
 	Conversation *conversation.Usecase
 	Agent        *agent.Usecase
+
+	// Retrieval 是检索调试视图（POST /knowledge-bases/{id}/search）用的。
+	// 它和 knowledge 是不同的关注点：knowledge 管知识库与文档的 CRUD，
+	// 检索是它下面那一层（retrieval 才是向量的读写方）。
+	Retrieval *retrieval.Usecase
 
 	// MaxUploadBytes 是上传接口允许的最大请求体字节数（platform.Config
 	// 的对应项）。只有 UploadDocument 用它，<=0 表示不限——生产装配里
@@ -259,6 +266,7 @@ func toAPIDocument(d *knowledge.Document) Document {
 		Filename:        d.Filename,
 		Status:          DocumentStatus(d.Status),
 		ByteSize:        d.ByteSize,
+		ChunkCount:      d.ChunkCount,
 		CreatedAt:       d.CreatedAt,
 		UpdatedAt:       d.UpdatedAt,
 	}
@@ -588,6 +596,26 @@ func (s *Server) CreateConversation(c *gin.Context) {
 	c.JSON(http.StatusCreated, toAPIConversation(conv))
 }
 
+func (s *Server) ListConversations(c *gin.Context, params ListConversationsParams) {
+	limit, cursor, ok := s.parseListParams(c, params.Limit, params.Cursor)
+	if !ok {
+		return
+	}
+
+	convs, next, err := s.deps.Conversation.ListConversations(c.Request.Context(), cursor, limit)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	// 空切片不是 nil：契约里 items 是数组，nil 会序列化成 null，
+	// 前端拿到 null 去 .map() 直接崩（和 toAPIKBList 那条同一个约定）。
+	out := make([]Conversation, 0, len(convs))
+	for _, cv := range convs {
+		out = append(out, toAPIConversation(cv))
+	}
+	c.JSON(http.StatusOK, ConversationPage{Items: out, NextCursor: nullableCursor(next)})
+}
+
 func (s *Server) ListConversationMessages(c *gin.Context, id openapi_types.UUID, params ListConversationMessagesParams) {
 	limit, cursor, ok := s.parseListParams(c, params.Limit, params.Cursor)
 	if !ok {
@@ -912,18 +940,36 @@ func (s *Server) ListAgentRuns(c *gin.Context, id openapi_types.UUID, params Lis
 // StartAgentRun 和 SendMessage 同一个模式：请求体解析失败还能用
 // s.fail（还没切到 SSE 模式),之后 agent.Usecase.Start 内部的任何
 // 错误都通过 error 事件传给客户端,不再改变 HTTP 状态码。
-func (s *Server) StartAgentRun(c *gin.Context, id openapi_types.UUID) {
+func (s *Server) StartAgentRun(c *gin.Context, id openapi_types.UUID, params StartAgentRunParams) {
 	var req StartAgentRunRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
 		return
 	}
 
+	idempotencyKey := ""
+	if params.IdempotencyKey != nil {
+		idempotencyKey = strings.TrimSpace(*params.IdempotencyKey)
+	}
+	// 和 SendMessage 同一条判据：校验必须在 newSSESink 之前，超长键是
+	// "请求本身不合法"，用 400 拒绝比在流里推一帧更准确；长度按字符数算
+	// （契约写的是 maxLength: 255，那是字符数）。
+	if utf8.RuneCountInString(idempotencyKey) > conversation.MaxIdempotencyKeyLen {
+		s.fail(c, fmt.Errorf("Idempotency-Key must not exceed %d characters: %w",
+			conversation.MaxIdempotencyKeyLen, platform.ErrInvalid))
+		return
+	}
+
 	sink := newSSESink(c)
-	if _, err := s.deps.Agent.Start(c.Request.Context(), id, req.Input, sink); err != nil {
+	if _, err := s.deps.Agent.Start(c.Request.Context(), id, req.Input, idempotencyKey, sink); err != nil {
 		s.deps.Logger.Warn("agent run failed",
 			"request_id", platform.RequestIDFrom(c.Request.Context()),
 			"agent_id", id, "error", err)
+		// 【和 SendMessage 一样要有兜底帧】失败事件是先持久化再发的，
+		// 所以"数据库整个不可用"会把那条 error 帧也堵在库里——客户端
+		// 拿到的是 200 + 空 body，和一个空的成功流完全同形（那条注释
+		// 在 writeFallbackError 上写得更细）。
+		s.writeFallbackError(sink, err)
 	}
 }
 
@@ -935,3 +981,130 @@ func (s *Server) ListRunSteps(c *gin.Context, runId openapi_types.UUID) {
 	}
 	c.JSON(http.StatusOK, toAPIAgentRunStepList(steps))
 }
+
+// ────────────────────────────────────────────────────────────────
+// run 维度：重订阅 / 取消 / 恢复（issue #54 / #55 / #64）
+// ────────────────────────────────────────────────────────────────
+
+// SubscribeRunEvents 和会话维度那条 SubscribeConversationEvents 逐条同形：
+// 补发完已有的历史就结束响应，不持有连接等新事件。
+func (s *Server) SubscribeRunEvents(c *gin.Context, runId openapi_types.UUID, params SubscribeRunEventsParams) {
+	var after int64
+	if params.AfterEventId != nil {
+		after = *params.AfterEventId
+	}
+
+	// 【为什么这里先查一次 run】它让"这条 run 不存在"在切进 SSE 模式之前
+	// 就以 404 Problem 返回，而不是给客户端一条 200 + 空流——后者与
+	// "这条 run 没有任何事件"完全同形。
+	events, err := s.deps.Agent.RunEvents(c.Request.Context(), runId, after)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	sink := newSSESink(c)
+	for _, ev := range events {
+		if err := sink.Emit(conversation.Event{ID: ev.ID, Type: ev.Type, Payload: ev.Payload}); err != nil {
+			// 客户端在补发过程中断开了——没有更多可做的，停止继续写。
+			return
+		}
+	}
+	_ = sink.Flush()
+}
+
+// CancelAgentRun 取消一次在途运行（issue #55）。
+//
+// 【它是普通 JSON 端点，不是 SSE】取消的结果是"这条 run 现在是什么状态"，
+// 一次性就答完了；响应里带的是**取消生效之后**的记录（Usecase.Cancel 会
+// 等收尾写入落库），所以前端不需要再轮询一次。
+func (s *Server) CancelAgentRun(c *gin.Context, runId openapi_types.UUID) {
+	run, err := s.deps.Agent.Cancel(c.Request.Context(), runId)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toAPIAgentRun(run))
+}
+
+// ResumeAgentRun 从断点恢复一次被中断的运行（issue #64）。
+//
+// 【为什么先 PrepareResume 再开流】恢复会被拒绝的理由有三种，而它们都该
+// 是正常的 409 Problem（前端按 type 给出不同的下一步提示）。一旦打开 SSE，
+// 状态码就锁死在 200 上，那时只能推一帧笼统的 error——这正是 issue #34
+// 修过的那类误报。所以校验和推流分成两步。
+func (s *Server) ResumeAgentRun(c *gin.Context, runId openapi_types.UUID) {
+	plan, err := s.deps.Agent.PrepareResume(c.Request.Context(), runId)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	sink := newSSESink(c)
+	if _, err := s.deps.Agent.Resume(c.Request.Context(), plan, sink); err != nil {
+		s.deps.Logger.Warn("agent run resume failed",
+			"request_id", platform.RequestIDFrom(c.Request.Context()),
+			"run_id", runId, "error", err)
+		s.writeFallbackError(sink, err)
+	}
+}
+
+// SearchKnowledgeBase 是检索调试视图（Hit Testing，issue #77）的后端。
+//
+// 【为什么按知识库限定范围】与 ReindexKnowledgeBase 同一条既有语义：
+// 路径里的 id 就是范围。这里先查一次知识库，一是让不存在返回 404 而不是
+// 一个空结果，二是避免对着一堆别的库的向量做一次没有意义的检索。
+func (s *Server) SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
+	var req KnowledgeSearchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.fail(c, fmt.Errorf("invalid request body: %w", platform.ErrInvalid))
+		return
+	}
+
+	if _, err := s.deps.Knowledge.Get(c.Request.Context(), id); err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	topK := knowledgeSearchDefaultTopK
+	if req.TopK != nil {
+		topK = *req.TopK
+	}
+	// 【越界返回 400，不静默夹取】夹取会让调试视图显示"只命中这么多"，
+	// 而实际是被服务端截断了——在这个视图上那个区别是致命的。
+	// 契约里的 minimum/maximum 只是给客户端看的声明，强制点在这里。
+	if topK < 1 || topK > knowledgeSearchMaxTopK {
+		s.fail(c, fmt.Errorf("topK must be between 1 and %d, got %d: %w",
+			knowledgeSearchMaxTopK, topK, platform.ErrInvalid))
+		return
+	}
+
+	chunks, err := s.deps.Retrieval.Search(c.Request.Context(), domain.SearchRequest{
+		KnowledgeBaseID: id, Text: req.Query, TopK: topK,
+	})
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	// 空切片不是 nil：契约里 hits 是数组，nil 会序列化成 null
+	// （前端 .map() 会崩）——与 toAPIKBList 那条同一个约定。
+	hits := make([]KnowledgeSearchHit, 0, len(chunks))
+	for _, ch := range chunks {
+		hits = append(hits, KnowledgeSearchHit{
+			ChunkId:    ch.ID,
+			DocumentId: ch.DocumentID,
+			Filename:   ch.Filename,
+			Snippet:    ch.Content,
+			Score:      ch.Score,
+		})
+	}
+	c.JSON(http.StatusOK, KnowledgeSearchResult{Hits: hits})
+}
+
+// 检索调试的 topK 边界。契约里的 min/max 与它们必须一致——
+// 那一处是给客户端看的声明，这一处才是强制点。
+const (
+	knowledgeSearchDefaultTopK = 5
+	knowledgeSearchMaxTopK     = 50
+)

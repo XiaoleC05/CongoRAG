@@ -39,6 +39,20 @@ func (r *PgRepo) CreateConversation(ctx context.Context, q platform.Querier, c *
 	return nil
 }
 
+// conversationsSelectCols / 两条列表 SQL：与 knowledge 的 documentsSelectCols
+// 同一套写法（keyset 行值比较、方向与索引一致、多取一条判 hasMore）。
+const conversationsSelectCols = `SELECT id, title, knowledge_base_id, created_at, updated_at
+	 FROM conversations`
+
+const listConversationsWithCursorSQL = conversationsSelectCols + `
+	 WHERE (updated_at, id) < ($1, $2)
+	 ORDER BY updated_at DESC, id DESC
+	 LIMIT $3`
+
+const listConversationsSQL = conversationsSelectCols + `
+	 ORDER BY updated_at DESC, id DESC
+	 LIMIT $1`
+
 func (r *PgRepo) GetConversation(ctx context.Context, q platform.Querier, id uuid.UUID) (*Conversation, error) {
 	c := &Conversation{}
 	err := q.QueryRow(ctx,
@@ -53,6 +67,62 @@ func (r *PgRepo) GetConversation(ctx context.Context, q platform.Querier, id uui
 		return nil, fmt.Errorf("get conversation %s: %w", id, platform.WrapPgErr(err))
 	}
 	return c, nil
+}
+
+func (r *PgRepo) TouchConversation(ctx context.Context, q platform.Querier, id uuid.UUID, at time.Time) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE conversations SET updated_at = $2 WHERE id = $1`, id, at)
+	if err != nil {
+		return fmt.Errorf("touch conversation %s: %w", id, platform.WrapPgErr(err))
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("conversation %s: %w", id, platform.ErrNotFound)
+	}
+	return nil
+}
+
+func (r *PgRepo) ListConversations(ctx context.Context, q platform.Querier, cur *platform.ListCursor, limit int) ([]*Conversation, bool, error) {
+	sql := listConversationsSQL
+	var args []any
+
+	if cur != nil {
+		ts, err := time.Parse(time.RFC3339Nano, cur.SortKey)
+		if err != nil {
+			return nil, false, fmt.Errorf("cursor sort key %q is not a timestamp: %w", cur.SortKey, platform.ErrInvalid)
+		}
+		id, err := uuid.Parse(cur.Tiebreak)
+		if err != nil {
+			return nil, false, fmt.Errorf("cursor tiebreak %q is not a uuid: %w", cur.Tiebreak, platform.ErrInvalid)
+		}
+		sql = listConversationsWithCursorSQL
+		args = append(args, ts, id)
+	}
+	// 多取一条判 hasMore（和另外三个列表同一个写法），DESC 序下它落在尾部。
+	args = append(args, limit+1)
+
+	rows, err := q.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, false, fmt.Errorf("list conversations: %w", platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	out := make([]*Conversation, 0, limit)
+	for rows.Next() {
+		c := &Conversation{}
+		if err := rows.Scan(&c.ID, &c.Title, &c.KnowledgeBaseID, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, false, fmt.Errorf("scan conversation: %w", err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("iterate conversations: %w", err)
+	}
+
+	hasMore := len(out) > limit
+	if hasMore {
+		out = out[:limit]
+	}
+	return out, hasMore, nil
 }
 
 func (r *PgRepo) AppendMessage(ctx context.Context, q platform.Querier, m *Message) error {

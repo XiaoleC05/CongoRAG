@@ -233,6 +233,269 @@ func (r *PgRepo) StepsByRun(ctx context.Context, q platform.Querier, runID uuid.
 	return out, nil
 }
 
+// UpdateStep 补上一步的终态、结果与延迟。
+//
+// 【只改会变的那几列】不更新 seq / run_id / type / tool_name / tool_args /
+// created_at——它们是一次写入就定死的（见 port.go 的注释）。
+//
+// 【不加 CAS 的 WHERE status = ...】和 UpdateRunStatus 不同：run 的终态
+// 竞争很真实（取消与失败可能同时发生），而 step 只有一个写者——就是正在
+// 执行它的那个 goroutine。行不存在说明调用方把 step id 用错了，那是个
+// 编程错误，值得报出来而不是静默成功。
+func (r *PgRepo) UpdateStep(ctx context.Context, q platform.Querier, s *Step) error {
+	tag, err := q.Exec(ctx,
+		`UPDATE agent_run_steps
+		    SET status = $2, tool_result = $3, token_usage = $4, latency_ms = $5, error = $6
+		  WHERE id = $1`,
+		s.ID, string(s.Status), nullableJSON(s.ToolResult), tokenUsageJSON(s.TokenUsage),
+		s.LatencyMS, nullableString(s.Error),
+	)
+	if err != nil {
+		return fmt.Errorf("update step %d of run %s: %w", s.Seq, s.RunID, platform.WrapPgErr(err))
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("step %s: %w", s.ID, platform.ErrNotFound)
+	}
+	return nil
+}
+
+// ── run 维度事件流（issue #54）──────────────────────────────────
+
+// NextRunEventID 实现与 conversation.PgRepo.NextEventID 逐字同形的 SQL，
+// 只是换了一张计数器表。两张表并存的理由见 migrations/0009 的注释。
+func (r *PgRepo) NextRunEventID(ctx context.Context, q platform.Querier, runID uuid.UUID) (int64, error) {
+	var next int64
+	err := q.QueryRow(ctx,
+		`INSERT INTO run_counters (run_id, next_event_id)
+		 VALUES ($1, 1)
+		 ON CONFLICT (run_id) DO UPDATE
+		   SET next_event_id = run_counters.next_event_id + 1
+		 RETURNING next_event_id`,
+		runID,
+	).Scan(&next)
+	if err != nil {
+		return 0, fmt.Errorf("allocate next event id for run %s: %w", runID, platform.WrapPgErr(err))
+	}
+	return next, nil
+}
+
+func (r *PgRepo) AppendRunEvent(ctx context.Context, q platform.Querier, runID uuid.UUID, ev RunEvent) error {
+	_, err := q.Exec(ctx,
+		`INSERT INTO run_events (run_id, event_id, payload) VALUES ($1, $2, $3)`,
+		runID, ev.ID, ev.Payload,
+	)
+	if err != nil {
+		return fmt.Errorf("append event %d of run %s: %w", ev.ID, runID, platform.WrapPgErr(err))
+	}
+	return nil
+}
+
+func (r *PgRepo) RunEventsAfter(ctx context.Context, q platform.Querier, runID uuid.UUID, afterEventID int64) ([]RunEvent, error) {
+	rows, err := q.Query(ctx,
+		`SELECT event_id, payload FROM run_events
+		 WHERE run_id = $1 AND event_id > $2
+		 ORDER BY event_id ASC`,
+		runID, afterEventID)
+	if err != nil {
+		return nil, fmt.Errorf("events after %d of run %s: %w", afterEventID, runID, platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	var out []RunEvent
+	for rows.Next() {
+		var ev RunEvent
+		var payload []byte
+		if err := rows.Scan(&ev.ID, &payload); err != nil {
+			return nil, fmt.Errorf("scan run event: %w", err)
+		}
+		ev.Payload = payload
+		ev.Type = extractEventType(payload)
+		out = append(out, ev)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate run events: %w", err)
+	}
+	return out, nil
+}
+
+// extractEventType 从 payload 里取出 "type" 字段。
+//
+// 【为什么从 JSON 里解，而不是给表加一列 type】表结构照 conversation_events
+// 来（两张表同形，读代码时不用在两个形状之间切换），而类型信息本来就编码在
+// payload 里——Event.Type 与 payload.type 是同一个值的两个投影。
+//
+// 【认不出就返回空串，不报错】这个方法只在读取路径上被调用，而它服务的
+// 那两个端点（补发、重放）的语义是"把存下来的东西原样发出去"。因为一个
+// 解不出的 type 就整条报错，会让一条坏行把整个 run 的补发全部堵死。
+//
+// 【实现与 conversation 的同名函数是两份副本，不是漏改】两个包各自持有
+// 一份，代价是两处要一起改；收益是不互相依赖对方的私有实现（本仓库一贯
+// 的取舍，见 tokenUsageJSON 的注释）。
+func extractEventType(payload []byte) string {
+	var probe struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(payload, &probe); err != nil {
+		return ""
+	}
+	return probe.Type
+}
+
+// ── 工具效果账本（issue #63）────────────────────────────────────
+
+func (r *PgRepo) RecordToolEffect(ctx context.Context, q platform.Querier, stepID uuid.UUID, effectKey string) error {
+	_, err := q.Exec(ctx,
+		`INSERT INTO tool_effect_log (step_id, effect_key) VALUES ($1, $2)`,
+		stepID, effectKey)
+	if err != nil {
+		// 23505 在这里被分流成 ErrToolEffectApplied（不是 ErrDuplicateKey）：
+		// 它的含义是"这个副作用已经发生过了"，恢复路径要据此判读，
+		// 而不是把它当成一次业务冲突（见 sentinel.go 的注释）。
+		return fmt.Errorf("record tool effect for step %s: %w", stepID, platform.WrapPgErr(err))
+	}
+	return nil
+}
+
+func (r *PgRepo) ToolEffectApplied(ctx context.Context, q platform.Querier, stepID uuid.UUID, effectKey string) (bool, error) {
+	var exists bool
+	err := q.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM tool_effect_log WHERE step_id = $1 AND effect_key = $2)`,
+		stepID, effectKey).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("check tool effect for step %s: %w", stepID, platform.WrapPgErr(err))
+	}
+	return exists, nil
+}
+
+// ── 崩溃扫描与 checkpoint 回收 ──────────────────────────────────
+
+// InterruptRunningRuns 见 port.go 的契约。
+//
+// 【两条 UPDATE 必须在同一个事务里】否则会出现"run 已经不是 running 了，
+// 但它那个 running 的 step 还在"的中间态——正是 ADR-007 崩溃表要判读的
+// 那个现场。恢复逻辑读到它会把一个已经由扫描收尾的 run 再收尾一遍。
+//
+// 【为什么最后单独 SELECT 一次受影响的 id】UPDATE ... RETURNING 只返回被
+// 改的行，而这里要的是 run 级 id 列表（step 那条 UPDATE 会返回一堆 step id，
+// 不是 run id）。多一次查询换来调用方能拿它记日志——这是启动扫描唯一的
+// 可观测性来源。
+func (r *PgRepo) InterruptRunningRuns(ctx context.Context, q platform.Querier) ([]uuid.UUID, error) {
+	tag, err := q.Exec(ctx,
+		`UPDATE agent_runs SET status = $1, updated_at = now() WHERE status = $2`,
+		string(RunInterrupted), string(RunRunning))
+	if err != nil {
+		return nil, fmt.Errorf("interrupt running runs: %w", platform.WrapPgErr(err))
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, nil
+	}
+
+	if _, err := q.Exec(ctx,
+		`UPDATE agent_run_steps s
+		    SET status = $1
+		   FROM agent_runs r
+		  WHERE s.run_id = r.id AND s.status = $2 AND r.status = $3`,
+		string(StepInterrupted), string(StepRunning), string(RunInterrupted)); err != nil {
+		return nil, fmt.Errorf("interrupt running steps: %w", platform.WrapPgErr(err))
+	}
+
+	rows, err := q.Query(ctx,
+		`SELECT id FROM agent_runs WHERE status = $1 ORDER BY created_at ASC`,
+		string(RunInterrupted))
+	if err != nil {
+		return nil, fmt.Errorf("list interrupted runs: %w", platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan interrupted run id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate interrupted runs: %w", err)
+	}
+	return ids, nil
+}
+
+// ClearTerminalRunCheckpoints 见 port.go 的契约。
+//
+// 【只动 state_snapshot 这一列】output / input / steps 都留着：轨迹页、
+// 运行历史、用量都还要读它们。膨胀的只有快照。
+func (r *PgRepo) ClearTerminalRunCheckpoints(ctx context.Context, q platform.Querier, olderThan time.Time) (int64, error) {
+	tag, err := q.Exec(ctx,
+		`UPDATE agent_runs
+		    SET state_snapshot = NULL
+		  WHERE state_snapshot IS NOT NULL
+		    AND updated_at < $1
+		    AND status IN ($2, $3, $4)`,
+		olderThan,
+		string(RunCompleted), string(RunFailed), string(RunCancelled))
+	if err != nil {
+		return 0, fmt.Errorf("clear terminal run checkpoints: %w", platform.WrapPgErr(err))
+	}
+	return tag.RowsAffected(), nil
+}
+
+// ── 幂等键（issue #56 / ADR-008）────────────────────────────────
+
+var _ IdempotencyStore = (*PgIdempotencyStore)(nil)
+
+// PgIdempotencyStore 是 agent 包声明的 IdempotencyStore 的实现。
+//
+// 【和 conversation.PgRepo 的同类方法共用同一张表】两个包的实现都过
+// platform.WrapPgErr，所以"幂等命中不是 409"只有一个实现点；
+// 各自一份 SQL 副本是本仓库对"不互相依赖私有实现"的一贯取舍。
+type PgIdempotencyStore struct{}
+
+func NewPgIdempotencyStore() *PgIdempotencyStore {
+	return &PgIdempotencyStore{}
+}
+
+func (s *PgIdempotencyStore) ReserveIdempotencyKey(ctx context.Context, q platform.Querier, rec *IdempotencyRecord, expiredBefore time.Time) error {
+	// 清理与插入放在同一次调用里，与 conversation 那一侧的理由一致：
+	// 分开做会留下一个两边都没覆盖到的窗口。
+	if _, err := q.Exec(ctx,
+		`DELETE FROM idempotency_keys WHERE created_at < $1`, expiredBefore); err != nil {
+		return fmt.Errorf("prune expired idempotency keys: %w", platform.WrapPgErr(err))
+	}
+
+	_, err := q.Exec(ctx,
+		`INSERT INTO idempotency_keys
+		   (endpoint, idempotency_key, resource_type, resource_id,
+		    first_event_id, request_fingerprint, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		rec.Endpoint, rec.Key, rec.ResourceType, rec.ResourceID,
+		rec.FirstEventID, rec.RequestFingerprint, rec.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("reserve idempotency key for run: %w", platform.WrapPgErr(err))
+	}
+	return nil
+}
+
+func (s *PgIdempotencyStore) LookupIdempotencyKey(ctx context.Context, q platform.Querier, endpoint, key string) (*IdempotencyRecord, error) {
+	rec := &IdempotencyRecord{}
+	err := q.QueryRow(ctx,
+		`SELECT endpoint, idempotency_key, resource_type, resource_id,
+		        first_event_id, request_fingerprint, created_at
+		 FROM idempotency_keys
+		 WHERE endpoint = $1 AND idempotency_key = $2`,
+		endpoint, key,
+	).Scan(&rec.Endpoint, &rec.Key, &rec.ResourceType, &rec.ResourceID,
+		&rec.FirstEventID, &rec.RequestFingerprint, &rec.CreatedAt)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("idempotency key %s: %w", key, platform.ErrNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lookup idempotency key %s: %w", key, platform.WrapPgErr(err))
+	}
+	return rec, nil
+}
+
 func (r *PgRepo) ListToolCatalog(ctx context.Context, q platform.Querier) ([]ToolCatalogEntry, error) {
 	rows, err := q.Query(ctx, `SELECT name, description, side_effect_level FROM tools ORDER BY name ASC`)
 	if err != nil {

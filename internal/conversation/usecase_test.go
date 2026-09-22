@@ -82,6 +82,68 @@ func (f *fakeRepo) GetConversation(ctx context.Context, q platform.Querier, id u
 	return c, nil
 }
 
+// TouchConversation 实现"最近活动时间"这一列（issue #78）。它必须真的改动
+// Conversation.UpdatedAt：会话列表按这一列排序，假实现不更新它的话，
+// 列表顺序的测试测的是一份永远不会变的数据。
+func (f *fakeRepo) TouchConversation(ctx context.Context, q platform.Querier, id uuid.UUID, at time.Time) error {
+	if f.failOn == "TouchConversation" {
+		return f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c, ok := f.conversations[id]
+	if !ok {
+		return fmt.Errorf("conversation %s: %w", id, platform.ErrNotFound)
+	}
+	c.UpdatedAt = at
+	return nil
+}
+
+// ListConversations 复刻真实查询的两个关键性质：按 updated_at 倒序、
+// keyset 游标是 (updated_at, id) 的严格比较、多取一条判 hasMore。
+func (f *fakeRepo) ListConversations(ctx context.Context, q platform.Querier, cur *platform.ListCursor, limit int) ([]*Conversation, bool, error) {
+	if f.failOn == "ListConversations" {
+		return nil, false, f.err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	all := make([]*Conversation, 0, len(f.conversations))
+	for _, c := range f.conversations {
+		all = append(all, c)
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if !all[i].UpdatedAt.Equal(all[j].UpdatedAt) {
+			return all[i].UpdatedAt.After(all[j].UpdatedAt)
+		}
+		return all[i].ID.String() > all[j].ID.String()
+	})
+
+	if cur != nil {
+		ts, err := time.Parse(time.RFC3339Nano, cur.SortKey)
+		if err != nil {
+			return nil, false, err
+		}
+		id, err := uuid.Parse(cur.Tiebreak)
+		if err != nil {
+			return nil, false, err
+		}
+		kept := all[:0]
+		for _, c := range all {
+			if c.UpdatedAt.Before(ts) || (c.UpdatedAt.Equal(ts) && c.ID.String() < id.String()) {
+				kept = append(kept, c)
+			}
+		}
+		all = kept
+	}
+
+	hasMore := len(all) > limit
+	if hasMore {
+		all = all[:limit]
+	}
+	return all, hasMore, nil
+}
+
 func (f *fakeRepo) NextSequenceNo(ctx context.Context, q platform.Querier, convID uuid.UUID) (int64, error) {
 	if f.failOn == "NextSequenceNo" {
 		return 0, f.err

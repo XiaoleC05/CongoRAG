@@ -35,6 +35,11 @@ type fakeRepo struct {
 	lastRunsLimit   int
 	listRunsErr     error
 	listRunsHasMore bool
+
+	// run 维度事件流（issue #54）与工具效果账本（issue #63）。
+	nextEventID int64
+	runEvents   []RunEvent
+	effects     map[string]struct{}
 }
 
 // statusUpdate 记一次 UpdateRunStatus 调用，含当时 ctx 是否已被取消。
@@ -45,7 +50,7 @@ type statusUpdate struct {
 	ctxErr error
 }
 
-func newFakeRepo() *fakeRepo { return &fakeRepo{} }
+func newFakeRepo() *fakeRepo { return &fakeRepo{effects: map[string]struct{}{}} }
 
 func (f *fakeRepo) CreateAgent(ctx context.Context, q platform.Querier, a *Agent) error {
 	f.mu.Lock()
@@ -75,8 +80,16 @@ func (f *fakeRepo) InsertRun(ctx context.Context, q platform.Querier, r *Run) er
 	f.runs = append(f.runs, r)
 	return nil
 }
+// GetRun 按 id 在内存里找——恢复、取消、幂等重放三条路径都要读它。
 func (f *fakeRepo) GetRun(ctx context.Context, q platform.Querier, id uuid.UUID) (*Run, error) {
-	panic("not used")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, r := range f.runs {
+		if r.ID == id {
+			return r, nil
+		}
+	}
+	return nil, fmt.Errorf("run %s: %w", id, platform.ErrNotFound)
 }
 
 // ListRunsByAgent 记录收到的游标与 limit（供分页测试断言透传），返回预置的一页。
@@ -94,11 +107,29 @@ func (f *fakeRepo) ListRunsByAgent(ctx context.Context, q platform.Querier, agen
 	}
 	return f.runs, f.listRunsHasMore, nil
 }
+// UpdateRunStatus 复刻真实实现的 CAS：`WHERE status = from` 没匹配到就返回
+// ErrConflict，匹配到才改。
+//
+// 【为什么必须复刻 CAS 而不是"总是成功"】"不覆盖已有的终态"这条要求
+// 全靠它——假实现总是成功的话，"取消来晚了一步，运行已经完成"那条分支
+// 永远走不到，而那条分支正是用户会看到"点了停止却说已经完成"的地方。
 func (f *fakeRepo) UpdateRunStatus(ctx context.Context, q platform.Querier, id uuid.UUID, from, to RunStatus) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.updates = append(f.updates, statusUpdate{id: id, from: from, to: to, ctxErr: ctx.Err()})
-	return nil
+
+	for _, r := range f.runs {
+		if r.ID == id {
+			if r.Status != from {
+				return fmt.Errorf("run %s: expected status %s but found %s: %w", id, from, r.Status, platform.ErrConflict)
+			}
+			r.Status = to
+			r.UpdatedAt = time.Now()
+			return nil
+		}
+	}
+	// 行不存在时真实 SQL 的 RowsAffected 也是 0 → 同样报冲突。
+	return fmt.Errorf("run %s: expected status %s but no row matched: %w", id, from, platform.ErrConflict)
 }
 func (f *fakeRepo) InsertStep(ctx context.Context, q platform.Querier, s *Step) error {
 	f.mu.Lock()
@@ -108,10 +139,133 @@ func (f *fakeRepo) InsertStep(ctx context.Context, q platform.Querier, s *Step) 
 	return nil
 }
 func (f *fakeRepo) StepsByRun(ctx context.Context, q platform.Querier, runID uuid.UUID) ([]*Step, error) {
-	panic("not used")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*Step, 0, len(f.steps))
+	for _, s := range f.steps {
+		if s.RunID == runID {
+			out = append(out, s)
+		}
+	}
+	return out, nil
 }
 func (f *fakeRepo) ListToolCatalog(ctx context.Context, q platform.Querier) ([]ToolCatalogEntry, error) {
 	panic("not used")
+}
+
+// UpdateStep 改的是**同一个指针**，所以断言 repo.steps[i].Status 看到的是
+// 终态——和真实实现"一行先插入、随后更新"的语义一致。
+//
+// 【不认识就报 not_found】真实实现用的是 RowsAffected == 0，把一个不存在的
+// step id 传进来是个编程错误，静默成功会让测试里那条路径永远测不到。
+func (f *fakeRepo) UpdateStep(ctx context.Context, q platform.Querier, s *Step) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, existing := range f.steps {
+		if existing.ID == s.ID {
+			*existing = *s
+			return nil
+		}
+	}
+	return fmt.Errorf("step %s: %w", s.ID, platform.ErrNotFound)
+}
+
+// ── run 维度事件流（issue #54）────────────────────────────────
+
+func (f *fakeRepo) NextRunEventID(ctx context.Context, q platform.Querier, runID uuid.UUID) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.nextEventID++
+	return f.nextEventID, nil
+}
+
+func (f *fakeRepo) AppendRunEvent(ctx context.Context, q platform.Querier, runID uuid.UUID, ev RunEvent) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.runEvents = append(f.runEvents, ev)
+	return nil
+}
+
+func (f *fakeRepo) RunEventsAfter(ctx context.Context, q platform.Querier, runID uuid.UUID, afterEventID int64) ([]RunEvent, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]RunEvent, 0, len(f.runEvents))
+	for _, ev := range f.runEvents {
+		if ev.ID > afterEventID {
+			out = append(out, ev)
+		}
+	}
+	return out, nil
+}
+
+// ── 工具效果账本（issue #63）──────────────────────────────────
+
+// RecordToolEffect 复刻真实实现的关键性质：同一个 (step_id, effect_key)
+// 只能记一次，第二次返回 platform.ErrToolEffectApplied。
+//
+// 【这条假实现必须复刻它】issue #63 的验收标准就是"不写 resume 时能稳定
+// 观察到这个冲突"——假实现如果总是成功，那条测试就永远是绿的，
+// 而它测的东西（唯一约束真的在挡重复执行）恰好是整条恢复机制的判据。
+func (f *fakeRepo) RecordToolEffect(ctx context.Context, q platform.Querier, stepID uuid.UUID, effectKey string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := stepID.String() + "\x00" + effectKey
+	if _, ok := f.effects[key]; ok {
+		return fmt.Errorf("record tool effect for step %s: %w", stepID, platform.ErrToolEffectApplied)
+	}
+	f.effects[key] = struct{}{}
+	return nil
+}
+
+func (f *fakeRepo) ToolEffectApplied(ctx context.Context, q platform.Querier, stepID uuid.UUID, effectKey string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.effects[stepID.String()+"\x00"+effectKey]
+	return ok, nil
+}
+
+// ── 崩溃扫描与 checkpoint 回收 ────────────────────────────────
+
+func (f *fakeRepo) InterruptRunningRuns(ctx context.Context, q platform.Querier) ([]uuid.UUID, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var ids []uuid.UUID
+	for _, r := range f.runs {
+		if r.Status == RunRunning {
+			r.Status = RunInterrupted
+			ids = append(ids, r.ID)
+		}
+	}
+	for _, s := range f.steps {
+		if s.Status == StepRunning {
+			s.Status = StepInterrupted
+		}
+	}
+	return ids, nil
+}
+
+func (f *fakeRepo) ClearTerminalRunCheckpoints(ctx context.Context, q platform.Querier, olderThan time.Time) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var n int64
+	for _, r := range f.runs {
+		if r.StateSnapshot != nil && r.Status.IsTerminal() && r.UpdatedAt.Before(olderThan) {
+			r.StateSnapshot = nil
+			n++
+		}
+	}
+	return n, nil
+}
+
+// fakeTx 是最小的 platform.TxManager：直接把同一个 Querier 传下去。
+//
+// 【它不模拟回滚】测试里没有一条断言依赖"事务失败时回滚"——那件事由真实
+// 的 Postgres 保证（CI 的 integration job 跑得到）。这里只要让
+// "发号 + 写事件"两步能跑起来即可。
+type fakeTx struct{}
+
+func (fakeTx) InTx(ctx context.Context, fn func(q platform.Querier) error) error {
+	return fn(nil)
 }
 
 // fakeSink 记录每一次 Emit 调用,不真的写 HTTP 响应。
@@ -163,7 +317,54 @@ func newTestUsecaseForConsumeEvents() (*Usecase, *fakeRepo) {
 func newTestUsecaseWithCheckpoint() (*Usecase, *fakeRepo, *fakeCheckpointStore) {
 	repo := newFakeRepo()
 	cp := &fakeCheckpointStore{}
-	return &Usecase{repo: repo, cp: cp}, repo, cp
+	// 【必须走 NewUsecase 而不是裸结构体】Usecase 现在持有在途运行表，
+	// 裸结构体的那个 map 是 nil，registerRunning 会直接 panic 在
+	// "assignment to entry in nil map"上——而那条错误信息完全看不出
+	// 问题出在构造方式上。
+	return NewUsecase(repo, cp, nil, nil, newFakeIdempotencyStore(), fakeTx{}, nil, nil), repo, cp
+}
+
+// runConsumeEvents 是测试里调用 consumeEvents 的统一入口。
+//
+// 【为什么要包一层】事件号现在问数据库要（issue #54），在途句柄也要传进去
+// （取消靠它）。每次调用都写这些参数会让 13 个用例各多两行噪音，
+// 而它们要断言的东西和这两样都无关。
+func runConsumeEvents(u *Usecase, ctx context.Context, runID uuid.UUID, events <-chan adkEvent, sink conversation.EventSink) (string, error) {
+	return u.consumeEvents(ctx, runID, "model-1", events, sink, &runningRun{done: make(chan struct{})})
+}
+
+// fakeIdempotencyStore 是一个内存版的幂等键表，复刻那条关键性质：
+// 同一个 (endpoint, key) 第二次预留返回 ErrIdempotentHit。
+type fakeIdempotencyStore struct {
+	mu      sync.Mutex
+	records map[string]*IdempotencyRecord
+}
+
+func newFakeIdempotencyStore() *fakeIdempotencyStore {
+	return &fakeIdempotencyStore{records: map[string]*IdempotencyRecord{}}
+}
+
+func (s *fakeIdempotencyStore) ReserveIdempotencyKey(ctx context.Context, q platform.Querier, rec *IdempotencyRecord, expiredBefore time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := rec.Endpoint + "\x00" + rec.Key
+	if _, ok := s.records[key]; ok {
+		return fmt.Errorf("reserve: %w", platform.ErrIdempotentHit)
+	}
+	stored := *rec
+	s.records[key] = &stored
+	return nil
+}
+
+func (s *fakeIdempotencyStore) LookupIdempotencyKey(ctx context.Context, q platform.Querier, endpoint, key string) (*IdempotencyRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, ok := s.records[endpoint+"\x00"+key]
+	if !ok {
+		return nil, fmt.Errorf("idempotency key %s: %w", key, platform.ErrNotFound)
+	}
+	copied := *rec
+	return &copied, nil
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -179,8 +380,7 @@ func TestConsumeEvents_TokensAccumulateIntoOutput(t *testing.T) {
 	events <- adkEvent{kind: adkEventDone}
 	close(events)
 
-	var eventID int64
-	output, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+	output, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
 
 	require.NoError(t, err)
 	assert.Equal(t, "3 个 128 的和是 384，乘以 2 是 768。", output)
@@ -198,8 +398,7 @@ func TestConsumeEvents_TokensOnly_ProducesOneLLMStep(t *testing.T) {
 	events <- adkEvent{kind: adkEventDone}
 	close(events)
 
-	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+	_, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
 	require.NoError(t, err)
 
 	require.Len(t, repo.steps, 1)
@@ -222,8 +421,7 @@ func TestConsumeEvents_ToolCallAndResult_MergeIntoOneStep(t *testing.T) {
 	events <- adkEvent{kind: adkEventDone}
 	close(events)
 
-	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+	_, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
 	require.NoError(t, err)
 
 	require.Len(t, repo.steps, 2)
@@ -250,8 +448,7 @@ func TestConsumeEvents_ParallelToolCalls_ProduceSingleLLMStep(t *testing.T) {
 	events <- adkEvent{kind: adkEventDone}
 	close(events)
 
-	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+	_, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
 	require.NoError(t, err)
 
 	var llmSteps, toolSteps int
@@ -280,8 +477,7 @@ func TestConsumeEvents_SecondRoundAfterToolResult_GetsOwnLLMStep(t *testing.T) {
 	events <- adkEvent{kind: adkEventDone}
 	close(events)
 
-	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+	_, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
 	require.NoError(t, err)
 
 	// 两轮生成（都不带正文、都直接请求工具）→ llm, tool, llm, tool
@@ -343,8 +539,7 @@ func TestConsumeEvents_ErrorEvent_TypeMapping(t *testing.T) {
 			events <- adkEvent{kind: adkEventError, err: tc.err}
 			close(events)
 
-			var eventID int64
-			_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+			_, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
 
 			require.Error(t, err)
 			assert.Equal(t, tc.wantType, platform.SSEErrorType(err),
@@ -367,8 +562,7 @@ func TestConsumeEvents_FullReactCycle_StepOrderIsCorrect(t *testing.T) {
 	events <- adkEvent{kind: adkEventDone}
 	close(events)
 
-	var eventID int64
-	output, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+	output, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
 	require.NoError(t, err)
 	assert.Equal(t, "结果是 768。", output)
 
@@ -391,8 +585,7 @@ func TestConsumeEvents_EventIDsAreMonotonicallyIncreasing(t *testing.T) {
 	events <- adkEvent{kind: adkEventDone}
 	close(events)
 
-	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+	_, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
 	require.NoError(t, err)
 
 	require.Len(t, sink.events, 4)
@@ -409,8 +602,7 @@ func TestConsumeEvents_ErrorEvent_StopsAndReturnsError(t *testing.T) {
 	events <- adkEvent{kind: adkEventError, err: errors.New("upstream boom")}
 	close(events)
 
-	var eventID int64
-	output, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+	output, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "upstream boom")
@@ -430,8 +622,7 @@ func TestConsumeEvents_ChannelClosedWithoutDone_ReturnsError(t *testing.T) {
 	events <- adkEvent{kind: adkEventToken, text: "x"}
 	close(events)
 
-	var eventID int64
-	_, err := u.consumeEvents(context.Background(), uuid.New(), "model-1", events, sink, &eventID)
+	_, err := runConsumeEvents(u, context.Background(), uuid.New(), events, sink)
 
 	require.Error(t, err)
 }
@@ -450,8 +641,7 @@ func TestConsumeEvents_WritesStepAndCheckpointWithDetachedContext(t *testing.T) 
 	reqCtx, cancel := context.WithCancel(context.Background())
 	cancel() // net/http 在客户端断开时取消请求 ctx
 
-	var eventID int64
-	_, err := u.consumeEvents(reqCtx, uuid.New(), "model-1", events, sink, &eventID)
+	_, err := runConsumeEvents(u, reqCtx, uuid.New(), events, sink)
 	require.Error(t, err)
 
 	require.Len(t, repo.steps, 1, "未完成的那一轮要标失败落库")
@@ -464,30 +654,99 @@ func TestConsumeEvents_WritesStepAndCheckpointWithDetachedContext(t *testing.T) 
 // 失败状态必须真的写下去：用请求 ctx 做 CAS 的话，客户端一断开 UPDATE
 // 就不会执行，run 行永久停在 'running'（issue #14）。同时 ctx 已取消说明
 // 是客户端走了，记 'interrupted' 而不是服务端故障 'failed'。
-func TestFailRun_CancelledRequestContext_StillWritesInterrupted(t *testing.T) {
+func TestFinishRun_CancelledRequestContext_StillWritesInterrupted(t *testing.T) {
 	u, repo := newTestUsecaseForConsumeEvents()
 	reqCtx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	runID := uuid.New()
-	require.NoError(t, u.failRun(reqCtx, runID))
+	run := insertRunningRun(t, repo)
+	_, err := u.finishRun(reqCtx, run, &runningRun{}, errors.New("运行期失败"))
+	require.Error(t, err, "原始失败要带出去，不能因为写终态成功就吞掉")
 
 	require.Len(t, repo.updates, 1)
-	assert.Equal(t, runID, repo.updates[0].id)
+	assert.Equal(t, run.ID, repo.updates[0].id)
 	assert.Equal(t, RunRunning, repo.updates[0].from)
 	assert.Equal(t, RunInterrupted, repo.updates[0].to)
 	assert.NoError(t, repo.updates[0].ctxErr, "写库用的 ctx 必须脱离请求生命周期")
 }
 
 // ctx 还活着（真正的运行期失败）时仍然记 failed，不要一律记成 interrupted。
-func TestFailRun_LiveRequestContext_MarksFailed(t *testing.T) {
+func TestFinishRun_LiveRequestContext_MarksFailed(t *testing.T) {
 	u, repo := newTestUsecaseForConsumeEvents()
 
-	require.NoError(t, u.failRun(context.Background(), uuid.New()))
+	_, err := u.finishRun(context.Background(), insertRunningRun(t, repo),
+		&runningRun{}, errors.New("模型返回了 500"))
+	require.Error(t, err)
 
 	require.Len(t, repo.updates, 1)
 	assert.Equal(t, RunFailed, repo.updates[0].to)
 	assert.NoError(t, repo.updates[0].ctxErr)
+}
+
+// 【issue #55 的核心断言】用户点「停止」必须是 cancelled，不是 failed。
+//
+// 两者的触发条件都是"请求 ctx 被取消"（取消端点 cancel 的就是那条 ctx），
+// 所以唯一的区分依据是 runningRun.requested——用户点的是他想要的结束，
+// 客户端断开是他没说不要、只是连接没了。记反了用户会看到"运行失败"
+// 而红色错误提示，而他刚刚做的是一个成功的操作。
+func TestFinishRun_UserRequestedCancel_MarksCancelled(t *testing.T) {
+	u, repo := newTestUsecaseForConsumeEvents()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	st := &runningRun{done: make(chan struct{})}
+	st.requested.Store(true)
+
+	_, err := u.finishRun(ctx, insertRunningRun(t, repo), st, context.Canceled)
+	require.Error(t, err, "取消也是一次非正常结束，原始错误照样带出去记日志")
+
+	require.Len(t, repo.updates, 1)
+	assert.Equal(t, RunCancelled, repo.updates[0].to,
+		"用户点的取消是 cancelled；记成 interrupted 前端会显示成「被打断」而不是「已停止」")
+}
+
+// 没有任何 cause 时是正常完成——取消标志没置过、ctx 也没被取消。
+func TestFinishRun_NoCause_MarksCompleted(t *testing.T) {
+	u, repo := newTestUsecaseForConsumeEvents()
+
+	run, err := u.finishRun(context.Background(), insertRunningRun(t, repo), &runningRun{}, nil)
+	require.NoError(t, err)
+
+	require.Len(t, repo.updates, 1)
+	assert.Equal(t, RunCompleted, repo.updates[0].to)
+	assert.Equal(t, RunCompleted, run.Status)
+}
+
+// 【"不覆盖已有的终态"】收尾试图把一条已经终态的 run 改成 failed 时必须
+// 放弃，并把数据库里的真实状态读回来返回——而不是把一次已经成功的运行
+// 报成失败。真实的强制点是 UpdateRunStatus 的 CAS（WHERE status = from），
+// 假实现复刻了它，所以这条测的确实是那条分支。
+func TestFinishRun_AlreadyTerminal_DoesNotOverwrite(t *testing.T) {
+	u, repo := newTestUsecaseForConsumeEvents()
+	run := insertRunningRun(t, repo)
+	// 另一条路径（用户取消）先把它收了尾。
+	require.NoError(t, repo.UpdateRunStatus(context.Background(), nil, run.ID, RunRunning, RunCancelled))
+
+	got, err := u.finishRun(context.Background(), run, &runningRun{}, errors.New("太晚了"))
+	require.Error(t, err, "原始失败仍然要带出去记日志")
+
+	assert.Equal(t, RunCancelled, got.Status,
+		"必须返回数据库里的真实终态，而不是内存里那个过期的 running")
+}
+
+// insertRunningRun 往假 repo 里放一条 running 的 run。
+//
+// 【为什么必须真的插进去】UpdateRunStatus 复刻了 CAS——行不存在也会报冲突
+// （真实 SQL 的 RowsAffected == 0 就是这条路径）。凭空造一个 &Run{} 再传
+// 进去的话，测的就不是收尾逻辑，而是"假实现会不会拒绝"。
+func insertRunningRun(t *testing.T, repo *fakeRepo) *Run {
+	t.Helper()
+	run := &Run{
+		ID: uuid.New(), AgentID: uuid.New(), Status: RunRunning, Input: "算一下",
+		StateSchemaVersion: CurrentStateSchemaVersion, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	require.NoError(t, repo.InsertRun(context.Background(), nil, run))
+	return run
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -518,7 +777,7 @@ func TestStart_InvalidInput_EmitsMappedErrorType(t *testing.T) {
 	u, _ := newTestUsecaseForConsumeEvents()
 	sink := newFakeSink()
 
-	_, err := u.Start(context.Background(), uuid.New(), "   ", sink)
+	_, err := u.Start(context.Background(), uuid.New(), "   ", "", sink)
 	require.ErrorIs(t, err, platform.ErrInvalid)
 
 	require.Len(t, sink.events, 1)
@@ -541,7 +800,7 @@ func TestStart_InvalidInput_EmitsMappedErrorType(t *testing.T) {
 // （issue #18）。业务层必须归一成空数组。
 func TestCreateAgent_NilToolNames_NormalisedToEmptySlice(t *testing.T) {
 	repo := newFakeRepo()
-	u := &Usecase{repo: repo, tools: NewToolRegistry()}
+	u := newTestUsecase(repo, &fakeCheckpointStore{}, NewToolRegistry(), nil)
 
 	a, err := u.CreateAgent(context.Background(), "计算助手", "", "", nil)
 	require.NoError(t, err)
