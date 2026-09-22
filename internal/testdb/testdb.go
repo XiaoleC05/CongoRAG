@@ -15,12 +15,12 @@
 //
 // ── 两条路径 ─────────────────────────────────────────────────
 //
-//  1. `CONGORAG_TEST_DB_URL` 已设置（CI 与 `make test-integration` 用的）：
+//  1. `CONGORAG_TEST_DB_URL` 已设置（CI 的 integration job 用的）：
 //     连它，**不动 schema**，只**校验** schema 在不在。谁设的变量谁负责
-//     准备好它——CI 那一步是显式的 migration job step，Makefile 那条会
-//     重建库再跑迁移。校验而不是重跑，是因为对着一个外部库执行迁移会
-//     复制一份 golang-migrate 的版本簿记，而那份簿记已经有一个实现。
-//     校验失败时报的错会写清"该跑哪条命令"，而不是让测试用一堆
+//     准备好它——CI 那一步是显式的 migration job step（看得见的一行）。
+//     校验而不是重跑，是因为对着一个外部库执行迁移会复制一份
+//     golang-migrate 的版本簿记，而那份簿记已经有一个实现。
+//     校验失败时报的错会写清该跑什么，而不是让测试用一堆
 //     "relation does not exist" 去猜。
 //
 //  2. 没设、但设了 `CONGORAG_TESTCONTAINERS=1`：**自己起一个容器**
@@ -45,6 +45,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -90,7 +91,25 @@ const (
 	schemaReadyTimeout = 60 * time.Second
 )
 
+// shared 是"每个测试进程一个容器"的缓存。
+//
+// 【为什么不是每条测试一个容器】容器能起来之后，一批 11 条测试就是 11 次
+// 起停——实测 36 秒里有 33 秒花在这上面。而"一个进程共用一个库"本来就是这个
+// 包外部那条路径的现状（CI 与 make test-integration 给的都是一个库，
+// 同一个包里的测试本来就共享它）。让容器那条路径跟它一致，反而少一种差异。
+//
+// 【销毁交给谁】不显式 Terminate——testcontainers 的 Ryuk 会在**测试进程
+// 退出时**回收本次会话创建的容器，这正是它的用途。显式终止在这里反而会
+// 打断后面那些还在用这个池的测试。
+var (
+	sharedOnce sync.Once
+	sharedPool *pgxpool.Pool
+	sharedSkip string
+)
+
 // Require 返回一个 schema 已经就绪的连接池；没法提供时跳过测试。
+//
+// 【同一个进程里多次调用返回同一个池】见上面 shared 的注释。
 func Require(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	ctx := context.Background()
@@ -101,11 +120,11 @@ func Require(t *testing.T) *pgxpool.Pool {
 			t.Fatalf("连不上 %s 指向的数据库：%v", urlEnv, err)
 		}
 		t.Cleanup(pool.Close)
-		waitForReady(t, pool, func() {
+		if !waitForReady(pool) {
 			t.Fatalf("%s 指向的库 schema 不完整——\n"+
 				"它该由设置这个变量的人准备好（CI 是 migration step；"+
 				"本机可以直接用 make test-integration，它走容器那条路）", urlEnv)
-		})
+		}
 		return pool
 	}
 
@@ -114,35 +133,49 @@ func Require(t *testing.T) *pgxpool.Pool {
 			containersEnv + "=1 让测试自己起一个容器（make test-integration 就是后者）")
 	}
 
-	dbURL, terminate, ok := startContainer(t)
-	if !ok {
-		t.Skip(userMessage + containersEnv + "=1 已设置，但起不了 Docker 容器")
+	sharedOnce.Do(func() { sharedSkip = startShared(ctx) })
+	if sharedSkip != "" {
+		t.Skip(sharedSkip)
 	}
-	t.Cleanup(terminate)
+	return sharedPool
+}
+
+// startShared 起容器、灌 schema、建池；返回空串表示成功。
+//
+// 【为什么返回错误字符串而不是在内部 t.Fatal】它在 sync.Once 里跑，
+// 拿不到"当前测试"——第一次调用它的那个测试未必是失败原因所在。
+// 把结论记下来，由 Require 在**每一个** t 上 Skip 出来。
+func startShared(ctx context.Context) string {
+	dbURL, ok := startContainer()
+	if !ok {
+		return userMessage + containersEnv + "=1 已设置，但起不了 Docker 容器"
+	}
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
-		t.Fatalf("连不上测试容器：%v", err)
+		return "连不上刚起的测试容器：" + err.Error()
 	}
-	t.Cleanup(pool.Close)
 
 	// 【灌 schema 之前先确认连得上】等待策略已经等到第二次 ready 了，
 	// 但"日志打出来了"和"TCP 真的能握手"之间还有一个很短的窗口。
 	// 这里等的是**连接**而不是脚本成功——脚本不是幂等的（CREATE TABLE
 	// 没写 IF NOT EXISTS），重跑一次会在"已经建过"上失败，
 	// 那时分不清是重跑还是真的坏了。
-	waitForConnect(t, pool)
-
-	if err := applySchema(ctx, pool); err != nil {
-		t.Fatalf("往测试容器里灌 schema 失败：%v", err)
+	if !waitForConnect(pool) {
+		return "测试容器起来了但连不上"
 	}
-	waitForReady(t, pool, func() { t.Fatal("测试容器的 schema 灌完之后仍然不可用") })
-	return pool
+	if err := applySchema(ctx, pool); err != nil {
+		return "往测试容器里灌 schema 失败：" + err.Error()
+	}
+	if !waitForReady(pool) {
+		return "测试容器的 schema 灌完之后仍然不可用"
+	}
+	sharedPool = pool
+	return ""
 }
 
 // waitForConnect 等到这个池真的能跑通一次查询。
-func waitForConnect(t *testing.T, pool *pgxpool.Pool) {
-	t.Helper()
+func waitForConnect(pool *pgxpool.Pool) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), schemaReadyTimeout)
 	defer cancel()
 
@@ -151,12 +184,11 @@ func waitForConnect(t *testing.T, pool *pgxpool.Pool) {
 		err := pool.Ping(pingCtx)
 		cancelPing()
 		if err == nil {
-			return
+			return true
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatalf("测试容器起来了但连不上：%v", err)
-			return
+			return false
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
@@ -164,12 +196,10 @@ func waitForConnect(t *testing.T, pool *pgxpool.Pool) {
 
 // startContainer 起一个 PostgreSQL 容器并返回它的连接串。
 //
-// 第二个返回值是清理函数（终止容器），第三个是"起没起来"——起不了
-// （没有 Docker、镜像拉不动）时返回 false 让调用方跳过测试，
-// 而不是让每一个集成测试都红成一片。本机没装 Docker 是常见情形，
-// 而它不该被当成测试失败。
-func startContainer(t *testing.T) (string, func(), bool) {
-	t.Helper()
+// 第二个返回值是"起没起来"——起不了（没有 Docker、镜像拉不动）时返回 false
+// 让调用方跳过测试，而不是让每一个集成测试都红成一片。本机没装 Docker 是
+// 常见情形，而它不该被当成测试失败。
+func startContainer() (string, bool) {
 	ctx := context.Background()
 
 	req := testcontainers.ContainerRequest{
@@ -201,32 +231,25 @@ func startContainer(t *testing.T) (string, func(), bool) {
 		Started:          true,
 	})
 	if err != nil {
-		t.Logf("起不了测试容器（本机 Docker 没在跑？）：%v", err)
-		return "", nil, false
-	}
-
-	terminate := func() {
-		// 【用 Background 而不是 t.Context()】清理发生在这个测试结束之后，
-		// 那一刻测试的 ctx 已经取消了，用它终止容器会失败并留下一个
-		// 占着端口的孤儿容器。
-		_ = container.Terminate(context.Background())
+		// 【这里只 fmt 不打日志】它在共享初始化里跑，没有可用的 *testing.T
+		// （见 shared 的注释）。启动失败的原因由调用方 Skip 出来。
+		fmt.Printf("testdb: 起不了测试容器（本机 Docker 没在跑？）：%v\n", err)
+		return "", false
 	}
 
 	host, err := container.Host(ctx)
 	if err != nil {
-		terminate()
-		t.Logf("拿不到容器地址：%v", err)
-		return "", nil, false
+		fmt.Printf("testdb: 拿不到容器地址：%v\n", err)
+		return "", false
 	}
 	port, err := container.MappedPort(ctx, "5432")
 	if err != nil {
-		terminate()
-		t.Logf("拿不到容器映射端口：%v", err)
-		return "", nil, false
+		fmt.Printf("testdb: 拿不到容器映射端口：%v\n", err)
+		return "", false
 	}
 
 	return fmt.Sprintf("postgres://postgres:postgres@%s:%s/congorag?sslmode=disable",
-		host, port.Port()), terminate, true
+		host, port.Port()), true
 }
 
 // applySchema 往一个**全新的**库上灌当前 schema。
@@ -288,21 +311,17 @@ func applySchema(ctx context.Context, pool *pgxpool.Pool) error {
 // 已经就绪"；只 Ping 的话，一个迁移没跑完的库会顺利通过，
 // 然后每一条测试各自以 "relation does not exist" 失败——
 // 那正是这个包想消掉的那种失败。
-func waitForReady(t *testing.T, pool *pgxpool.Pool, fail func()) {
-	t.Helper()
+func waitForReady(pool *pgxpool.Pool) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), schemaReadyTimeout)
 	defer cancel()
 
 	for {
-		err := probeSchema(ctx, pool)
-		if err == nil {
-			return
+		if probeSchema(ctx, pool) == nil {
+			return true
 		}
 		select {
 		case <-ctx.Done():
-			t.Logf("schema 探测最后一次失败：%v", err)
-			fail()
-			return
+			return false
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
