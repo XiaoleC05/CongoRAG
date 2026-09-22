@@ -85,6 +85,34 @@ const apiBase = `http://127.0.0.1:${apiPort}`
 const repoRoot = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
 
 /**
+ * 这一轮往库里造了哪些东西。
+ *
+ * 【为什么失败时也要清】第一版只在请求集跑完之后删，于是**中途失败的每一次
+ * 运行都会留下一条知识库**（调试这个脚本的那几次一共留了 4 条在开发库里，
+ * 手工才清掉）。清理不该依赖"跑成功了"。
+ */
+const created = { kbIDs: [], conversationIDs: [] }
+
+/** 尽力删掉这一轮造的数据。删不掉只记一行，不改变退出码。 */
+async function cleanupCreated(prismHandle) {
+  if (!prismHandle?.child || prismHandle.child.exitCode !== null) return
+  for (const id of created.conversationIDs) {
+    try {
+      await fetch(`${prismBase}/api/v1/conversations/${id}`, { method: 'DELETE' })
+    } catch {
+      // 尽力而为：脚本可能正处在"prism 已经挂了"的状态里。
+    }
+  }
+  for (const id of created.kbIDs) {
+    try {
+      await fetch(`${prismBase}/api/v1/knowledge-bases/${id}`, { method: 'DELETE' })
+    } catch {
+      // 同上。
+    }
+  }
+}
+
+/**
  * 起一个子进程并把它的输出收进内存（后面要扫 prism 的日志）。
  *
  * 【shell 只在必须时开】Windows 上 `npx` 是个 `.cmd`（要 shell 才找得到），
@@ -208,13 +236,14 @@ async function runBattery() {
   record('GET /readyz', 'ok')
 
   // ── 知识库 CRUD 走一整圈 ──
-  const created = await call('POST', '/api/v1/knowledge-bases', {
+  const kbResp = await call('POST', '/api/v1/knowledge-bases', {
     body: { name: `契约测试-${Date.now()}` },
     expect: 201,
   })
   record('POST /api/v1/knowledge-bases', 'ok')
-  const kbId = created.body?.id
+  const kbId = kbResp.body?.id
   if (!kbId) throw new Error('新建知识库的响应里没有 id——契约里它是 required')
+  created.kbIDs.push(kbId)
 
   await call('GET', `/api/v1/knowledge-bases/${kbId}`, { expect: 200 })
   record('GET /api/v1/knowledge-bases/{id}', 'ok')
@@ -273,6 +302,7 @@ async function runBattery() {
   record('POST /api/v1/conversations', 'ok')
   const convId = conv.body?.id
   if (!convId) throw new Error('新建会话的响应里没有 id')
+  created.conversationIDs.push(convId)
 
   await call('GET', '/api/v1/conversations?limit=5', { expect: 200 })
   record('GET /api/v1/conversations', 'ok')
@@ -432,6 +462,8 @@ async function main() {
       batteryErr = err
     }
   } finally {
+    // 【顺序：先清理、再停进程】清理要通过 prism 打 api，两者都得还活着。
+    await cleanupCreated(prismHandle)
     stopProcess(prismHandle)
     stopProcess(apiHandle)
     // 【清理失败绝不能盖住真正的错误】`finally` 里抛异常会把 try 里那个
