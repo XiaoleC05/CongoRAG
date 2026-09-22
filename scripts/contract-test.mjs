@@ -93,6 +93,16 @@ const repoRoot = new URL('..', import.meta.url).pathname.replace(/^\/([A-Za-z]:)
  */
 const created = { kbIDs: [], conversationIDs: [] }
 
+/**
+ * 断言失败但 --keep-going 时攒在这里。
+ *
+ * 【为什么要有这个开关】契约一改，可能一次漂移好几个端点；立刻停会让你
+ * 修一个、再跑一次、再看到下一个。攒起来一次看完更省事。
+ * 需要前置结果的地方（比如没有 kbId 就没法测后面的）仍然会立刻停——
+ * 那种情况下继续跑没有意义。
+ */
+const batteryFailures = []
+
 /** 尽力删掉这一轮造的数据。删不掉只记一行，不改变退出码。 */
 async function cleanupCreated(prismHandle) {
   if (!prismHandle?.child || prismHandle.child.exitCode !== null) return
@@ -211,7 +221,9 @@ async function call(method, path, { body, headers = {}, expect } = {}) {
   }
   const result = { status: res.status, body: parsed, raw: text }
   if (expect !== undefined && res.status !== expect) {
-    throw new Error(`${method} ${path} 期望 ${expect}，实际 ${res.status}：${text.slice(0, 200)}`)
+    const msg = `${method} ${path} 期望 ${expect}，实际 ${res.status}：${text.slice(0, 200)}`
+    if (!keepGoing) throw new Error(msg)
+    batteryFailures.push(msg)
   }
   return result
 }
@@ -485,6 +497,9 @@ async function main() {
 
   step('结果')
   for (const r of results) info(`✓ ${r.name}`)
+  for (const f of batteryFailures) console.error(`  ✗ ${f}`)
+  // 【batteryErr 和 batteryFailures 是两回事】前者是"没有它就跑不下去"
+  // （比如新建知识库没返回 id），后者是 --keep-going 攒下来的断言失败。
   if (batteryErr) console.error(`  ✗ ${batteryErr.message}`)
 
   step('Prism 校验')
@@ -496,10 +511,10 @@ async function main() {
     console.error('')
   }
 
-  if (violations.length > 0 || batteryErr) {
+  if (violations.length > 0 || batteryErr || batteryFailures.length > 0) {
     fail(
-      `契约测试失败：${violations.length} 条 prism 违规、${batteryErr ? 1 : 0} 条断言失败` +
-        '（原始输出都在上面）',
+      `契约测试失败：${violations.length} 条 prism 违规、` +
+        `${batteryFailures.length + (batteryErr ? 1 : 0)} 条断言失败（原始输出都在上面）`,
     )
   }
 
