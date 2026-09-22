@@ -8,7 +8,12 @@ import type { Mock } from 'vitest'
 import type { ReactNode } from 'react'
 import { api } from '@congorag/api-client'
 import type { Schemas } from '@congorag/api-client'
-import { documentsKey, useDocumentMutations, useDocuments } from '@/hooks/useDocuments'
+import {
+  documentsKey,
+  sortAndFilterDocuments,
+  useDocumentMutations,
+  useDocuments,
+} from '@/hooks/useDocuments'
 import type { Page } from '@/lib/pagination'
 
 // 网络层换成可控 mock：本文件要验证的是"mutate 成功后文档列表缓存里是不是服务端的新数据"。
@@ -193,5 +198,78 @@ describe('useDocuments 分页', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.hasNextPage).toBe(false)
     expect(result.current.isFetchingNextPage).toBe(false)
+  })
+})
+
+/**
+ * 排序与筛选（issue #92）。
+ *
+ * 【为什么单独测这个纯函数，而不是只从页面上点】它是这个功能的全部逻辑，
+ * 页面那一层只是把结果渲染出来。三种排序 × 五种筛选的分支在页面上一条条点
+ * 会写成一个很脆的用例；在这里列一遍是穷举，而且失败时直接指到实现。
+ *
+ * 【这些断言钉的是"不能静默错"的地方】时间排序如果按字符串比（而不是按时间戳），
+ * 不同时区偏移的 ISO 串会排出错误顺序，而且不报错；状态排序如果漏掉某一态，
+ * tsc 会拦（Record 是穷举的），但排错方向不会有人发现。
+ */
+describe('sortAndFilterDocuments', () => {
+  const doc = (over: Partial<Document>): Document => ({ ...readyDoc, ...over })
+
+  // createdAt 故意用不同时区偏移写字面量：按字符串排序会得出和按时间排序
+  // 不同的结果——这正是"不切片、不用字符串比"这条规矩要防的坑。
+  const older = doc({
+    id: 'aaaaaaaa-0000-4000-8000-000000000001',
+    filename: '旧.md',
+    createdAt: '2026-09-20T20:00:00+08:00', // = 12:00Z
+  })
+  const middle = doc({
+    id: 'aaaaaaaa-0000-4000-8000-000000000002',
+    filename: '中.md',
+    status: 'failed',
+    createdAt: '2026-09-21T00:00:00Z',
+  })
+  const newer = doc({
+    id: 'aaaaaaaa-0000-4000-8000-000000000003',
+    filename: '新.md',
+    status: 'queued',
+    createdAt: '2026-09-21T01:00:00Z',
+  })
+
+  const all = [newer, older, middle]
+
+  it('默认（newest）保持服务器给的顺序，并做防御性复制之外的零改动', () => {
+    expect(sortAndFilterDocuments(all, 'newest', 'all')).toEqual(all)
+  })
+
+  it('最早上传在前：按时间戳比，不按字符串比', () => {
+    const names = sortAndFilterDocuments(all, 'oldest', 'all').map((d) => d.filename)
+    // 按字符串比的话 '2026-09-20T20:00:00+08:00' 会排在最后（'2' > '0' 在
+    // 第 12 位比较时才见分晓），结果就是 [中, 新, 旧]——错误顺序。
+    expect(names).toEqual(['旧.md', '中.md', '新.md'])
+  })
+
+  it('按状态分组：未完成的两态在最前（状态机顺序），组内仍是最新在前', () => {
+    const statuses = sortAndFilterDocuments(
+      [middle, older, newer],
+      'status',
+      'all',
+    ).map((d) => d.status)
+    expect(statuses).toEqual(['queued', 'ready', 'failed'])
+  })
+
+  it('筛选只留下指定状态', () => {
+    expect(sortAndFilterDocuments(all, 'newest', 'failed').map((d) => d.filename)).toEqual([
+      '中.md',
+    ])
+  })
+
+  it('筛完没结果是空数组，不是"原样返回"', () => {
+    expect(sortAndFilterDocuments(all, 'newest', 'processing')).toEqual([])
+  })
+
+  it('不修改传进来的数组（sort 是原地操作）', () => {
+    const input = [newer, older, middle]
+    sortAndFilterDocuments(input, 'oldest', 'all')
+    expect(input).toEqual([newer, older, middle])
   })
 })

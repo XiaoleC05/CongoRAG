@@ -81,6 +81,23 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+
+    /* 语法高亮的语义色（issue #88）。
+       【为什么不是引入 highlight.js 的主题 CSS】那些主题（github.css 之类）
+       是一整套写死的 hex，浅色模式下会废掉，也直接被 README §9 的
+       "零硬编码色值"判据拦下。这里只定义"角色"，把角色映射到 hljs 类名
+       放在下面 .hljs-* 那段；换主题 = 改这里的几个变量。
+       【为什么和其余 token 不同、不进 @theme inline】只有 .hljs-* 那几条
+       CSS 用它，没有组件需要 text-syntax-keyword 这样的类名——桥接过去
+       就是一段没人引用的死配置。等真有组件要用时再加也不迟。 */
+    --syntax-comment: oklch(0.55 0.02 265);
+    --syntax-keyword: oklch(0.48 0.17 300);
+    --syntax-string: oklch(0.47 0.13 150);
+    --syntax-number: oklch(0.5 0.14 62);
+    --syntax-title: oklch(0.47 0.15 250);
+    --syntax-type: oklch(0.5 0.11 200);
+    --syntax-attr: oklch(0.45 0.1 40);
+    --syntax-meta: oklch(0.5 0.12 330);
 }
 
 .dark {
@@ -115,6 +132,17 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+
+    /* 深色下的语法高亮：同样的角色、更高的亮度。深色是默认主题，
+       所以这一组是实际最常被看到的——对比度按深色底调过。 */
+    --syntax-comment: oklch(0.62 0.02 265);
+    --syntax-keyword: oklch(0.78 0.13 300);
+    --syntax-string: oklch(0.81 0.12 150);
+    --syntax-number: oklch(0.83 0.12 68);
+    --syntax-title: oklch(0.79 0.11 250);
+    --syntax-type: oklch(0.81 0.09 200);
+    --syntax-attr: oklch(0.81 0.09 40);
+    --syntax-meta: oklch(0.76 0.1 330);
 }
 
 @layer base {
@@ -144,6 +172,168 @@
   [tabindex='-1']:focus {
     outline: 2px solid transparent;
     outline-offset: 2px;
+  }
+}
+
+/*
+ * 会话消息里的 Markdown 排版（issue #87）与代码高亮（issue #88）
+ *
+ * 【为什么不写在组件里】Tailwind 的 preflight 把所有元素的 margin 清零、
+ * 去掉 ul/ol 的 list-style。不补回来的话 Markdown 的输出会挤成一坨、
+ * 列表连圆点都没有——那是"渲染了但看不出是 Markdown"。而"行内 code"和
+ * "代码块里的 code"需要两条一进一出的规则，写成 JSX 里的 [&_code]:… 任意
+ * 变体时两者特异度相同，谁赢取决于 Tailwind 生成顺序，是个会随版本漂移的
+ * 静默 bug；写成 CSS 选择器（.chat-markdown pre code 比 .chat-markdown code
+ * 多一个元素）就没有这个不确定性。
+ *
+ * 【必须用 .chat-markdown 前缀】这些选择器只能作用在消息正文里，
+ * 裸写 p / ul / table 会波及页面其余部分。
+ *
+ * 【为什么放 @layer components 而不是层外】放在层外会压过所有工具类，
+ * 那么组件上想用一个 font-mono 之类的类名就再也写不动了。放进 components
+ * 层是"默认样式、可被工具类覆盖"的语义，正是这里想要的。
+ */
+@layer components {
+  .chat-markdown {
+    /* break-words：模型给出的长 URL / 长标识符不带空格，不换行会把气泡撑破 */
+    @apply space-y-3 break-words;
+  }
+
+  /*
+   * 【不用再补一条"最后一块去掉下边距"】Tailwind 的 space-y-3 生成的是
+   * `> :not(:last-child) { margin-block-end: 12px }`（在编译产物里核过），
+   * 最后一块本来就没有下边距——气泡自己的 py-2.5 就是底边距，不会出现
+   * "底部比顶部厚"。多写一条是没人会走的死规则。
+   */
+
+  .chat-markdown ul {
+    @apply list-disc pl-5;
+  }
+
+  .chat-markdown ol {
+    @apply list-decimal pl-5;
+  }
+
+  .chat-markdown li + li {
+    @apply mt-1;
+  }
+
+  .chat-markdown a {
+    @apply text-primary underline underline-offset-2;
+  }
+
+  .chat-markdown blockquote {
+    @apply border-border text-muted-foreground border-l-2 pl-3;
+  }
+
+  .chat-markdown hr {
+    @apply border-border;
+  }
+
+  /* 表格（remark-gfm）：display:block + overflow-x-auto 让宽表格在窄屏
+     内部横向滚动，而不是把整个气泡和页面撑宽。 */
+  .chat-markdown table {
+    @apply block w-full overflow-x-auto;
+  }
+
+  .chat-markdown th,
+  .chat-markdown td {
+    @apply border-border border px-2 py-1 text-left;
+  }
+
+  /* 行内代码 */
+  .chat-markdown code {
+    @apply bg-muted rounded px-1 py-0.5 font-mono text-[0.85em];
+  }
+
+  /* 代码块里的 code 复位：背景、内边距、圆角都由 CodeBlock 的外壳负责，
+     这里再画一遍会变成"框里套框"。字号也在这里定死，不再跟着 0.85em
+     缩——代码块本身已经比正文小一档了。 */
+  .chat-markdown pre code {
+    @apply bg-transparent p-0 font-mono text-xs;
+  }
+
+  /*
+   * hljs 类名 → 上面定义的语义 token。
+   *
+   * 【类名从哪来】lowlight 用 <https://github.com/highlightjs/highlight.js/commit/51806aa>
+   * 的规则拼类名：作用域 title.function_ 会变成两个类 hljs-title 和
+   * function_（第一个带 hljs- 前缀，其余按下标补下划线）。这份清单是拿
+   * 本仓库实际产出的 HTML 对过的，不是照抄某个主题的 CSS。
+   *
+   * 【没写的类名】hljs-params / hljs-subst / hljs-punctuation / hljs-operator
+   * 故意不配色——它们是代码的骨架，跟着正文前景色走更安静。
+   */
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--syntax-comment);
+    font-style: italic;
+  }
+
+  .hljs-keyword,
+  .hljs-literal,
+  .hljs-doctag,
+  .hljs-selector-tag {
+    color: var(--syntax-keyword);
+  }
+
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-addition,
+  .hljs-char.escape_ {
+    color: var(--syntax-string);
+  }
+
+  .hljs-number {
+    color: var(--syntax-number);
+  }
+
+  /* 函数名 / 章节名 / 标签名 */
+  .hljs-title,
+  .hljs-section,
+  .hljs-name {
+    color: var(--syntax-title);
+  }
+
+  /* 类型、内建对象 */
+  .hljs-type,
+  .hljs-built_in,
+  .hljs-class .hljs-title {
+    color: var(--syntax-type);
+  }
+
+  /* 属性名、变量名 */
+  .hljs-attr,
+  .hljs-attribute,
+  .hljs-variable,
+  .hljs-template-variable,
+  .hljs-property,
+  .hljs-selector-attr,
+  .hljs-selector-class,
+  .hljs-selector-id {
+    color: var(--syntax-attr);
+  }
+
+  /* 元信息：预处理指令、装饰器、链接、符号 */
+  .hljs-meta,
+  .hljs-symbol,
+  .hljs-bullet,
+  .hljs-link,
+  .hljs-selector-pseudo {
+    color: var(--syntax-meta);
+  }
+
+  /* diff 的删除行用语义的 destructive，和页面上"错误"是同一个颜色 */
+  .hljs-deletion {
+    color: var(--destructive);
+  }
+
+  .hljs-emphasis {
+    font-style: italic;
+  }
+
+  .hljs-strong {
+    font-weight: 600;
   }
 }
 
