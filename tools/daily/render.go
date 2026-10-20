@@ -64,6 +64,7 @@ func buildView(cfg Config, date string, issueNo int, repos []Repo, c Copy) Issue
 		SiteURL:    strings.TrimRight(cfg.SiteURL, "/"),
 		WebURL:     strings.TrimRight(cfg.SiteURL, "/") + "/daily/" + date + "/",
 		EditorNote: strings.TrimSpace(c.EditorNote),
+		SourceNote: "本期由 CongoRAG Daily 自动编排。事实来自 GitHub Trending 页面与各仓库公开 README；摘要由 DeepSeek 生成，可能有误，请以仓库原文为准。",
 	}
 	if len(repos) > 0 {
 		view.Lead = repos[0]

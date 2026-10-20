@@ -174,6 +174,36 @@ func callAnthropic(ctx context.Context, cfg Config, system, user string) (string
 	return "", fmt.Errorf("anthropic: %w", lastErr)
 }
 
+var bannedCopyWords = []string{
+	"赋能", "助力", "打造", "一站式", "全方位", "无缝", "极致",
+	"颠覆", "重塑", "革命性", "业界领先", "生产级", "企业级",
+	"开箱即用", "轻松上手", "深受信赖", "值得注意的是", "总而言之",
+	"综上所述", "未来可期", "让我们一起", "开启新篇章",
+}
+
+func checkCopy(c Copy) []string {
+	var texts []string
+	texts = append(texts, c.Lead.Headline, c.Lead.Dek)
+	texts = append(texts, c.Lead.Body...)
+	for _, b := range c.Briefs {
+		texts = append(texts, b.Headline, b.Body)
+	}
+	texts = append(texts, c.Trend.Title)
+	texts = append(texts, c.Trend.Body...)
+	texts = append(texts, c.EditorNote)
+	var hits []string
+	seen := map[string]bool{}
+	for _, t := range texts {
+		for _, w := range bannedCopyWords {
+			if strings.Contains(t, w) && !seen[w] {
+				seen[w] = true
+				hits = append(hits, w)
+			}
+		}
+	}
+	return hits
+}
+
 func stripCodeFence(s string) string {
 	s = strings.TrimSpace(s)
 	if strings.HasPrefix(s, "```") {

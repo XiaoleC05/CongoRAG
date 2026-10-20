@@ -64,6 +64,7 @@ func run() error {
 
 	var repos []Repo
 	var c Copy
+	summaryFailed := false
 	if cfg.Fixture != "" {
 		f, err := os.ReadFile(cfg.Fixture)
 		if err != nil {
@@ -101,6 +102,13 @@ func run() error {
 		if err != nil {
 			slog.Warn("summary failed, using fallback", "error", err)
 			c = fallbackCopy(repos)
+			summaryFailed = true
+		} else if hits := checkCopy(c); len(hits) > 0 {
+			slog.Warn("copy contains banned phrases", "hits", hits)
+			if os.Getenv("DAILY_STRICT_COPY") == "1" {
+				c = fallbackCopy(repos)
+				summaryFailed = true
+			}
 		}
 	}
 
@@ -111,6 +119,11 @@ func run() error {
 		c = fallbackCopy(repos)
 	}
 	view := buildView(cfg, date, issueNo, repos, c)
+	if cfg.Fixture != "" {
+		view.SourceNote = "本期为版式样刊，摘要由编辑撰写；正式发行时由 DeepSeek 生成。事实来自 GitHub Trending 页面与各仓库公开 README，请以仓库原文为准。"
+	} else if summaryFailed {
+		view.SourceNote = "本期模型摘要失败，正文使用仓库原始描述。事实来自 GitHub Trending 页面与各仓库公开 README，请以仓库原文为准。"
+	}
 	html, text, err := renderIssue(cfg, view, c.Lead, c, repos)
 	if err != nil {
 		return fmt.Errorf("render: %w", err)

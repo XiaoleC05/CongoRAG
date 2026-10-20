@@ -73,4 +73,5 @@ type IssueView struct {
 	WebURL      string
 	Subject     string
 	Preheader   string
+	SourceNote  string
 }

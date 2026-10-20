@@ -155,7 +155,7 @@
 <tr><td class="pad" style="padding:30px 34px 28px 34px;">
   <div style="height:1px;background-color:#171512;"></div>
   <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:10px;line-height:1.9;color:#6f675c;padding-top:12px;">
-    本期由 CongoRAG Daily 自动编排。事实来自 GitHub Trending 页面与各仓库公开 README；摘要由 DeepSeek 生成，可能有误，请以仓库原文为准。<br>
+    {{ .Issue.SourceNote }}<br>
     网页版：<a href="{{ .Issue.WebURL }}" style="color:#5b3df5;text-decoration:none;">{{ .Issue.WebURL }}</a><br>
     来源：<a href="https://github.com/trending?since=daily" style="color:#5b3df5;text-decoration:none;">github.com/trending?since=daily</a> · 抓取时间 {{ .Issue.DateCN }}
   </div>
