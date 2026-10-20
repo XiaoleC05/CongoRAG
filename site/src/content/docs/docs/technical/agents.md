@@ -38,7 +38,7 @@ run 有六个状态：`pending`、`running`、`completed`、`failed`、`cancelle
 
 CongoRAG 不接 Eino 自带的 CheckPointStore。业务层的 checkpoint 是唯一权威，粒度是 Step 边界，落在 `agent_runs.state_snapshot` 和 `current_step`。
 
-原因写在 [ADR-006](https://github.com/XiaoleC05/CongoRAG/blob/main/docs/adr/006-checkpoint-layering.md)：Eino 的 checkpoint 只在中断信号时写，进程被 KILL 时一个字节都不会落；而且载荷是 gob 编码的内部结构，跨版本不稳定。
+原因写在 [ADR-006](https://github.com/XiaoleC05/CongoRAG/blob/main/docs/adr/006-checkpoint-layering.md)：Eino 的 checkpoint 只在中断信号时写，进程被 KILL 时一个字节都不会落；载荷还是 gob 编码的内部结构，跨版本不稳定。
 
 ## 没有调度
 

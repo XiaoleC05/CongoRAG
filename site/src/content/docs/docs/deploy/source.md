@@ -81,5 +81,5 @@ worker 的 unit 把 `ExecStart` 换成 `/opt/congorag/bin/worker`，其余相同
 ## 注意
 
 - 不要把 api 直接绑到 `0.0.0.0` 后暴露到公网。CongoRAG 没有认证。
-- 升级时先备份数据库和 `data/`，再跑迁移，最后换二进制。顺序见[升级与回滚](/docs/deploy/upgrade/)。
+- 升级时先备份数据库和 `data/`，再跑迁移，然后换二进制。顺序见[升级与回滚](/docs/deploy/upgrade/)。
 - 日志默认输出到 stdout，交给 systemd/journald 或你的进程管理器收集。

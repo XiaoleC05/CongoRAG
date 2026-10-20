@@ -41,7 +41,7 @@ v5.0.2 的模型接入走 OpenAI 兼容的 chat / embedding 接口。Anthropic �
 
 先确认 worker 在跑：`make dev-worker` 或 `docker compose logs worker`。worker 没起时，文档不会被解析。
 
-其次确认 api 和 worker 连的是同一个数据库、同一个 `CONGORAG_DOCUMENTS_DIR`。Docker 形态下两者必须挂同一个数据卷。
+还要确认 api 和 worker 连的是同一个数据库、同一个 `CONGORAG_DOCUMENTS_DIR`。Docker 形态下两者必须挂同一个数据卷。
 
 ## 为什么回答里没有引用？
 
