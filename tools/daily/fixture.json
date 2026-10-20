@@ -1,0 +1,247 @@
+{
+  "date": "2026-10-20",
+  "issueNo": 1,
+  "repos": [
+    {
+      "rank": 1,
+      "owner": "MadsLorentzen",
+      "name": "ai-job-search",
+      "url": "https://github.com/MadsLorentzen/ai-job-search",
+      "description": "The job search that runs on your machine. An AI job application framework built on Claude Code: evaluate postings, tailor CVs, write cover letters, prep interviews.",
+      "language": "Python",
+      "starsToday": 3890,
+      "starsTotal": "59,289"
+    },
+    {
+      "rank": 2,
+      "owner": "cloudflare",
+      "name": "security-audit-skill",
+      "url": "https://github.com/cloudflare/security-audit-skill",
+      "description": "A coding-agent skill for multi-phase security audits with independently verified, machine-readable findings.",
+      "language": "JavaScript",
+      "starsToday": 849,
+      "starsTotal": "33,208"
+    },
+    {
+      "rank": 3,
+      "owner": "stablyai",
+      "name": "orca",
+      "url": "https://github.com/stablyai/orca",
+      "description": "Run Codex, Claude Code, OpenCode or Pi side-by-side, each in its own worktree, from desktop, mobile and remote runtime.",
+      "language": "TypeScript",
+      "starsToday": 1559,
+      "starsTotal": "99,132"
+    },
+    {
+      "rank": 4,
+      "owner": "DietrichGebert",
+      "name": "ponytail",
+      "url": "https://github.com/DietrichGebert/ponytail",
+      "description": "Makes your AI agent think like the laziest senior dev in the room. The best code is the code you never wrote.",
+      "language": "JavaScript",
+      "starsToday": 1007,
+      "starsTotal": "168,804"
+    },
+    {
+      "rank": 5,
+      "owner": "Comfy-Org",
+      "name": "ComfyUI",
+      "url": "https://github.com/Comfy-Org/ComfyUI",
+      "description": "A modular diffusion model GUI, API and backend with a graph/nodes interface, built for local inference.",
+      "language": "Python",
+      "starsToday": 1201,
+      "starsTotal": "140,391"
+    },
+    {
+      "rank": 6,
+      "owner": "ruvnet",
+      "name": "ruflo",
+      "url": "https://github.com/ruvnet/ruflo",
+      "description": "An agent harness for multi-agent swarms, autonomous workflows, adaptive memory, federation and vector RAG integration.",
+      "language": "TypeScript",
+      "starsToday": 683,
+      "starsTotal": "77,545"
+    },
+    {
+      "rank": 7,
+      "owner": "Graphify-Labs",
+      "name": "graphify",
+      "url": "https://github.com/Graphify-Labs/graphify",
+      "description": "Turn a codebase, its docs, SQL schemas, configs and PDFs into a queryable knowledge graph. Local deterministic AST parsing, every edge explained, no vector store.",
+      "language": "Python",
+      "starsToday": 751,
+      "starsTotal": "129,621"
+    },
+    {
+      "rank": 8,
+      "owner": "YuJunZhiXue",
+      "name": "dsh-purge",
+      "url": "https://github.com/YuJunZhiXue/dsh-purge",
+      "description": "DeepSeek Harness 破甲提示词集合：让模型绕过限制，不同模型可换不同提示词。",
+      "language": "JavaScript",
+      "starsToday": 1168,
+      "starsTotal": "10,581"
+    },
+    {
+      "rank": 9,
+      "owner": "anomalyco",
+      "name": "opencode",
+      "url": "https://github.com/anomalyco/opencode",
+      "description": "The open source coding agent.",
+      "language": "TypeScript",
+      "starsToday": 1256,
+      "starsTotal": "218,437"
+    },
+    {
+      "rank": 10,
+      "owner": "msitarzewski",
+      "name": "agency-agents",
+      "url": "https://github.com/msitarzewski/agency-agents",
+      "description": "A collection of specialized agent personas, from frontend wizards to Reddit community managers.",
+      "language": "Shell",
+      "starsToday": 590,
+      "starsTotal": "162,017"
+    },
+    {
+      "rank": 11,
+      "owner": "headroomlabs-ai",
+      "name": "headroom",
+      "url": "https://github.com/headroomlabs-ai/headroom",
+      "description": "Compress tool outputs, logs, files and RAG chunks before they reach the LLM. Library, proxy and MCP server.",
+      "language": "Python",
+      "starsToday": 555,
+      "starsTotal": "76,539"
+    },
+    {
+      "rank": 12,
+      "owner": "anthropics",
+      "name": "knowledge-work-plugins",
+      "url": "https://github.com/anthropics/knowledge-work-plugins",
+      "description": "Open source plugins primarily intended for knowledge workers using Claude Cowork.",
+      "language": "Python",
+      "starsToday": 262,
+      "starsTotal": "30,625"
+    },
+    {
+      "rank": 13,
+      "owner": "sickn33",
+      "name": "agentic-awesome-skills",
+      "url": "https://github.com/sickn33/agentic-awesome-skills",
+      "description": "A local, agent-first control plane for catalog discovery, skill selection, stack validation and planning, backed by 2,600+ agentic skills.",
+      "language": "Python",
+      "starsToday": 58,
+      "starsTotal": "48,024"
+    },
+    {
+      "rank": 14,
+      "owner": "shiyu-coder",
+      "name": "Kronos",
+      "url": "https://github.com/shiyu-coder/Kronos",
+      "description": "A foundation model for the language of financial markets.",
+      "language": "Python",
+      "starsToday": 719,
+      "starsTotal": "42,076"
+    },
+    {
+      "rank": 15,
+      "owner": "vllm-project",
+      "name": "vllm",
+      "url": "https://github.com/vllm-project/vllm",
+      "description": "A high-throughput and memory-efficient inference and serving engine for LLMs.",
+      "language": "Python",
+      "starsToday": 98,
+      "starsTotal": "94,260"
+    }
+  ],
+  "copy": {
+    "lead": {
+      "headline": "一套跑在本机的求职流程，今天拿到 3,890 颗星",
+      "dek": "它把职位评估、简历修改、求职信和面试准备串成一条 Claude Code 工作流。项目说明自己与 Anthropic 没有隶属关系。",
+      "body": [
+        "ai-job-search 的 README 把定位写得很直白：一套运行在本机的 AI 求职申请框架，基于 Claude Code。使用者 fork 仓库、填自己的资料，然后让模型评估职位、改简历、写求职信、准备面试。",
+        "它不是一个托管服务。README 明确说明项目与 Anthropic 没有关联、背书或赞助关系，也没有代币或付费推广。",
+        "今天它新增 3,890 颗星，排在这份日榜第一。总星数 59,289，主要语言是 Python。"
+      ]
+    },
+    "briefs": [
+      {
+        "repo": "cloudflare/security-audit-skill",
+        "headline": "Cloudflare 把安全审计拆成了六个阶段",
+        "body": "侦察、按覆盖清单找漏洞、候选验证、结构化输出、独立复核、生成报告。它把这套流程做成编码 Agent 的 skill；README 说这是 Cloudflare 漏洞挖掘框架的起点。"
+      },
+      {
+        "repo": "stablyai/orca",
+        "headline": "把四个编码 Agent 放进各自的工作树",
+        "body": "Orca 让 Codex、Claude Code、OpenCode、Pi 并排跑，桌面、手机和远程运行时都能接入。它不提供模型额度，使用者用自己的订阅。"
+      },
+      {
+        "repo": "DietrichGebert/ponytail",
+        "headline": "让 Agent 少写代码，而不是多写",
+        "body": "Ponytail 是一个给编码 Agent 的规则集，主张“最好的代码是没写出来的代码”。README 说它支持 20 种 Agent；今天新增 1,007 颗星。"
+      },
+      {
+        "repo": "Comfy-Org/ComfyUI",
+        "headline": "节点图里跑扩散模型",
+        "body": "ComfyUI 是一个基于节点图的扩散模型界面、API 和后端，主打本地推理。它今天新增 1,201 颗星，是榜单里少见的图像生成项目。"
+      },
+      {
+        "repo": "ruvnet/ruflo",
+        "headline": "多 Agent 编排，又一个 harness",
+        "body": "ruflo 把自己描述成 Agent 编排框架：多 Agent 协作、工作流、长期记忆和向量 RAG 集成。README 列出的集成很多，实际能力以仓库为准；今天新增 683 颗星。"
+      },
+      {
+        "repo": "Graphify-Labs/graphify",
+        "headline": "把代码库变成知识图谱，不走向量库",
+        "body": "Graphify 把代码库、文档、SQL schema、配置和 PDF 转成可查询的图，强调本地确定性 AST 解析和“每条边都有解释”。它提供 Claude Code、Cursor、Codex、Gemini CLI 的 skill。"
+      },
+      {
+        "repo": "YuJunZhiXue/dsh-purge",
+        "headline": "一组“破甲”提示词",
+        "body": "dsh-purge 面向 DeepSeek Harness 等模型，README 说可以按模型替换提示词。它涉及绕过模型限制；这里只记录它今天上榜，不建议在生产环境使用。"
+      },
+      {
+        "repo": "anomalyco/opencode",
+        "headline": "一句话 README 的编码 Agent",
+        "body": "opencode 是一个开源编码 Agent，今天新增 1,256 颗星，总星数 218,437。README 只有一句话，没有展开能力说明。"
+      },
+      {
+        "repo": "msitarzewski/agency-agents",
+        "headline": "一组带人设的 Agent 角色库",
+        "body": "agency-agents 收集了从“前端向导”到“Reddit 社区运营”的角色设定。它更像提示词和角色库，不是运行时；今天新增 590 颗星。"
+      },
+      {
+        "repo": "headroomlabs-ai/headroom",
+        "headline": "在上下文进入模型前先压缩",
+        "body": "Headroom 在工具输出、日志、文件和 RAG 分块进入模型之前做压缩，提供库、代理和 MCP server 三种形态。项目自述编码 Agent 可少 20% token，JSON 可少 60–95%；这些数字来自 README，未经独立验证。"
+      },
+      {
+        "repo": "anthropics/knowledge-work-plugins",
+        "headline": "Anthropic 的知识工作者插件集",
+        "body": "这是一组面向知识工作者的插件，主要给 Claude Cowork 用。它是插件集合，不是模型；今天新增 262 颗星。"
+      },
+      {
+        "repo": "sickn33/agentic-awesome-skills",
+        "headline": "2600 多个 Agent 技能的目录",
+        "body": "AAS Core 是一个本地优先的 Agent 技能目录和控制面，README 说有 2,600+ 个技能，带 CLI、本地 MCP 和 Workbench。今天新增 58 颗星。"
+      },
+      {
+        "repo": "shiyu-coder/Kronos",
+        "headline": "面向金融市场语言的基座模型",
+        "body": "Kronos 的 README 只有一句定位：面向金融市场语言的基座模型。没有给出评测数字。今天新增 719 颗星。"
+      },
+      {
+        "repo": "vllm-project/vllm",
+        "headline": "推理引擎照例在榜",
+        "body": "vLLM 是高吞吐、内存高效的 LLM 推理与服务引擎。今天新增 98 颗星，是榜单里最“基础设施”的一个。"
+      }
+    ],
+    "trend": {
+      "title": "Agent 的工具链，正在分层",
+      "body": [
+        "今天 15 个仓库里有 11 个和 Agent 工作流直接相关：有给 Agent 做安全审计的 skill，有把多个编码 Agent 放进工作树的 Orca，也有管提示词、角色和技能目录的项目。真正做模型或推理引擎的，只有 ComfyUI、Kronos 和 vLLM 三个。",
+        "这些项目解决的不是同一个问题。Orca 管 Agent 在哪里跑，Headroom 管上下文带多少进去，Graphify 管代码库怎么变成可查询的结构。它们叠在一起，才是一条完整的工具链。"
+      ]
+    },
+    "editor_note": "今天最值得看的不是星数，而是两个项目对同一件事的不同回答：Orca 把多个编码 Agent 放进各自的工作树，Headroom 在上下文进入模型前压缩它。一个管“在哪跑”，一个管“带多少东西进去”。"
+  }
+}

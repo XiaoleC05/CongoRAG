@@ -1,0 +1,56 @@
+CONGORAG DAILY · 开源观察
+第 {{ printf "%03d" .Issue.IssueNo }} 期 · {{ .Issue.DateCN }}
+今日收录 {{ .Issue.Count }} 个仓库 · 合计新增 {{ .Issue.TotalStars | comma }} 颗星
+
+━━━━━━━━━━━━━━━━━━━━
+
+今日头条
+{{ .Lead.Headline }}
+
+{{ .Lead.Dek }}
+
+{{ range .Lead.Body }}{{ . }}
+
+{{ end }}
+{{ .Issue.Lead.Owner }}/{{ .Issue.Lead.Name }} · {{ .Issue.Lead.Language }} · 今日 +{{ .Issue.Lead.StarsToday | comma }} · 总计 {{ .Issue.Lead.StarsTotal }}
+{{ .Issue.Lead.URL }}
+
+━━━━━━━━━━━━━━━━━━━━
+
+今日要闻
+
+{{ range .Issue.Briefs }}{{ printf "%02d" .Repo.Rank }}  {{ .Headline }}
+{{ .Body }}
+{{ .Repo.Owner }}/{{ .Repo.Name }} · {{ .Repo.Language }} · 今日 +{{ .Repo.StarsToday | comma }} · 总计 {{ .Repo.StarsTotal }}
+{{ .Repo.URL }}
+
+{{ end }}
+━━━━━━━━━━━━━━━━━━━━
+
+编辑观察
+{{ .Issue.TrendTitle }}
+
+{{ range .Issue.TrendBody }}{{ . }}
+
+{{ end }}
+━━━━━━━━━━━━━━━━━━━━
+
+今日数据
+今日新增合计：{{ .Issue.TotalStars | comma }}
+{{ range .Issue.LangStats }}{{ .Language }}：{{ .Count }} 个（{{ .Percent }}%）
+{{ end }}
+星数前三：
+{{ range .Issue.TopThree }}- {{ .Name }} +{{ .StarsToday | comma }}
+{{ end }}
+{{ if .Issue.EditorNote }}
+━━━━━━━━━━━━━━━━━━━━
+
+编辑手记
+{{ .Issue.EditorNote }}
+{{ end }}
+
+━━━━━━━━━━━━━━━━━━━━
+
+本期由 CongoRAG Daily 自动编排。事实来自 GitHub Trending 页面与各仓库公开 README；摘要由 DeepSeek 生成，可能有误，请以仓库原文为准。
+网页版：{{ .Issue.WebURL }}
+来源：https://github.com/trending?since=daily

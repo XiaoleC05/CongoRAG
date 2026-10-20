@@ -1,4 +1,4 @@
-# ConGoRAG
+# CongoRAG
 
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -225,8 +225,9 @@ flowchart LR
 [`docs/upgrading.md`](docs/upgrading.md)，契约 lint 的规则与豁免理由在
 [`docs/contract-lint.md`](docs/contract-lint.md)。
 
-不想从源码构建的话，Release 里附带一个**启动包**（compose + `.env.example` +
-镜像 tarball），解压起来就能用，见 [`deployments/startup/`](deployments/startup/)。
+不想从源码构建的话，仓库里有**启动包的构建脚本**（compose + `.env.example` +
+镜像打包），见 [`deployments/startup/`](deployments/startup/)。当前 Release 没有
+附带预构建产物；需要自己构建，或者等发布页更新。
 
 ## 配置
 

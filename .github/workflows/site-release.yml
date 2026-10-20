@@ -1,0 +1,72 @@
+name: Site & Daily Release
+
+# 站点和日报工具的发布产物。服务器只下载，不在服务器上编译。
+on:
+  push:
+    tags: ['site-v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag, for example site-v2026.10.20'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: site-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build site
+        working-directory: site
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          tar -czf ../site.tar.gz -C dist .
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/daily/go.mod
+          cache-dependency-path: tools/daily/go.sum
+
+      - name: Build daily binary
+        working-directory: tools/daily
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../../congorag-daily-linux-amd64 .
+
+      - name: Checksums
+        run: |
+          sha256sum site.tar.gz congorag-daily-linux-amd64 > SHA256SUMS
+          cp ops/deploy-site.sh deploy-site.sh
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.version }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" site.tar.gz congorag-daily-linux-amd64 SHA256SUMS deploy-site.sh --clobber
+          else
+            gh release create "$TAG" site.tar.gz congorag-daily-linux-amd64 SHA256SUMS deploy-site.sh \
+              --title "Site $TAG" \
+              --notes "Static site and daily digest binary. Deploy with ops/deploy-site.sh."
+          fi

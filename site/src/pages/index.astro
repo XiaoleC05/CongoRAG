@@ -1,0 +1,305 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+
+const github = 'https://github.com/XiaoleC05/CongoRAG';
+---
+<BaseLayout
+  title="CongoRAG — 本地运行的 RAG 问答与 Agent 平台"
+  description="CongoRAG 是一个本地优先的 RAG 问答与 Agent 平台。文档、向量和模型 Key 都在本机，模型服务由你提供。"
+>
+  <SiteHeader />
+
+  <main id="main">
+    <section class="hero">
+      <div class="hero-grid">
+        <div>
+          <p class="eyebrow">本地优先 · 开源 · MIT · v5.0.2</p>
+          <h1>把 RAG 留在<br /><em>自己的机器上</em></h1>
+          <p class="lede">
+            CongoRAG 是一个本地运行的 RAG 问答与 Agent 平台。文档、向量和模型 API Key
+            都在本机；模型服务由你提供。它不替你保管账号，也不转售 token。
+          </p>
+          <div class="actions">
+            <a class="button button-primary" href="/docs/quickstart/">从源码跑起来</a>
+            <a class="button button-ghost" href={github} rel="noopener">看 GitHub</a>
+          </div>
+          <p class="note">
+            需要 Go 1.26.4、Docker 和 Node 22 / pnpm 11。当前没有安装包，也没有在线演示；
+            你跑起来的是一套属于你自己的实例。
+          </p>
+        </div>
+
+        <figure class="shot">
+          <img
+            src="/screenshots/conversation.png"
+            alt="CongoRAG 对话页：回答正在流式生成，正文下方是引用来源"
+            width="1440"
+            height="900"
+          />
+          <figcaption class="shot-caption">
+            对话页：回答通过 SSE 逐字返回，citation 指向命中的文档片段。截图来自本机演示库。
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <div class="fact-strip">
+      <div class="fact-strip-inner">
+        <div class="fact"><b>只绑回环</b>127.0.0.1:3210</div>
+        <div class="fact"><b>唯一数据源</b>PostgreSQL 18 + pgvector</div>
+        <div class="fact"><b>两个进程</b>api 与 worker</div>
+        <div class="fact"><b>许可证</b>MIT</div>
+      </div>
+    </div>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <p class="kicker">01 / 能做什么</p>
+          <h2>从上传到回答，<br />每一步都看得见</h2>
+        </div>
+        <div>
+          <p>
+            下面这些是 v5.0.2 里已经能用的功能。没有“即将推出”，也没有需要你猜的地方。
+          </p>
+          <p>
+            它更像一套工具，而不是一个黑盒：文档卡在哪一步、检索命中了什么、Agent
+            调了哪个工具，都能在界面上查到。
+          </p>
+        </div>
+      </div>
+
+      <div class="grid-3">
+        <article class="card">
+          <span class="num">01</span>
+          <h3>文档进库</h3>
+          <p>
+            上传后先落盘、再入队；解析、切分、向量化由 worker 异步完成。每份文档当前的
+            状态都能在列表里看到；处理失败时，具体原因看 worker 日志。
+          </p>
+        </article>
+        <article class="card">
+          <span class="num">02</span>
+          <h3>检索可以当场看</h3>
+          <p>
+            检索调试接口直接返回命中的分块和相似度。回答错了，先看是没检索到，还是排序
+            不对，不用靠猜。
+          </p>
+        </article>
+        <article class="card">
+          <span class="num">03</span>
+          <h3>回答带引用</h3>
+          <p>
+            回答通过 SSE 逐 token 下发，citation 随流推送。连接断了，带上 after_event_id
+            可以把之后的事件补回来。
+          </p>
+        </article>
+        <article class="card">
+          <span class="num">04</span>
+          <h3>Agent 留下轨迹</h3>
+          <p>
+            内置知识库检索、会话检索、计算器三个工具。每次 run 的每一步都落库，可以取消，
+            也可以从断点恢复。
+          </p>
+        </article>
+        <article class="card">
+          <span class="num">05</span>
+          <h3>重复请求不重复执行</h3>
+          <p>
+            发消息和发起 run 都接受 Idempotency-Key。同键重发不会重新生成，而是按原来的
+            event_id 把事件补发一遍。
+          </p>
+        </article>
+        <article class="card">
+          <span class="num">06</span>
+          <h3>用量有账</h3>
+          <p>
+            每次模型调用记一行 token 用量，接口按模型聚合。你用的是自己的 Key，账单在
+            模型服务商那边，这里只记录消耗。
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <p class="kicker">02 / 怎么开始</p>
+          <h2>三步，跑起来</h2>
+        </div>
+        <div>
+          <p>
+            需要本机有 Go 1.26.4、Docker，以及 Node 22 / pnpm 11。数据库用 pgvector 的
+            官方镜像，不需要自己装扩展。
+          </p>
+          <p>
+            第一次启动要能访问一次 tiktoken 词表；下载失败会拒绝启动，而不是起来之后
+            每条消息都报错。
+          </p>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step-list">
+          <div class="step">
+            <span class="n">1</span>
+            <div>
+              <h3>起数据库</h3>
+              <p>在仓库根目录执行。容器只绑 127.0.0.1:5432。</p>
+              <pre><code>make up</code></pre>
+            </div>
+          </div>
+          <div class="step">
+            <span class="n">2</span>
+            <div>
+              <h3>建表</h3>
+              <p>业务表归 golang-migrate，River 的队列表单独跑一遍。</p>
+              <pre><code>make migrate-up
+make river-migrate-up</code></pre>
+            </div>
+          </div>
+          <div class="step">
+            <span class="n">3</span>
+            <div>
+              <h3>构建并启动</h3>
+              <p>api 在 3210，文档处理再开一个终端跑 worker。</p>
+              <pre><code>make build
+make dev
+
+<span class="c"># 另一个终端</span>
+make dev-worker</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <p class="kicker">预期结果</p>
+          <p style="color: var(--paper-dim); line-height: 1.85; margin-top: 12px;">
+            打开 <code>http://127.0.0.1:3210</code>，第一次会进入引导页，要求填模型服务的
+            base URL、API Key 和模型名。填完就能建知识库、上传文档、提问。
+          </p>
+          <p style="color: var(--muted); line-height: 1.8; margin-top: 14px; font-size: 13.5px;">
+            Windows 上需要 make。没有安装包；想用 Docker 跑，得自己用仓库里的 Dockerfile
+            构建镜像。
+          </p>
+          <div class="link-row">
+            <a class="link-pill" href="/docs/quickstart/">完整快速开始</a>
+            <a class="link-pill" href="/docs/configuration/">配置项</a>
+            <a class="link-pill" href="/docs/faq/">常见问题</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <p class="kicker">03 / 边界</p>
+          <h2>它不做什么</h2>
+        </div>
+        <div>
+          <p>
+            这些不是“以后会做”的清单，而是当前版本的边界。知道边界，比看功能列表更有用。
+          </p>
+        </div>
+      </div>
+
+      <div class="not-list">
+        <div class="not-item">
+          <b>不是云服务</b>
+          <p>没有账号、没有云端同步、没有托管实例。数据在你这台机器上，备份也要你自己做。</p>
+        </div>
+        <div class="not-item">
+          <b>不是多租户</b>
+          <p>一个实例对应一组数据，没有登录和权限系统。默认只监听回环地址，不要直接暴露到公网。</p>
+        </div>
+        <div class="not-item">
+          <b>不自带模型</b>
+          <p>没有内置额度，也没有代充。你要自己准备模型服务的 API Key；Key 加密后存在本地数据库。</p>
+        </div>
+        <div class="not-item">
+          <b>没有安装包</b>
+          <p>当前 Release 没有附带二进制或启动包。要么从源码构建，要么用仓库里的 Dockerfile 自己打镜像。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="band-inner">
+        <div>
+          <h3>一个 api，一个 worker</h3>
+          <p>前端产物 go:embed 进 api 二进制；worker 消费 River 队列，处理文档。没有微服务。</p>
+        </div>
+        <div>
+          <h3>PostgreSQL 是唯一数据源</h3>
+          <p>业务表、向量（halfvec + HNSW）和队列表在同一个库，写记录和入队可以放在一个事务里。</p>
+        </div>
+        <div>
+          <h3>契约先于代码</h3>
+          <p>OpenAPI 3.0.4 是唯一真相；Go 的接口和 TS 的类型都从它生成，CI 会检查有没有忘记重新生成。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <p class="kicker">04 / 文档</p>
+          <h2>按你的进度读</h2>
+        </div>
+        <div>
+          <p>
+            第一次来，从快速开始读；已经跑起来了，直接看使用指南；要放到服务器上，先读
+            反向代理那一篇。
+          </p>
+        </div>
+      </div>
+
+      <div class="doc-grid">
+        <a class="doc-card" href="/docs/quickstart/">
+          <span>START</span>
+          <h3>快速开始</h3>
+          <p>依赖、建表、构建、启动，以及第一次配置模型。</p>
+        </a>
+        <a class="doc-card" href="/docs/guides/knowledge-bases/">
+          <span>USE</span>
+          <h3>使用指南</h3>
+          <p>知识库、文档处理、对话、Agent 和用量。</p>
+        </a>
+        <a class="doc-card" href="/docs/deploy/reverse-proxy/">
+          <span>DEPLOY</span>
+          <h3>部署</h3>
+          <p>放到服务器上之前，需要改哪些配置、注意什么。</p>
+        </a>
+        <a class="doc-card" href="/docs/technical/architecture/">
+          <span>TECH</span>
+          <h3>技术细节</h3>
+          <p>模块边界、数据模型、检索、SSE 和恢复语义。</p>
+        </a>
+      </div>
+
+      <div class="section-head" style="margin-top: 46px; margin-bottom: 0; border-top: 0; padding-top: 0;">
+        <div>
+          <p class="kicker">05 / 参与</p>
+          <h2>问题、想法、代码</h2>
+        </div>
+        <div>
+          <p>
+            这个项目在 GitHub 上开发。Bug、功能建议、使用问题都走 Issues。没有站内评论，
+            也没有表单。
+          </p>
+          <div class="link-row">
+            <a class="link-pill" href={github + '/issues'} rel="noopener">Issues</a>
+            <a class="link-pill" href={github + '/blob/main/CONTRIBUTING.md'} rel="noopener">参与贡献</a>
+            <a class="link-pill" href={github + '/releases'} rel="noopener">Releases</a>
+            <a class="link-pill" href={github + '/security/policy'} rel="noopener">安全策略</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <SiteFooter />
+</BaseLayout>

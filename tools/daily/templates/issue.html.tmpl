@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ .Issue.Subject }}</title>
+<style>
+  @media screen and (max-width: 600px) {
+    .wrap { width: 100% !important; }
+    .pad { padding-left: 20px !important; padding-right: 20px !important; }
+    .h1 { font-size: 30px !important; line-height: 1.18 !important; }
+    .dek { font-size: 16px !important; }
+    .brief-h { font-size: 17px !important; }
+    .masthead { font-size: 24px !important; }
+    .data-cell { display: block !important; width: 100% !important; border-left: 0 !important; border-top: 1px solid #d8d0c2 !important; }
+    .data-cell:first-child { border-top: 0 !important; }
+  }
+</style>
+</head>
+<body style="margin:0;padding:0;background-color:#e9e3d7;">
+<div style="display:none;font-size:1px;color:#e9e3d7;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">{{ .Issue.Preheader }}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#e9e3d7;">
+<tr><td align="center" style="padding:24px 12px;">
+
+<table role="presentation" class="wrap" width="680" cellpadding="0" cellspacing="0" border="0" style="width:680px;max-width:680px;background-color:#f7f3ea;border-top:4px solid #171512;">
+
+<!-- 报头 -->
+<tr><td class="pad" style="padding:26px 34px 0 34px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td style="vertical-align:middle;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+          <td style="width:34px;height:34px;background-color:#5b3df5;color:#ffffff;text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:22px;line-height:34px;">C</td>
+          <td style="padding-left:12px;font-family:Georgia,'Songti SC','SimSun',serif;font-size:29px;letter-spacing:-0.5px;color:#171512;font-weight:bold;" class="masthead">CONGORAG DAILY</td>
+        </tr></table>
+      </td>
+      <td align="right" style="font-family:'SFMono-Regular',Consolas,monospace;font-size:10px;line-height:1.7;color:#6f675c;letter-spacing:0.06em;">
+        开源观察<br>第 {{ printf "%03d" .Issue.IssueNo }} 期 · {{ .Issue.DateCN }}
+      </td>
+    </tr>
+  </table>
+  <div style="height:1px;background-color:#171512;margin-top:18px;"></div>
+  <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:10px;color:#6f675c;padding-top:10px;letter-spacing:0.04em;">
+    GITHUB TRENDING · 今日收录 {{ .Issue.Count }} 个仓库 · 合计新增 {{ .Issue.TotalStars | comma }} 颗星
+  </div>
+</td></tr>
+
+<!-- 头条 -->
+<tr><td class="pad" style="padding:26px 34px 0 34px;">
+  <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:10px;letter-spacing:0.14em;color:#5b3df5;text-transform:uppercase;">今日头条 / LEAD</div>
+  <div class="h1" style="font-family:Georgia,'Songti SC','SimSun',serif;font-size:38px;line-height:1.22;letter-spacing:-0.8px;color:#171512;padding-top:10px;">{{ .Lead.Headline }}</div>
+  <div class="dek" style="font-family:Georgia,'Songti SC','SimSun',serif;font-size:18px;line-height:1.7;color:#4b443b;padding-top:12px;">{{ .Lead.Dek }}</div>
+  <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:10px;color:#6f675c;padding-top:12px;">{{ .Issue.Lead.Owner }}/{{ .Issue.Lead.Name }} · {{ .Issue.Lead.Language }} · 今日 +{{ .Issue.Lead.StarsToday | comma }}</div>
+</td></tr>
+
+<tr><td class="pad" style="padding:16px 34px 0 34px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-top:1px solid #d8d0c2;border-bottom:1px solid #d8d0c2;">
+    <tr>
+      <td class="data-cell" width="25%" style="padding:12px 10px 12px 0;border-left:0;">
+        <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:9px;color:#6f675c;letter-spacing:0.08em;">今日新增</div>
+        <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;color:#171512;">+{{ .Issue.Lead.StarsToday | comma }}</div>
+      </td>
+      <td class="data-cell" width="25%" style="padding:12px 10px;border-left:1px solid #d8d0c2;">
+        <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:9px;color:#6f675c;letter-spacing:0.08em;">总星数</div>
+        <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;color:#171512;">{{ .Issue.Lead.StarsTotal }}</div>
+      </td>
+      <td class="data-cell" width="25%" style="padding:12px 10px;border-left:1px solid #d8d0c2;">
+        <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:9px;color:#6f675c;letter-spacing:0.08em;">语言</div>
+        <div style="font-family:Georgia,'Times New Roman',serif;font-size:20px;color:#171512;">{{ .Issue.Lead.Language }}</div>
+      </td>
+      <td class="data-cell" width="25%" style="padding:12px 0 12px 10px;border-left:1px solid #d8d0c2;">
+        <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:9px;color:#6f675c;letter-spacing:0.08em;">日榜</div>
+        <div style="font-family:Georgia,'Times New Roman',serif;font-size:20px;color:#171512;">第 {{ .Issue.Lead.Rank }} 名</div>
+      </td>
+    </tr>
+  </table>
+</td></tr>
+
+<tr><td class="pad" style="padding:18px 34px 0 34px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;font-size:15px;line-height:1.95;color:#2b2621;">
+  {{ range .Lead.Body }}
+    <p style="margin:0 0 12px 0;">{{ . }}</p>
+  {{ end }}
+  <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:10px;color:#6f675c;padding-top:4px;">
+    原文：<a href="{{ .Issue.Lead.URL }}" style="color:#5b3df5;text-decoration:none;">{{ .Issue.Lead.URL }}</a>
+  </div>
+</td></tr>
+
+<!-- 今日要闻 -->
+<tr><td class="pad" style="padding:30px 34px 0 34px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td style="font-family:Georgia,'Songti SC','SimSun',serif;font-size:22px;color:#171512;">今日要闻</td>
+    <td align="right" style="font-family:'SFMono-Regular',Consolas,monospace;font-size:9px;color:#6f675c;letter-spacing:0.12em;">BRIEFS</td>
+  </tr></table>
+  <div style="height:1px;background-color:#171512;margin-top:10px;"></div>
+</td></tr>
+
+{{ range .Issue.Briefs }}
+<tr><td class="pad" style="padding:18px 34px 0 34px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td width="34" valign="top" style="font-family:'SFMono-Regular',Consolas,monospace;font-size:11px;color:#5b3df5;padding-top:4px;">{{ printf "%02d" .Repo.Rank }}</td>
+    <td valign="top">
+      <div class="brief-h" style="font-family:Georgia,'Songti SC','SimSun',serif;font-size:19px;line-height:1.45;color:#171512;">{{ .Headline }}</div>
+      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;font-size:14px;line-height:1.85;color:#3b352e;padding-top:5px;">{{ .Body }}</div>
+      <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:10.5px;color:#6f675c;padding-top:6px;">{{ .Repo.Owner }}/{{ .Repo.Name }} · {{ .Repo.Language }} · 今日 +{{ .Repo.StarsToday | comma }} · 总计 {{ .Repo.StarsTotal }} · <a href="{{ .Repo.URL }}" style="color:#5b3df5;text-decoration:none;">仓库</a></div>
+    </td>
+  </tr></table>
+</td></tr>
+{{ end }}
+
+<!-- 趋势观察 -->
+<tr><td class="pad" style="padding:30px 34px 0 34px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#171512;">
+    <tr><td style="padding:24px 26px;">
+      <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:9px;letter-spacing:0.14em;color:#b8a9ff;">编辑观察 / NOTES</div>
+      <div style="font-family:Georgia,'Songti SC','SimSun',serif;font-size:24px;line-height:1.35;color:#f7f3ea;padding-top:8px;">{{ .Issue.TrendTitle }}</div>
+      {{ range .Issue.TrendBody }}
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;font-size:14px;line-height:1.9;color:#d8d0c2;padding-top:12px;">{{ . }}</div>
+      {{ end }}
+    </td></tr>
+  </table>
+</td></tr>
+
+<!-- 数据 -->
+<tr><td class="pad" style="padding:26px 34px 0 34px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+    <td style="font-family:Georgia,'Songti SC','SimSun',serif;font-size:20px;color:#171512;">今日数据</td>
+    <td align="right" style="font-family:'SFMono-Regular',Consolas,monospace;font-size:9px;color:#6f675c;letter-spacing:0.12em;">NUMBERS</td>
+  </tr></table>
+  <div style="height:1px;background-color:#d8d0c2;margin-top:10px;"></div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="padding-top:8px;">
+    <tr>
+      <td width="50%" valign="top" style="padding:10px 16px 0 0;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;line-height:1.8;color:#3b352e;">
+        {{ range .Issue.LangStats }}
+          <div style="padding:3px 0;"><span style="font-family:'SFMono-Regular',Consolas,monospace;font-size:11px;color:#5b3df5;">{{ .Count }}</span> &nbsp;{{ .Language }} <span style="color:#6f675c;">({{ .Percent }}%)</span></div>
+        {{ end }}
+      </td>
+      <td width="50%" valign="top" style="padding:10px 0 0 16px;border-left:1px solid #d8d0c2;font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;line-height:1.8;color:#3b352e;">
+        <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:9px;color:#6f675c;letter-spacing:0.08em;">今日新增合计</div>
+        <div style="font-family:Georgia,'Times New Roman',serif;font-size:28px;color:#171512;">{{ .Issue.TotalStars | comma }}</div>
+        <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:9px;color:#6f675c;letter-spacing:0.08em;padding-top:10px;">星数前三</div>
+        {{ range .Issue.TopThree }}<div style="padding-top:3px;">{{ .Name }} <span style="color:#6f675c;">+{{ .StarsToday | comma }}</span></div>{{ end }}
+      </td>
+    </tr>
+  </table>
+</td></tr>
+
+<!-- 编辑手记 -->
+{{ if .Issue.EditorNote }}
+<tr><td class="pad" style="padding:26px 34px 0 34px;">
+  <div style="border-left:3px solid #5b3df5;padding-left:16px;font-family:Georgia,'Songti SC','SimSun',serif;font-size:16px;line-height:1.9;color:#3b352e;">{{ .Issue.EditorNote }}</div>
+</td></tr>
+{{ end }}
+
+<!-- 页脚 -->
+<tr><td class="pad" style="padding:30px 34px 28px 34px;">
+  <div style="height:1px;background-color:#171512;"></div>
+  <div style="font-family:'SFMono-Regular',Consolas,monospace;font-size:10px;line-height:1.9;color:#6f675c;padding-top:12px;">
+    本期由 CongoRAG Daily 自动编排。事实来自 GitHub Trending 页面与各仓库公开 README；摘要由 DeepSeek 生成，可能有误，请以仓库原文为准。<br>
+    网页版：<a href="{{ .Issue.WebURL }}" style="color:#5b3df5;text-decoration:none;">{{ .Issue.WebURL }}</a><br>
+    来源：<a href="https://github.com/trending?since=daily" style="color:#5b3df5;text-decoration:none;">github.com/trending?since=daily</a> · 抓取时间 {{ .Issue.DateCN }}
+  </div>
+</td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
