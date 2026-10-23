@@ -3,7 +3,7 @@ title: API
 description: 端点总览、错误格式、分页和兼容边界。
 ---
 
-API 的契约在 `contracts/openapi.yaml`，以那份文件为准。下面列出端点总览。
+API 的契约在 `contracts/openapi.yaml`，以那份文件为准。
 
 - 契约文件：<https://github.com/XiaoleC05/CongoRAG/blob/main/contracts/openapi.yaml>
 - 兼容边界：路径里的 `/api/v1`
