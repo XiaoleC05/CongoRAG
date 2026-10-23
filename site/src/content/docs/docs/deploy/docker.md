@@ -8,8 +8,6 @@ description: 用仓库里的 Dockerfile 和 compose 跑 api、worker、migrate �
 - `deployments/docker/docker-compose.yml`：开发期依赖，只有 PostgreSQL。
 - `deployments/startup/docker-compose.yml`：交付形态，postgres + migrate + api + worker 四个服务。
 
-这篇说的是后者。
-
 ## 当前没有预构建镜像
 
 Release 目前没有附带镜像或启动包。你要自己构建三个镜像：

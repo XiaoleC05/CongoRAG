@@ -13,13 +13,13 @@ make test-integration    # 起一次性 PostgreSQL 容器，跑集成测试
 
 `make test` 里大部分测试不连数据库。需要真实 PostgreSQL 的测试由 `CONGORAG_TEST_DB_URL` 门控；没设变量就跳过。
 
-这意味着本地 `make test` 全绿，**不代表那些 SQL 跑得起来**。要覆盖它们，跑 `make test-integration`。
+所以本地 `make test` 全绿，不代表那些 SQL 跑得起来。要覆盖它们，跑 `make test-integration`。
 
 ## 集成测试
 
 `make test-integration` 会设 `CONGORAG_TESTCONTAINERS=1`，由 `internal/testdb` 起一个一次性 PostgreSQL 容器，灌好两套迁移，再带变量跑全部测试。
 
-它动 schema，但动的是那个一次性容器。开发库和 `make up` 起的 `congorag-postgres` 不会被碰。
+这个命令会动 schema，但动的是那个一次性容器。开发库和 `make up` 起的 `congorag-postgres` 不会被碰。
 
 第一次跑要拉镜像，会慢一些。
 

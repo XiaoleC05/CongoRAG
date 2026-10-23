@@ -3,7 +3,7 @@ title: 快速开始
 description: 从源码把 CongoRAG 跑起来，并完成第一次模型配置。
 ---
 
-这篇文档只做一件事：让你在本地打开 CongoRAG 的界面，并且能问出第一个带引用的问题。
+跟着做，你会在本地打开 CongoRAG 的界面，并问出第一个带引用的问题。
 
 ## 你需要什么
 
@@ -80,15 +80,15 @@ embedding 模型会在这一步发一次真实请求，量出向量维度。维�
 
 ## 常见失败
 
-**端口 5432 被占用。** 本机已经有 PostgreSQL 在跑。停掉它，或者改 `deployments/docker/docker-compose.yml` 的宿主机端口，同时改 `CONGORAG_DB_URL`。
+端口 5432 被占用：本机已经有 PostgreSQL 在跑。停掉它，或者改 `deployments/docker/docker-compose.yml` 的宿主机端口，同时改 `CONGORAG_DB_URL`。
 
-**`migrate: command not found`。** 第 1 步的 `go install` 没做，或者 GOPATH/bin 不在 PATH。Makefile 会自己拼，直接从仓库根跑 `make migrate-up` 通常能解决。
+`migrate: command not found`。第 1 步的 `go install` 没做，或者 GOPATH/bin 不在 PATH。Makefile 会自己拼，直接从仓库根跑 `make migrate-up` 通常能解决。
 
-**启动时卡在 tiktoken。** 这台机器访问不了那个地址。先确认网络，再重试；不要在下载失败的情况下继续启动。
+启动时卡在 tiktoken：这台机器访问不了那个地址。先确认网络，再重试；不要在下载失败的情况下继续启动。
 
-**页面能开，但上传后一直 queued。** worker 没起，或者 worker 连的不是同一个数据库。看 worker 终端的报错。
+页面能开，但上传后一直 queued：worker 没起，或者 worker 连的不是同一个数据库。看 worker 终端的报错。
 
-**Windows。** 需要可用的 make。仓库没有提供 Windows 安装包；命令本身是 make 目标，能在 cmd.exe 和 Git Bash 里跑，但 make 要你自己装。
+Windows 下需要一个可用的 make。仓库没有提供 Windows 安装包；命令本身是 make 目标，能在 cmd.exe 和 Git Bash 里跑，但 make 要你自己装。
 
 ## 下一步
 

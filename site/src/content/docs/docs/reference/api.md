@@ -3,7 +3,7 @@ title: API
 description: 端点总览、错误格式、分页和兼容边界。
 ---
 
-API 的契约在 `contracts/openapi.yaml`，它是唯一真相。这个页面是总览，不是完整规范。
+API 的契约在 `contracts/openapi.yaml`，以那份文件为准。下面列出端点总览。
 
 - 契约文件：<https://github.com/XiaoleC05/CongoRAG/blob/main/contracts/openapi.yaml>
 - 兼容边界：路径里的 `/api/v1`
@@ -47,7 +47,7 @@ API 的契约在 `contracts/openapi.yaml`，它是唯一真相。这个页面是
 - `POST /api/v1/conversations/{id}/messages`
 - `POST /api/v1/agents/{id}/runs`
 
-同键重发不会重新执行，而是按原来的 event_id 补发事件。
+同键重发不会重新执行，服务端按原来的 event_id 补发事件。
 
 ## 分页
 

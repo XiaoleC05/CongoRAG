@@ -66,7 +66,7 @@ node rollback.mjs --dir deployments/startup --dry-run
 node rollback.mjs --dir deployments/startup --yes
 ```
 
-回滚会 **DROP 数据库再恢复**，所以备份之后产生的数据会消失。这是回滚的定义，不是 bug。
+回滚会 DROP 数据库再恢复，所以备份之后产生的数据会消失。这是回滚的定义，不是 bug。
 
 回滚会一起做三件事：还原数据库、还原数据卷、把 `CONGORAG_VERSION` 改回备份时的版本。只做一半会得到“文档记录指向不存在的文件”或“旧二进制对着新 schema”。
 

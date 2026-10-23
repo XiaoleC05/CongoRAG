@@ -35,9 +35,9 @@ CongoRAG 是模块化单体，不是微服务。交付形态是两个进程：
 
 ## 数据流
 
-写入侧是异步的：上传 → 落盘 → 入队 → worker 解析/切分/向量化/写索引。
+写入侧是异步的：上传的文档先落盘，再入队，由 worker 解析、切分、向量化、写索引。
 
-读取侧是同步的：提问 → 检索 → 组装上下文 → 调模型 → SSE 下发。
+读取侧是同步的：提问后检索、组装上下文、调用模型，再通过 SSE 下发。
 
 两条链路共用同一个数据库，但不在同一个事务里。检索失败不会导致消息写不进去；文档处理失败也不会把已经写好的会话弄坏。
 
@@ -54,7 +54,7 @@ CongoRAG 是模块化单体，不是微服务。交付形态是两个进程：
 - [ADR-007 恢复语义](https://github.com/XiaoleC05/CongoRAG/blob/main/docs/adr/007-recovery-semantics.md)
 - [ADR-008 幂等重放窗口](https://github.com/XiaoleC05/CongoRAG/blob/main/docs/adr/008-idempotency-replay-window.md)
 
-## 它不是什么
+## 边界
 
 - 不是微服务：没有服务间 RPC，没有消息中间件。
 - 不是无状态服务：文档在磁盘，向量和业务数据在 PostgreSQL。
