@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -17,14 +18,18 @@ const systemPrompt = `你是一家中文科技报纸的编辑，负责把当天�
 
 写作规则：
 - 只使用用户提供的 FACTS 和 README 摘录。不得补充未给出的功能、性能数字、融资、团队、用户数、客户、路线图。
-- 不要写“为什么上榜”的因果。GitHub 不公布原因。可以写“今天新增 X 颗星，排在第 N 位”。
+- 不要写“为什么上榜”的因果。GitHub 不公布原因。星数、排名、总星数由版面元数据展示，标题和正文都不要重复这些数字。
 - 不要使用这些词：赋能、助力、打造、一站式、全方位、无缝、极致、强大、智能、颠覆、重塑、革命性、业界领先、生产级、企业级、开箱即用、轻松上手、深受信赖、值得注意的是、总而言之、综上所述。
 - 不要用“首先/其次/最后”“不仅……而且……”“从……到……”这类机械结构。
-- 标题要具体，包含项目做的事；不要用“引爆”“王者”“终局”这类词。
+- 标题 10-20 个汉字，具体，说清项目做的事；不要把星数、排名、“今日”写进标题。不要用“引爆”“王者”“终局”这类词。
 - 导语 1-2 句。正文 2-3 段，每段 2-4 句。句子长短交替，不要每段一样长。
 - README 只有一句话时，就写一句话，不要扩写成三段。
+- 每条 brief 2-3 句：第一句说它是什么或解决什么，第二句说一个具体细节或限制。不要每条都用“把……做成……”或“给……套一层……”的句式。
+- 不要写作者个人处境、求职状态、融资、商业计划、社群迁移、招聘信息；这些和读者使用工具无关。
+- 不要用“它”开头指代项目；用项目名或“这个项目”。
 - 每条 brief 只写对应的仓库，不要跨仓库编故事。
-- trend 是编辑观察，必须至少引用两个 FACTS 里的仓库作为依据；它是判断，不是统计，不要编造数字。
+- trend 写两段，至少引用三个具体仓库；先给判断，再给依据。它是编辑观察，不是统计，不要编造数字。
+- editor_note 两到三句，不要重复 trend 的内容。
 
 只返回 JSON，不要 markdown 代码块。字段：
 {
@@ -54,6 +59,7 @@ type anthResp struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content"`
+	StopReason string `json:"stop_reason"`
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`
@@ -93,6 +99,9 @@ func summarize(ctx context.Context, cfg Config, repos []Repo) (Copy, error) {
 		return Copy{}, err
 	}
 	raw = stripCodeFence(raw)
+	if os.Getenv("DAILY_DEBUG_RAW") == "1" {
+		_ = os.WriteFile("raw-summary.txt", []byte(raw), 0o644)
+	}
 	var c Copy
 	if err := json.Unmarshal([]byte(raw), &c); err != nil {
 		if i, j := strings.Index(raw, "{"), strings.LastIndex(raw, "}"); i >= 0 && j > i {
@@ -112,7 +121,7 @@ func summarize(ctx context.Context, cfg Config, repos []Repo) (Copy, error) {
 func callAnthropic(ctx context.Context, cfg Config, system, user string) (string, error) {
 	body := anthReq{
 		Model:       cfg.DeepSeekModel,
-		MaxTokens:   4096,
+		MaxTokens:   8192,
 		System:      system,
 		Messages:    []anthMsg{{Role: "user", Content: user}},
 		Temperature: 0.35,
@@ -168,6 +177,9 @@ func callAnthropic(ctx context.Context, cfg Config, system, user string) (string
 		}
 		if strings.TrimSpace(b.String()) == "" {
 			return "", errors.New("anthropic: empty content")
+		}
+		if ar.StopReason == "max_tokens" {
+			return "", fmt.Errorf("anthropic: summary truncated at max_tokens (%d)", 8192)
 		}
 		return b.String(), nil
 	}
