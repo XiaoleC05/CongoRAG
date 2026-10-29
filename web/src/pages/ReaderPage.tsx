@@ -7,7 +7,7 @@ import type { PDFDocumentProxy } from 'pdfjs-dist'
 // module script 校验直接拒绝。?worker 让 Vite 走自己的 worker 打包管线，
 // 产物是标准 .js + new Worker(...)，不依赖服务端 MIME 判断。
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
-import { ChevronLeft, ChevronRight, ExternalLink, ZoomIn, ZoomOut } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ExternalLink, Languages, X, ZoomIn, ZoomOut } from 'lucide-react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -85,6 +85,10 @@ function ReaderView({
   const [pageNo, setPageNo] = useState(initialPage)
   const [scale, setScale] = useState(1.4)
   const [rendering, setRendering] = useState(false)
+  // 翻译面板（参赛版 M3）：把当前页文本抽出来交给后端，用当前 chat 模型翻译。
+  const [translating, setTranslating] = useState(false)
+  const [translation, setTranslation] = useState<string | null>(null)
+  const [translateError, setTranslateError] = useState<unknown>(null)
 
   // 章节目录（参赛版 M3）：点击某节直接把页码切过去。
   //
@@ -179,6 +183,38 @@ function ReaderView({
     [pdf],
   )
 
+  // 提取当前页文本并翻译。PDF.js 的 textContent 是"文本片段"数组，
+  // 直接 join 会丢词间空格，所以用空格拼、再压掉连续空白。
+  const translatePage = useCallback(async () => {
+    if (!pdf) return
+    setTranslating(true)
+    setTranslation(null)
+    setTranslateError(null)
+    try {
+      const page = await pdf.getPage(pageNo)
+      const content = await page.getTextContent()
+      const text = content.items
+        .map((item) => ('str' in item ? item.str : ''))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 8000)
+      if (!text) throw new Error('这一页没有可提取的文字（可能是纯图片页）')
+      const res = await fetch('/api/v1/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, targetLang: 'zh-CN' }),
+      })
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      const data = (await res.json()) as { translation: string }
+      setTranslation(data.translation)
+    } catch (e) {
+      setTranslateError(e)
+    } finally {
+      setTranslating(false)
+    }
+  }, [pdf, pageNo])
+
   // 错误态统一在下面渲染：页面只能有一个 <h1>（headingStructure.test.ts 钉着
   // 这条规范），所以不能每个分支各写一个 return + h1。
   const errorBlock = metaError ? (
@@ -257,6 +293,14 @@ function ReaderView({
           >
             <ZoomIn />
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void translatePage()}
+            disabled={!pdf || translating}
+          >
+            <Languages /> {translating ? '翻译中…' : '翻译本页'}
+          </Button>
           {meta ? (
             <Button variant="ghost" size="sm" asChild>
               <Link to={`/knowledge-bases/${meta.knowledgeBaseId}`}>
@@ -330,6 +374,34 @@ function ReaderView({
         </div>
         {!pdf && !loadError ? <PageFallback /> : null}
           </div>
+
+          {/* 翻译面板：抽当前页文本 -> /api/v1/translate -> 显示译文。
+              失败留在面板里（读操作，不弹 toast）。 */}
+          {translation !== null || translateError !== null ? (
+            <aside className="hidden w-80 shrink-0 overflow-auto border-l p-4 lg:block">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-medium">译文 · 第 {pageNo} 页</div>
+                <button
+                  type="button"
+                  aria-label="关闭译文"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    setTranslation(null)
+                    setTranslateError(null)
+                  }}
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+              {translateError !== null ? (
+                <p className="mt-2 text-xs text-red-600">
+                  <ErrorText error={translateError} />
+                </p>
+              ) : (
+                <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">{translation}</p>
+              )}
+            </aside>
+          ) : null}
         </div>
       </>
     )}

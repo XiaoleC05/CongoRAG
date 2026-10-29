@@ -472,6 +472,34 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── 翻译（参赛版 M3 阅读器）─────────────────────────────────
+  #
+  # 阅读器把当前页的文本抽出来（PDF.js 的 textContent），交给后端用当前
+  # 生效的 chat 模型翻译。没有文档 id 参数：翻译只依赖文本本身，和文档
+  # 归属无关；这样同一段文字从任何入口（阅读器/引用卡片）都能复用。
+  /api/v1/translate:
+
+    post:
+      operationId: translateText
+      summary: 翻译一段论文文本（学术术语保留，只输出译文）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TranslateRequest'
+      responses:
+        '200':
+          description: 译文
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranslateResponse'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/conversations:
 
     get:
@@ -1380,6 +1408,28 @@ components:
           format: double
           nullable: true
           description: 词法 ts_rank_cd（>=0）；这一路没命中时为 null
+
+    TranslateRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 8000
+          description: 要翻译的原文（字符数上限与后端 maxTranslateRunes 一致）
+        targetLang:
+          type: string
+          description: 目标语言，默认 zh-CN
+          example: zh-CN
+
+    TranslateResponse:
+      type: object
+      required: [translation]
+      properties:
+        translation:
+          type: string
+          description: 译文；模型只输出译文本身
 
     OutlineEntry:
       type: object

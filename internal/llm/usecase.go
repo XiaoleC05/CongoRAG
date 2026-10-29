@@ -2,13 +2,16 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
 
@@ -360,4 +363,69 @@ func (u *Usecase) DeleteModel(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("delete model %s: %w", id, err)
 	}
 	return nil
+}
+
+// maxTranslateRunes 是一次翻译的文本上限（按字符数）。
+//
+// 【为什么是 8000】一页论文正文大约 3000~5000 字符；8000 覆盖"整页 + 少量
+// 上下文"，再长就应该分段翻译——一次性塞给模型既贵又容易丢后半段。
+const maxTranslateRunes = 8000
+
+// Translate 把一段论文文本翻译成目标语言（参赛版 M3 的阅读器翻译）。
+//
+// 【为什么放在 llm 包】它是"调当前生效的 chat 模型"这件事的又一种用法，
+// 模型解析、key 解密、流式拼装都在这个包里；放 HTTP 边界会让 handler
+// 反向依赖 registry/SecretBox。
+//
+// 【为什么用 Stream 而不是 Generate】和聊天共用同一条经过验证的流式路径
+// （超时、用量记账、错误分类都在适配器里）；这里只是把增量拼成完整字符串。
+func (u *Usecase) Translate(ctx context.Context, text, targetLang string) (string, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", fmt.Errorf("empty text: %w", platform.ErrInvalid)
+	}
+	if n := len([]rune(text)); n > maxTranslateRunes {
+		return "", fmt.Errorf("text too long (%d characters, max %d): %w", n, maxTranslateRunes, platform.ErrInvalid)
+	}
+	if targetLang == "" {
+		targetLang = "zh-CN"
+	}
+
+	modelID, err := u.registry.ActiveModelID(ctx, KindChat)
+	if err != nil {
+		return "", fmt.Errorf("resolve active chat model: %w", err)
+	}
+	chatModel, err := u.registry.Chat(ctx, modelID)
+	if err != nil {
+		return "", fmt.Errorf("get chat model %s: %w", modelID, err)
+	}
+
+	msgs := []Message{
+		{Role: domain.RoleSystem, Content: "你是学术论文翻译助手。把用户给出的论文片段准确翻译成" + targetLang +
+			"；保留公式、术语、引用编号与数字原文；只输出译文，不要解释或补充。"},
+		{Role: domain.RoleUser, Content: text},
+	}
+	stream, err := chatModel.Stream(ctx, msgs, WithTemperature(0.1))
+	if err != nil {
+		return "", fmt.Errorf("start translation stream: %w", err)
+	}
+	defer stream.Close()
+
+	var out strings.Builder
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return "", fmt.Errorf("receive translation chunk: %w", err)
+		}
+		if msg != nil {
+			out.WriteString(msg.Content)
+		}
+	}
+	if strings.TrimSpace(out.String()) == "" {
+		return "", fmt.Errorf("translation model returned empty output: %w", platform.ErrUpstream)
+	}
+	return strings.TrimSpace(out.String()), nil
 }

@@ -622,6 +622,23 @@ type ToolCatalogEntry struct {
 // ToolCatalogEntrySideEffectLevel defines model for ToolCatalogEntry.SideEffectLevel.
 type ToolCatalogEntrySideEffectLevel string
 
+// TranslateRequest defines model for TranslateRequest.
+type TranslateRequest struct {
+	// TargetLang 目标语言，默认 zh-CN
+	//
+	// Example: zh-CN
+	TargetLang *string `json:"targetLang,omitempty"`
+
+	// Text 要翻译的原文（字符数上限与后端 maxTranslateRunes 一致）
+	Text string `json:"text"`
+}
+
+// TranslateResponse defines model for TranslateResponse.
+type TranslateResponse struct {
+	// Translation 译文；模型只输出译文本身
+	Translation string `json:"translation"`
+}
+
 // UpdateAgentRequest defines model for UpdateAgentRequest.
 type UpdateAgentRequest struct {
 	Description string   `json:"description"`
@@ -855,6 +872,9 @@ type UpdateModelJSONRequestBody = UpdateModelRequest
 // CreateProviderJSONRequestBody defines body for CreateProvider for application/json ContentType.
 type CreateProviderJSONRequestBody = CreateProviderRequest
 
+// TranslateTextJSONRequestBody defines body for TranslateText for application/json ContentType.
+type TranslateTextJSONRequestBody = TranslateRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListAgents 列出已创建的 Agent
@@ -1017,6 +1037,9 @@ type ServerInterface interface {
 	// ListToolCatalog 列出可用工具目录（创建 Agent 表单的勾选列表用）
 	// (GET /api/v1/tools)
 	ListToolCatalog(c *gin.Context)
+	// TranslateText 翻译一段论文文本（学术术语保留，只输出译文）
+	// (POST /api/v1/translate)
+	TranslateText(c *gin.Context)
 	// GetUsageSummary 按模型聚合的 token 用量
 	// (GET /api/v1/usage)
 	GetUsageSummary(c *gin.Context, params GetUsageSummaryParams)
@@ -1953,6 +1976,19 @@ func (siw *ServerInterfaceWrapper) ListToolCatalog(c *gin.Context) {
 	siw.Handler.ListToolCatalog(c)
 }
 
+// TranslateText operation middleware
+func (siw *ServerInterfaceWrapper) TranslateText(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.TranslateText(c)
+}
+
 // GetUsageSummary operation middleware
 func (siw *ServerInterfaceWrapper) GetUsageSummary(c *gin.Context) {
 
@@ -2057,6 +2093,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/api/v1/documents/:id/reindex", wrapper.ReindexDocument)
 	router.GET(options.BaseURL+"/api/v1/documents/:id/outline", wrapper.GetDocumentOutline)
 	router.GET(options.BaseURL+"/api/v1/documents/:id/file", wrapper.DownloadDocumentFile)
+	router.POST(options.BaseURL+"/api/v1/translate", wrapper.TranslateText)
 	router.GET(options.BaseURL+"/api/v1/conversations", wrapper.ListConversations)
 	router.POST(options.BaseURL+"/api/v1/conversations", wrapper.CreateConversation)
 	router.DELETE(options.BaseURL+"/api/v1/conversations/:id", wrapper.DeleteConversation)

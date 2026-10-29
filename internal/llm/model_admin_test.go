@@ -23,7 +23,7 @@ func newAdminFixture() (*Usecase, *fakeConfigRepo) {
 func seedModel(repo *fakeConfigRepo, kind Kind, name string, age time.Duration) *Model {
 	m := &Model{
 		ID: uuid.New(), ProviderID: uuid.New(), ModelID: name, Kind: kind,
-		Capabilities: Capabilities{Chat: kind == KindChat},
+		Capabilities:  Capabilities{Chat: kind == KindChat},
 		ContextWindow: 128000, MaxOutputTokens: 4096, TokenizerType: "o200k_base",
 		CreatedAt: time.Now().Add(-age),
 	}

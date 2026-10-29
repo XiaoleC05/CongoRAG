@@ -411,6 +411,24 @@ func (s *Server) GetDocument(c *gin.Context, id openapi_types.UUID) {
 	c.JSON(http.StatusOK, toAPIDocument(doc))
 }
 
+// TranslateText 翻译一段论文文本（参赛版 M3 阅读器翻译）。
+func (s *Server) TranslateText(c *gin.Context) {
+	var req TranslateRequest
+	if !s.bindJSON(c, &req) {
+		return
+	}
+	target := ""
+	if req.TargetLang != nil {
+		target = *req.TargetLang
+	}
+	out, err := s.deps.LLM.Translate(c.Request.Context(), req.Text, target)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, TranslateResponse{Translation: out})
+}
+
 // GetDocumentOutline 返回阅读器目录（参赛版 M3）。
 func (s *Server) GetDocumentOutline(c *gin.Context, id openapi_types.UUID) {
 	entries, err := s.deps.Knowledge.Outline(c.Request.Context(), id)

@@ -212,6 +212,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/translate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 翻译一段论文文本（学术术语保留，只输出译文） */
+        post: operations["translateText"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations": {
         parameters: {
             query?: never;
@@ -705,6 +722,19 @@ export interface components {
              * @description 词法 ts_rank_cd（>=0）；这一路没命中时为 null
              */
             lexicalScore: number | null;
+        };
+        TranslateRequest: {
+            /** @description 要翻译的原文（字符数上限与后端 maxTranslateRunes 一致） */
+            text: string;
+            /**
+             * @description 目标语言，默认 zh-CN
+             * @example zh-CN
+             */
+            targetLang?: string;
+        };
+        TranslateResponse: {
+            /** @description 译文；模型只输出译文本身 */
+            translation: string;
         };
         /** @description 论文阅读器目录的一行 */
         OutlineEntry: {
@@ -1528,6 +1558,32 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    translateText: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TranslateRequest"];
+            };
+        };
+        responses: {
+            /** @description 译文 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranslateResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
             500: components["responses"]["InternalError"];
         };
     };
