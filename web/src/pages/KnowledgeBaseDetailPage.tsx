@@ -26,6 +26,7 @@ import {
   useDocuments,
   useReindexKnowledgeBase,
   useResolveDuplicate,
+  useVersionDiff,
 } from '@/hooks/useDocuments'
 import type { DocumentFilter, DocumentSort } from '@/hooks/useDocuments'
 import { useErrorToast } from '@/hooks/useErrorToast'
@@ -81,6 +82,8 @@ export default function KnowledgeBaseDetailPage() {
   const docs = flattenPages(docPages)
   const { upload, remove, reindex } = useDocumentMutations(kbId)
   const resolveDuplicate = useResolveDuplicate(kbId)
+  const versionDiff = useVersionDiff()
+  const [versionDiffs, setVersionDiffs] = useState<Record<string, string>>({})
   const reindexAll = useReindexKnowledgeBase(kbId)
   const createConversation = useCreateConversation()
   const navigate = useNavigate()
@@ -251,7 +254,30 @@ export default function KnowledgeBaseDetailPage() {
                       >
                         覆盖旧版本
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={versionDiff.isPending}
+                        onClick={() => {
+                          if (!doc.duplicateOf) return
+                          versionDiff.mutate(
+                            { docId: doc.id, otherDocumentId: doc.duplicateOf },
+                            {
+                              onSuccess: (data) =>
+                                setVersionDiffs((prev) => ({ ...prev, [doc.id]: data.summary })),
+                              onError: showError,
+                            },
+                          )
+                        }}
+                      >
+                        {versionDiff.isPending ? '对比中…' : '对比版本差异'}
+                      </Button>
                     </div>
+                    {versionDiffs[doc.id] ? (
+                      <pre className="bg-muted/40 mt-3 max-h-56 overflow-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
+                        {versionDiffs[doc.id]}
+                      </pre>
+                    ) : null}
                   </AlertDescription>
                 </Alert>
               ))}

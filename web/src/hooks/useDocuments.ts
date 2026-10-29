@@ -524,3 +524,24 @@ export function useArxivIngest(kbId: string) {
     },
   })
 }
+
+/** 版本差异摘要（M1 高级表现）：POST /documents/{id}/version-diff。 */
+export function useVersionDiff() {
+  return useMutation({
+    mutationFn: async (input: {
+      docId: string
+      otherDocumentId: string
+    }): Promise<Schemas['VersionDiff']> => {
+      const res = await fetch(`/api/v1/documents/${input.docId}/version-diff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otherDocumentId: input.otherDocumentId }),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      return (await res.json()) as Schemas['VersionDiff']
+    },
+  })
+}

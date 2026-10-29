@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -658,6 +659,97 @@ func (s *Server) ResolveDocumentDuplicate(c *gin.Context, id openapi_types.UUID)
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// DiffDocumentVersions 对比同一篇论文两个版本的差异（参赛版 M1 高级表现）。
+func (s *Server) DiffDocumentVersions(c *gin.Context, id openapi_types.UUID) {
+	var req VersionDiffRequest
+	if !s.bindJSON(c, &req) {
+		return
+	}
+	ctx := c.Request.Context()
+	a, err := s.deps.Knowledge.GetDocument(ctx, id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	b, err := s.deps.Knowledge.GetDocument(ctx, req.OtherDocumentId)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	if a.KnowledgeBaseID != b.KnowledgeBaseID {
+		s.fail(c, fmt.Errorf("documents belong to different knowledge bases: %w", platform.ErrInvalid))
+		return
+	}
+	older, newer := compareVersions(a, b)
+	olderChunks, err := s.deps.Knowledge.ChunksPreview(ctx, older.ID, 6)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	newerChunks, err := s.deps.Knowledge.ChunksPreview(ctx, newer.ID, 6)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	system := "你是学术论文版本对比助手。只根据给出的两版开头片段，用中文列出 3-5 条修订要点（Markdown 无序列表）；片段不足以判断时明确说明，不要编造。"
+	user := fmt.Sprintf("旧版本《%s》开头片段：\n%s\n\n新版本《%s》开头片段：\n%s\n\n请输出 3-5 条修订要点。",
+		older.Filename, excerptChunks(olderChunks, 2600), newer.Filename, excerptChunks(newerChunks, 2600))
+	summary, err := s.deps.LLM.Generate(ctx, system, user)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, VersionDiff{
+		Summary:       summary,
+		OlderFilename: older.Filename,
+		NewerFilename: newer.Filename,
+	})
+}
+
+// compareVersions 决定两份文档谁是旧版/新版。
+//
+// 【优先看文件名里的 vN】官方测试用例就是 1706.03762v1 vs v7：上传顺序
+// 可能反过来（先传新版再传旧版做去重），只看创建时间会把方向判错。
+// 文件名不是"同一 base + vN"时（普通 md/扫描件），退回比较创建时间。
+var versionSuffixPattern = regexp.MustCompile(`(?i)v(\d+)\.pdf$`)
+
+func compareVersions(a, b *knowledge.Document) (older, newer *knowledge.Document) {
+	sa := versionSuffixPattern.FindStringSubmatch(a.Filename)
+	sb := versionSuffixPattern.FindStringSubmatch(b.Filename)
+	if sa != nil && sb != nil {
+		baseA := strings.ToLower(strings.TrimSpace(a.Filename[:len(a.Filename)-len(sa[0])]))
+		baseB := strings.ToLower(strings.TrimSpace(b.Filename[:len(b.Filename)-len(sb[0])]))
+		if baseA == baseB {
+			na, _ := strconv.Atoi(sa[1])
+			nb, _ := strconv.Atoi(sb[1])
+			if na != nb {
+				if na < nb {
+					return a, b
+				}
+				return b, a
+			}
+		}
+	}
+	if b.CreatedAt.Before(a.CreatedAt) {
+		return b, a
+	}
+	return a, b
+}
+
+// excerptChunks 把分块拼成一段文本并截断到 limit 个 rune。
+func excerptChunks(chunks []domain.Chunk, limit int) string {
+	var b strings.Builder
+	for _, ch := range chunks {
+		b.WriteString(ch.Content)
+		b.WriteString("\n")
+	}
+	runes := []rune(b.String())
+	if len(runes) > limit {
+		runes = runes[:limit]
+	}
+	return strings.TrimSpace(string(runes))
 }
 
 // ReindexDocument 重新索引一份文档（issue #39）。

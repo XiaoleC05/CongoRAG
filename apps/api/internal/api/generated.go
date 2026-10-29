@@ -995,6 +995,21 @@ type UsageSummary struct {
 	TotalPromptTokens     int64          `json:"totalPromptTokens"`
 }
 
+// VersionDiff defines model for VersionDiff.
+type VersionDiff struct {
+	NewerFilename string `json:"newerFilename"`
+	OlderFilename string `json:"olderFilename"`
+
+	// Summary 中文修订要点（Markdown 列表；模型只基于给出的开头分块）
+	Summary string `json:"summary"`
+}
+
+// VersionDiffRequest defines model for VersionDiffRequest.
+type VersionDiffRequest struct {
+	// OtherDocumentId 要对比的另一份文档（通常是与本版本高度重合的旧版本）
+	OtherDocumentId openapi_types.UUID `json:"otherDocumentId"`
+}
+
 // VisualizeChart defines model for VisualizeChart.
 type VisualizeChart struct {
 	Categories []string           `json:"categories"`
@@ -1237,6 +1252,9 @@ type SendMessageJSONRequestBody = SendMessageRequest
 // ResolveDocumentDuplicateJSONRequestBody defines body for ResolveDocumentDuplicate for application/json ContentType.
 type ResolveDocumentDuplicateJSONRequestBody = DocumentDuplicateResolution
 
+// DiffDocumentVersionsJSONRequestBody defines body for DiffDocumentVersions for application/json ContentType.
+type DiffDocumentVersionsJSONRequestBody = VersionDiffRequest
+
 // CreateKnowledgeBaseJSONRequestBody defines body for CreateKnowledgeBase for application/json ContentType.
 type CreateKnowledgeBaseJSONRequestBody = CreateKnowledgeBaseRequest
 
@@ -1361,6 +1379,9 @@ type ServerInterface interface {
 	// ReindexDocument 重新索引一份文档（重新切分、向量化、入库）
 	// (POST /api/v1/documents/{id}/reindex)
 	ReindexDocument(c *gin.Context, id openapi_types.UUID)
+	// DiffDocumentVersions 对比同一篇论文两个版本的差异（模型生成修订要点）
+	// (POST /api/v1/documents/{id}/version-diff)
+	DiffDocumentVersions(c *gin.Context, id openapi_types.UUID)
 	// ListKnowledgeBases 列出全部知识库（按创建时间倒序）
 	// (GET /api/v1/knowledge-bases)
 	ListKnowledgeBases(c *gin.Context)
@@ -2032,6 +2053,31 @@ func (siw *ServerInterfaceWrapper) ReindexDocument(c *gin.Context) {
 	}
 
 	siw.Handler.ReindexDocument(c, id)
+}
+
+// DiffDocumentVersions operation middleware
+func (siw *ServerInterfaceWrapper) DiffDocumentVersions(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DiffDocumentVersions(c, id)
 }
 
 // ListKnowledgeBases operation middleware
@@ -2743,6 +2789,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/api/v1/documents/:id/file", wrapper.DownloadDocumentFile)
 	router.POST(options.BaseURL+"/api/v1/documents/:id/duplicate-resolution", wrapper.ResolveDocumentDuplicate)
 	router.POST(options.BaseURL+"/api/v1/visualize", wrapper.VisualizeCSV)
+	router.POST(options.BaseURL+"/api/v1/documents/:id/version-diff", wrapper.DiffDocumentVersions)
 	router.POST(options.BaseURL+"/api/v1/translate", wrapper.TranslateText)
 	router.GET(options.BaseURL+"/api/v1/conversations", wrapper.ListConversations)
 	router.POST(options.BaseURL+"/api/v1/conversations", wrapper.CreateConversation)

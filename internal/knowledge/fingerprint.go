@@ -3,9 +3,9 @@ package knowledge
 import (
 	"hash/fnv"
 	"strings"
+	"unicode"
 
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
-	"github.com/XiaoleC05/CongoRAG/internal/tokenize"
 )
 
 // fingerprintBits 是 SimHash 的位数。64 位足够区分几十~几百份论文：
@@ -29,7 +29,10 @@ const duplicateThreshold = 14
 // token 规则复用检索用的 tokenize.Text：中文 bigram + 英文小写词，
 // 这样中文论文和英文论文都能得到稳定的指纹。
 func ContentFingerprint(text string) string {
-	tokens := strings.Fields(tokenize.Text(text))
+	// 【不能用 tokenize.Text】那个函数为 tsquery 做了去重（同一 token 只留
+	// 第一次），而 SimHash 需要词频：短文档里"新增了一个词"若只是改变频率，
+	// 去重版本完全看不出差异。这里用同一套切分规则但保留重复。
+	tokens := fingerprintTokens(text)
 	if len(tokens) == 0 {
 		return ""
 	}
@@ -71,6 +74,49 @@ func FingerprintOfChunks(chunks []domain.Chunk) string {
 		b.WriteString("\n")
 	}
 	return ContentFingerprint(b.String())
+}
+
+// fingerprintTokens 与 tokenize.Text 同规则（英文小写词、中文 bigram），
+// 但保留重复 token，供 SimHash 使用词频。
+func fingerprintTokens(s string) []string {
+	var tokens []string
+	var latin strings.Builder
+	var han []rune
+	flushLatin := func() {
+		if latin.Len() > 0 {
+			tokens = append(tokens, strings.ToLower(latin.String()))
+			latin.Reset()
+		}
+	}
+	flushHan := func() {
+		if len(han) == 0 {
+			return
+		}
+		if len(han) == 1 {
+			tokens = append(tokens, string(han[0]))
+		} else {
+			for i := 0; i+1 < len(han); i++ {
+				tokens = append(tokens, string(han[i:i+2]))
+			}
+		}
+		han = han[:0]
+	}
+	for _, r := range s {
+		switch {
+		case unicode.Is(unicode.Han, r):
+			flushLatin()
+			han = append(han, r)
+		case unicode.IsLetter(r) || unicode.IsDigit(r) || r == '.' || r == '-' || r == '_':
+			flushHan()
+			latin.WriteRune(r)
+		default:
+			flushLatin()
+			flushHan()
+		}
+	}
+	flushLatin()
+	flushHan()
+	return tokens
 }
 
 // fmtFingerprint 把 64 位值格式化成 16 位十六进制。

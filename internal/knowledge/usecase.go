@@ -463,6 +463,21 @@ func (u *Usecase) GetDocument(ctx context.Context, id uuid.UUID) (*Document, err
 	return d, nil
 }
 
+// ChunksPreview 返回一份文档开头若干分块的文本（版本对比用）。
+//
+// 【为什么只取开头】版本差异主要在标题/摘要/引言；整份 15 页论文塞给模型
+// 会超预算，而且参考文献页的差异对"这个版本改了什么"没有解释价值。
+func (u *Usecase) ChunksPreview(ctx context.Context, docID uuid.UUID, limit int) ([]domain.Chunk, error) {
+	chunks, err := u.docRepo.ListChunkContents(ctx, u.db, docID)
+	if err != nil {
+		return nil, fmt.Errorf("list chunks of document %s: %w", docID, err)
+	}
+	if limit > 0 && len(chunks) > limit {
+		chunks = chunks[:limit]
+	}
+	return chunks, nil
+}
+
 // DeleteDocument 删除单个文档。
 //
 // 不开事务：只有一句 DELETE，document_chunks 由 ON DELETE CASCADE

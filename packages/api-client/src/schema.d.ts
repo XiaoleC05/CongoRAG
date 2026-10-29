@@ -381,6 +381,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{id}/version-diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 对比同一篇论文两个版本的差异（模型生成修订要点） */
+        post: operations["diffDocumentVersions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/translate": {
         parameters: {
             query?: never;
@@ -1008,6 +1027,19 @@ export interface components {
             pdfUrl: string;
             /** @description 用作入库文件名（可空，服务端会兜底） */
             title?: string;
+        };
+        VersionDiffRequest: {
+            /**
+             * Format: uuid
+             * @description 要对比的另一份文档（通常是与本版本高度重合的旧版本）
+             */
+            otherDocumentId: string;
+        };
+        VersionDiff: {
+            /** @description 中文修订要点（Markdown 列表；模型只基于给出的开头分块） */
+            summary: string;
+            olderFilename: string;
+            newerFilename: string;
         };
         VisualizeRequest: {
             /** @description CSV 文本（首行可选表头） */
@@ -2198,6 +2230,35 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidArgument"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    diffDocumentVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionDiffRequest"];
+            };
+        };
+        responses: {
+            /** @description 版本差异摘要 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionDiff"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };

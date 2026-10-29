@@ -785,6 +785,43 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── 文档版本差异（参赛版 M1 的"高级表现"）──────────────────
+  #
+  # 上传去重只回答"是不是同一篇的不同版本"；这里进一步回答"改了什么"：
+  # 两份文档各取开头若干分块交给模型对比，输出中文修订要点。
+  /api/v1/documents/{id}/version-diff:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: diffDocumentVersions
+      summary: 对比同一篇论文两个版本的差异（模型生成修订要点）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VersionDiffRequest'
+      responses:
+        '200':
+          description: 版本差异摘要
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionDiff'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ── 翻译（参赛版 M3 阅读器）─────────────────────────────────
   #
   # 阅读器把当前页的文本抽出来（PDF.js 的 textContent），交给后端用当前
@@ -1939,6 +1976,27 @@ components:
         title:
           type: string
           description: 用作入库文件名（可空，服务端会兜底）
+
+    VersionDiffRequest:
+      type: object
+      required: [otherDocumentId]
+      properties:
+        otherDocumentId:
+          type: string
+          format: uuid
+          description: 要对比的另一份文档（通常是与本版本高度重合的旧版本）
+
+    VersionDiff:
+      type: object
+      required: [summary, olderFilename, newerFilename]
+      properties:
+        summary:
+          type: string
+          description: 中文修订要点（Markdown 列表；模型只基于给出的开头分块）
+        olderFilename:
+          type: string
+        newerFilename:
+          type: string
 
     VisualizeRequest:
       type: object
