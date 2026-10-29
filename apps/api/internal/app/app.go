@@ -31,6 +31,7 @@ import (
 	"github.com/XiaoleC05/CongoRAG/internal/ctxmgr"
 	"github.com/XiaoleC05/CongoRAG/internal/knowledge"
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
+	"github.com/XiaoleC05/CongoRAG/internal/pdfparse"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 	"github.com/XiaoleC05/CongoRAG/internal/retrieval"
 
@@ -157,6 +158,13 @@ func Run(webFS embed.FS) error {
 		platform.NewTxManager(pool),
 		pool,
 	)
+
+	// 参赛版：配置了 PDF 解析 sidecar 才接上。没配时 .pdf 上传会在
+	// worker 处理阶段明确失败（落 failed 终态），md/txt 行为完全不变——
+	// 这样默认启动不依赖额外进程，评审环境少一个启动条件。
+	if cfg.PDFServiceURL != "" {
+		knowUC.SetPDFParser(pdfparse.NewClient(cfg.PDFServiceURL, 3*time.Minute))
+	}
 
 	// 【llmUC 必须排在 knowUC 之后，这不是顺序偏好】换 embedding 模型时，
 	// "清空旧向量 → 改列类型 → 全部文档重新排队"三步必须在同一个事务里，

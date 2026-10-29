@@ -42,6 +42,14 @@ type Config struct {
 	// 根目录这个字符串，不会回头再读 Config，所以换目录只需改这里）。
 	DocumentsDir string
 
+	// PDFServiceURL 是参赛版 PDF 解析 sidecar 的地址（如 http://127.0.0.1:8000）。
+	//
+	// 【空字符串 = 关闭 PDF 通道】不设时 .pdf 上传会在 worker 处理阶段
+	// 落 failed 终态（明确报"没有配置解析器"），md/txt 完全不受影响。
+	// 这样默认启动行为与之前逐字节一致，不会因为部署环境没起 sidecar
+	// 就让整个服务起不来。
+	PDFServiceURL string
+
 	// LogLevel 是 debug | info | warn | error
 	LogLevel string
 
@@ -109,6 +117,7 @@ func LoadConfig() (*Config, error) {
 	cfg := &Config{
 		DatabaseURL:      os.Getenv("CONGORAG_DB_URL"),
 		ListenAddr:       envOr("CONGORAG_LISTEN_ADDR", defaultListenAddr),
+		PDFServiceURL:    os.Getenv("CONGORAG_PDF_SERVICE_URL"),
 		DocumentsDir:     envOr("CONGORAG_DOCUMENTS_DIR", defaultDocumentsDir),
 		LogLevel:         envOr("CONGORAG_LOG_LEVEL", defaultLogLevel),
 		MasterKey:        os.Getenv("CONGORAG_MASTER_KEY"),

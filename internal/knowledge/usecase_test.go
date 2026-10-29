@@ -170,6 +170,25 @@ func (f *fakeDocRepo) UpdateStatus(ctx context.Context, q platform.Querier, id u
 	return platform.ErrNotFound
 }
 
+// UpdateParsedInfo 复刻真实实现的语义：只写文档级解析元信息，
+// 不改状态、不做 CAS。参赛版 ProcessDocument 在落库事务里调用它。
+func (f *fakeDocRepo) UpdateParsedInfo(ctx context.Context, q platform.Querier, id uuid.UUID, pageCount int, parser string) error {
+	if f.failOn == "UpdateParsedInfo" {
+		return f.err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	for _, d := range f.docs {
+		if d.ID == id {
+			d.PageCount = pageCount
+			d.Parser = parser
+			return nil
+		}
+	}
+	return platform.ErrNotFound
+}
+
 // ListByKnowledgeBase 复刻真实 SQL 的语义：按 (created_at DESC, id DESC) 排，
 // 按游标过滤，多取一条判 hasMore，再切回 limit 条。
 //
@@ -829,7 +848,7 @@ func TestStatus_CanTransition(t *testing.T) {
 		{StatusProcessing, StatusReady, true},
 		{StatusProcessing, StatusFailed, true},
 		{StatusProcessing, StatusQueued, true}, // 允许重试
-		{StatusReady, StatusProcessing, true}, // 重新索引（入队后由 worker 推进）
+		{StatusReady, StatusProcessing, true},  // 重新索引（入队后由 worker 推进）
 		// 【#39 之前这一行是 false】重新索引的入口把文档直接 CAS 回 queued
 		// 再交给 worker——queued 与 processing 在代码里已经有明确分工
 		// （queued = 排队中，processing = worker 正在跑），入队侧写 processing

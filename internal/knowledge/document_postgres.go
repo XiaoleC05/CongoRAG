@@ -45,6 +45,7 @@ func (r *PgDocRepo) Insert(ctx context.Context, q platform.Querier, d *Document)
 // 而先聚合全表"的形状，两种写法的计划没有区别，就没必要动。
 const documentByIDSQL = `SELECT d.id, d.knowledge_base_id, d.filename, d.storage_key,
 	        d.status, d.byte_size, d.created_at, d.updated_at,
+	        d.page_count, d.parser,
 	        count(c.id)
 	 FROM documents d
 	 LEFT JOIN document_chunks c ON c.document_id = d.id
@@ -56,7 +57,7 @@ func (r *PgDocRepo) ByID(ctx context.Context, q platform.Querier, id uuid.UUID) 
 	var status string
 	err := q.QueryRow(ctx, documentByIDSQL, id).Scan(
 		&d.ID, &d.KnowledgeBaseID, &d.Filename, &d.StorageKey, &status, &d.ByteSize,
-		&d.CreatedAt, &d.UpdatedAt, &d.ChunkCount)
+		&d.CreatedAt, &d.UpdatedAt, &d.PageCount, &d.Parser, &d.ChunkCount)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("document %s: %w", id, platform.ErrNotFound)
@@ -92,6 +93,21 @@ func (r *PgDocRepo) UpdateStatus(ctx context.Context, q platform.Querier, id uui
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("document %s: expected status %s but no row matched: %w", id, from, platform.ErrConflict)
+	}
+	return nil
+}
+
+// UpdateParsedInfo 写入解析元信息（page_count / parser）。
+//
+// 【为什么不走 UpdateStatus】状态迁移有 CAS 和合法迁移表两层约束，
+// 这两列是"内容元信息"，与状态无关；混进状态迁移会让 CAS 语义变得含混。
+// 调用点在 ProcessDocument 的落库事务里，与分块写入同生共死。
+func (r *PgDocRepo) UpdateParsedInfo(ctx context.Context, q platform.Querier, id uuid.UUID, pageCount int, parser string) error {
+	_, err := q.Exec(ctx,
+		`UPDATE documents SET page_count = $2, parser = $3 WHERE id = $1`,
+		id, pageCount, parser)
+	if err != nil {
+		return fmt.Errorf("update parsed info of document %s: %w", id, platform.WrapPgErr(err))
 	}
 	return nil
 }
@@ -190,6 +206,7 @@ func (r *PgDocRepo) markForReindexReturningIDs(ctx context.Context, q platform.Q
 // 没有分块的文档要的正是 0。
 const documentsSelectCols = `SELECT d.id, d.knowledge_base_id, d.filename, d.storage_key,
 	        d.status, d.byte_size, d.created_at, d.updated_at,
+	        d.page_count, d.parser,
 	        (SELECT count(*) FROM document_chunks c WHERE c.document_id = d.id)
 	 FROM documents d`
 
@@ -260,7 +277,7 @@ func (r *PgDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier,
 		d := &Document{}
 		var status string
 		if err := rows.Scan(&d.ID, &d.KnowledgeBaseID, &d.Filename, &d.StorageKey, &status,
-			&d.ByteSize, &d.CreatedAt, &d.UpdatedAt, &d.ChunkCount); err != nil {
+			&d.ByteSize, &d.CreatedAt, &d.UpdatedAt, &d.PageCount, &d.Parser, &d.ChunkCount); err != nil {
 			return nil, false, fmt.Errorf("scan document: %w", err)
 		}
 		d.Status = Status(status)

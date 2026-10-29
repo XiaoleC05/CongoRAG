@@ -56,6 +56,19 @@ type KBRepo interface {
 // 文档
 // ────────────────────────────────────────────────────────────────
 
+// PDFParser 是"把 PDF 原始字节解析成学术结构分块"的端口。
+//
+// 【为什么是 knowledge 声明、pdfparse 实现】依赖方向要从业务包指向
+// 装配根：knowledge 不知道 PDF 是 Python 解析的还是 Go 解析的，只声明
+// "我需要一个能返回页码/坐标/章节的东西"。pdfparse.Client 的方法签名
+// 与本接口逐字相同，装配根直接把实例 SetPDFParser 进去——两边零 import 边。
+//
+// 返回 pageCount/parser 是为了落库：page_count 给前端显示"15 页"，
+// parser 记录"这批块是谁解析的"（换解析器导致引用变化时便于排查）。
+type PDFParser interface {
+	ParsePDF(ctx context.Context, filename string, content []byte) (pageCount int, parser string, chunks []domain.Chunk, err error)
+}
+
 // DocRepo 是文档的存取接口。
 //
 // 名字必须是 DocRepo，不能叫 Repo——同一个包里已经有 KBRepo，
@@ -69,6 +82,11 @@ type DocRepo interface {
 	// 再在 SQL 里加 WHERE status = $from 做 CAS，两层防护（业务规则 +
 	// 并发保护）。不满足任何一层都返回 platform.ErrConflict。
 	UpdateStatus(ctx context.Context, q platform.Querier, id uuid.UUID, from, to Status) error
+
+	// UpdateParsedInfo 记录解析结果里的文档级元信息（页数、解析器版本）。
+	// 与分块落库同事务调用：两者描述的是"同一份解析产物"，分开写会出现
+	// "页数更新了、分块还是旧的"（或反过来）的中间态。
+	UpdateParsedInfo(ctx context.Context, q platform.Querier, id uuid.UUID, pageCount int, parser string) error
 
 	// ListByKnowledgeBase 按 created_at 倒序取一个知识库下的文档，最多 limit 条。
 	//

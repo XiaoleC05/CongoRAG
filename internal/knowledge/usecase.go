@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
 
@@ -42,6 +43,11 @@ type Usecase struct {
 	sched   platform.PeriodicScheduler
 	txm     platform.TxManager
 	db      platform.Querier
+
+	// pdfParser 是可选的：没注入时 .pdf 上传会在处理阶段落终态失败，
+	// md/txt 的既有链路完全不受影响。用 setter 而不是加构造参数，
+	// 是为了不把三十多处既有测试的构造调用全部拖下水。
+	pdfParser PDFParser
 }
 
 func NewUsecase(
@@ -67,6 +73,11 @@ func NewUsecase(
 		db:      db,
 	}
 }
+
+// SetPDFParser 注入 PDF 解析器（参赛版）。装配根在 cfg.PDFServiceURL
+// 非空时调用；不调用时 .pdf 文档会在 ProcessDocument 里被明确拒绝
+// （落 failed 终态，而不是静默产出空文档）。
+func (u *Usecase) SetPDFParser(p PDFParser) { u.pdfParser = p }
 
 // maxNameLen 是知识库名字的长度上限，按字符数（rune）算而不是字节数——
 // 中文一个字三字节，按字节算的话限制会随语言变化。
@@ -234,6 +245,10 @@ var allowedUploadExts = map[string]bool{
 	".md":       true,
 	".markdown": true,
 	".txt":      true,
+	// 参赛版新增：PDF 走 sidecar 解析（ProcessDocument 里按扩展名分流）。
+	// 放开白名单只是"允许存"，解析失败仍会落 failed 终态，不会出现
+	// "上传成功但库里是空文档"的静默状态。
+	".pdf": true,
 }
 
 // Upload 是写路径的完整实现，顺序锁死在这一个方法里，不能被拆开
@@ -605,12 +620,37 @@ func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID, isLastAt
 	// 同一个结果，所以这里直接落终态，不交给 River 的重试。返回的错误仍然会
 	// 让 River 重投，但那几次投递读回的是终态 failed，走上面那个 case 直接
 	// 返回 nil——不会重跑、也不会刷出 24 条与真实原因无关的"状态冲突"日志。
-	if !utf8.Valid(content) {
-		u.markFailed(ctx, docID)
-		return fmt.Errorf("document %s is not valid UTF-8 text: %w", docID, platform.ErrInvalid)
+	// 【按扩展名分流】md/txt 走原来的"UTF-8 校验 + 按空行切分"；
+	// PDF 交给 sidecar（knowledge 只依赖 PDFParser 端口，见 port.go）。
+	//
+	// PDF 分支不做 utf8.Valid：PDF 是二进制格式，合法 PDF 几乎必然含
+	// 非 UTF-8 字节，拿文本编码校验它等于把正常文件判成非法。
+	ext := strings.ToLower(path.Ext(d.Filename))
+	var (
+		chunks    []domain.Chunk
+		pageCount int
+		parser    string
+	)
+	if ext == ".pdf" {
+		if u.pdfParser == nil {
+			u.markFailed(ctx, docID)
+			return fmt.Errorf("document %s is pdf but no pdf parser is configured (set CONGORAG_PDF_SERVICE_URL): %w",
+				docID, platform.ErrInvalid)
+		}
+		pageCount, parser, chunks, err = u.pdfParser.ParsePDF(ctx, d.Filename, content)
+		if err != nil {
+			// 解析失败按可重试处理（sidecar 可能只是没起来/超时），
+			// 由 River 按 attempt 重试，最后一次才落 failed 终态。
+			return u.failProcessing(ctx, docID, isLastAttempt,
+				fmt.Errorf("parse pdf %s: %w", d.Filename, err))
+		}
+	} else {
+		if !utf8.Valid(content) {
+			u.markFailed(ctx, docID)
+			return fmt.Errorf("document %s is not valid UTF-8 text: %w", docID, platform.ErrInvalid)
+		}
+		chunks = parseAndChunk(content)
 	}
-
-	chunks := parseAndChunk(content)
 
 	// 【issue #97：embedding 在事务外先算完，写库与状态置 ready 同事务】
 	// 索引一份文档是性质相反的两半，而它们对事务的要求正好相反：
@@ -646,6 +686,11 @@ func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID, isLastAt
 	err = u.txm.InTx(ctx, func(q platform.Querier) error {
 		if err := u.indexer.ReplaceChunks(ctx, q, docID, chunks, vecs, model); err != nil {
 			return fmt.Errorf("index document %s: %w", docID, err)
+		}
+		// 解析元信息与分块同事务：两者是同一份解析产物的两面，
+		// 分开写会留下"页数变了、块没变"的中间态。
+		if err := u.docRepo.UpdateParsedInfo(ctx, q, docID, pageCount, parser); err != nil {
+			return fmt.Errorf("record parsed info of document %s: %w", docID, err)
 		}
 		if err := u.docRepo.UpdateStatus(ctx, q, docID, StatusProcessing, StatusReady); err != nil {
 			return fmt.Errorf("mark document %s ready: %w", docID, err)

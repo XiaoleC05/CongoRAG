@@ -33,7 +33,27 @@ type Chunk struct {
 	Content    string
 	Score      float64 // 余弦相似度，越大越相关
 	Filename   string  // 只有 Search 返回的 Chunk 会填这个字段
+
+	// 以下五个字段是参赛版「科研助手」新增的学术结构（migration 0015）。
+	//
+	// 【为什么放在 domain.Chunk 而不是另建 PDFBlock 类型】检索、引用、
+	// 评测三条链路都直接消费 domain.Chunk——另建一个类型意味着每个消费者
+	// 都要在两套结构之间转换一遍，而它们的差异只有一个"有没有页码"。
+	//
+	// 【零值语义】md/txt 文档没有页，PageStart/PageEnd 为 0、BBox/SectionPath
+	// 为 nil；PDF 解析出来才填。消费方用 IsAcademic 判断，不要拿 0 当页码。
+	PageStart   int       // 1-based 物理页码；0 表示未知/无页概念
+	PageEnd     int       // 跨页块才有意义；等于 PageStart 表示未跨页
+	BBox        []float64 // 归一化 [x0,y0,x1,y1]，0~1，左上原点
+	SectionPath []string  // 章节路径，如 ["3 Model Architecture", "3.2 Attention"]
+	BlockType   string    // heading|paragraph|formula|table|list|reference|caption|other
 }
+
+// IsAcademic 表示这个分块是否带学术结构（PDF 解析产物）。
+//
+// 【为什么需要它】PageStart 的零值 0 是合法的"没有页"标记，不是第 0 页；
+// 想按页跳转的代码必须先判断，否则会把 md 文档块跳到 PDF 第 0 页。
+func (c Chunk) IsAcademic() bool { return c.PageStart > 0 }
 
 // Memory 是长期记忆的一条。
 type Memory struct {
@@ -65,6 +85,14 @@ type Citation struct {
 	Filename   string
 	Snippet    string
 	Score      float64
+
+	// 参赛版新增：引用要能"跳到论文第几页、高亮哪一块"。
+	//
+	// 【零值语义与 Chunk 一致】md/txt 文档这三个字段是零值，前端不渲染
+	// 页码按钮；PDF 才有。见 Chunk.IsAcademic。
+	Page        int
+	BBox        []float64
+	SectionPath []string
 }
 
 // TokenUsage 是一次模型调用的用量。
