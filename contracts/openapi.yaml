@@ -1284,7 +1284,7 @@ components:
     # 不需要为调试视图再做一套展示。
     KnowledgeSearchHit:
       type: object
-      required: [chunkId, documentId, filename, snippet, score, page, pageEnd, bbox, sectionPath]
+      required: [chunkId, documentId, filename, snippet, score, page, pageEnd, bbox, sectionPath, vectorScore, lexicalScore]
       properties:
         chunkId:
           type: string
@@ -1332,6 +1332,22 @@ components:
           items:
             type: string
           description: 章节路径（如 ["3 Model Architecture", "3.2 Attention"]）；md/txt 为 null
+
+        # ── 参赛版 M2：混合检索的两路原始分数 ──────────────────────
+        #
+        # score 是 RRF 融合后的最终排序分（量纲不同于相似度，只在同一
+        # 次查询内可比）；这两列是两路各自的原始分，检索调试时用来判断
+        # "这一路到底召回了没有"。
+        vectorScore:
+          type: number
+          format: double
+          nullable: true
+          description: 向量余弦相似度（0~1）；这一路没命中时为 null
+        lexicalScore:
+          type: number
+          format: double
+          nullable: true
+          description: 词法 ts_rank_cd（>=0）；这一路没命中时为 null
 
     KnowledgeSearchResult:
       type: object

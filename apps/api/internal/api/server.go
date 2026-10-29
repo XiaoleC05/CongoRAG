@@ -423,6 +423,16 @@ func intPtrOrNil(v int) *int {
 	return &v
 }
 
+// floatPtrOrNil 与 intPtrOrNil 同理：0 表示"这一路没命中"。
+// 余弦相似度恰好 0 等价于不相关，ts_rank_cd 为 0 不进结果集，
+// 所以用 0 当"没有"不会丢真实信息。
+func floatPtrOrNil(v float64) *float64 {
+	if v == 0 {
+		return nil
+	}
+	return &v
+}
+
 func floatSlicePtrOrNil(v []float64) *[]float64 {
 	if len(v) == 0 {
 		return nil
@@ -1293,10 +1303,12 @@ func (s *Server) SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 			Filename:    ch.Filename,
 			Snippet:     ch.Content,
 			Score:       ch.Score,
-			Page:        intPtrOrNil(ch.PageStart),
-			PageEnd:     intPtrOrNil(ch.PageEnd),
-			Bbox:        floatSlicePtrOrNil(ch.BBox),
-			SectionPath: stringSlicePtrOrNil(ch.SectionPath),
+			Page:         intPtrOrNil(ch.PageStart),
+			PageEnd:      intPtrOrNil(ch.PageEnd),
+			Bbox:         floatSlicePtrOrNil(ch.BBox),
+			SectionPath:  stringSlicePtrOrNil(ch.SectionPath),
+			VectorScore:  floatPtrOrNil(ch.VectorScore),
+			LexicalScore: floatPtrOrNil(ch.LexicalScore),
 		})
 	}
 	c.JSON(http.StatusOK, KnowledgeSearchResult{Hits: hits})

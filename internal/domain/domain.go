@@ -47,6 +47,14 @@ type Chunk struct {
 	BBox        []float64 // 归一化 [x0,y0,x1,y1]，0~1，左上原点
 	SectionPath []string  // 章节路径，如 ["3 Model Architecture", "3.2 Attention"]
 	BlockType   string    // heading|paragraph|formula|table|list|reference|caption|other
+
+	// 参赛版 M2：混合检索的两路原始分数（只在检索结果里填，索引输入时为零）。
+	//
+	// 【为什么不复用 Score】Score 是"最终排序分"（现在是 RRF 融合分），
+	// 而这两列分别是向量余弦相似度、词法 ts_rank_cd——量纲不同、用途不同：
+	// 前端检索调试面板要把它们并排显示，出问题时才能判断"是没召回还是排序错"。
+	VectorScore  float64
+	LexicalScore float64
 }
 
 // IsAcademic 表示这个分块是否带学术结构（PDF 解析产物）。

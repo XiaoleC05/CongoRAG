@@ -676,6 +676,16 @@ export interface components {
             bbox: number[] | null;
             /** @description 章节路径（如 ["3 Model Architecture", "3.2 Attention"]）；md/txt 为 null */
             sectionPath: string[] | null;
+            /**
+             * Format: double
+             * @description 向量余弦相似度（0~1）；这一路没命中时为 null
+             */
+            vectorScore: number | null;
+            /**
+             * Format: double
+             * @description 词法 ts_rank_cd（>=0）；这一路没命中时为 null
+             */
+            lexicalScore: number | null;
         };
         KnowledgeSearchResult: {
             /**

@@ -183,7 +183,7 @@ func Run() error {
 	// api 侧那一次注入只影响上传白名单之外的路径（当前没有），
 	// 两边都接是为了两个装配根保持对称。
 	if cfg.PDFServiceURL != "" {
-		knowUC.SetPDFParser(pdfparse.NewClient(cfg.PDFServiceURL, 3*time.Minute))
+		knowUC.SetPDFParser(pdfparse.NewClient(cfg.PDFServiceURL, cfg.PDFTimeout))
 	}
 
 	// ── River：Workers 必须在 Client 构造之前注册好 ──

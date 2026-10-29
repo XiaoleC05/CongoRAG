@@ -143,7 +143,11 @@ func (c *Client) ParsePDF(ctx context.Context, filename string, content []byte) 
 func chunksFromBlocks(blocks []block) []domain.Chunk {
 	out := make([]domain.Chunk, 0, len(blocks))
 	for _, b := range blocks {
-		text := strings.TrimSpace(b.Text)
+		// 【必须去掉 NUL】PDF 文本抽取偶尔会带 \u0000（0x00）。Postgres 的
+		// text 类型不接受 NUL 字节，会以 "invalid byte sequence for encoding
+		// UTF8: 0x00" 拒绝整条 INSERT——一份 541 页的文档里只要有一个分块
+		// 带 NUL，整篇就会在落库那一步失败并反复重试（本机实测）。
+		text := strings.TrimSpace(strings.ReplaceAll(b.Text, "\x00", ""))
 		if text == "" {
 			continue
 		}

@@ -39,6 +39,12 @@ type fakeRepo struct {
 	lastSearchModel string
 	lastSearchTopK  int
 	lastSearchVec   []float32
+
+	// 混合检索第二路（词法）的摆放值与参数记录。
+	lexicalResult    []domain.Chunk
+	lexicalErr       error
+	lastLexicalQuery string
+	lastLexicalTopK  int
 }
 
 func newFakeRepo() *fakeRepo {
@@ -81,6 +87,15 @@ func (f *fakeRepo) Search(ctx context.Context, q platform.Querier, kbID uuid.UUI
 		return nil, f.searchErr
 	}
 	return f.searchResult, nil
+}
+
+func (f *fakeRepo) SearchLexical(ctx context.Context, q platform.Querier, kbID uuid.UUID, tsQuery string, topK int) ([]domain.Chunk, error) {
+	f.lastLexicalQuery = tsQuery
+	f.lastLexicalTopK = topK
+	if f.lexicalErr != nil {
+		return nil, f.lexicalErr
+	}
+	return f.lexicalResult, nil
 }
 
 // fakeRegistry 只实现 EmbedChunks 真正用到的 Embedder；其余方法
@@ -528,8 +543,11 @@ func TestDeleteByDocument_PropagatesError(t *testing.T) {
 func TestSearch_Success(t *testing.T) {
 	model := embeddingModel(uuid.New(), "embed-1", time.Now())
 	repo := newFakeRepo()
-	want := []domain.Chunk{{Content: "命中的分块", Score: 0.87, Filename: "a.md"}}
-	repo.searchResult = want
+	chunkID := uuid.New()
+	repo.searchResult = []domain.Chunk{{
+		ID: chunkID, Content: "命中的分块", Score: 0.87, Filename: "a.md",
+		PageStart: 7, BBox: []float64{0.1, 0.2, 0.3, 0.4},
+	}}
 	registry := &fakeRegistry{embedder: &fakeEmbedder{}}
 	configRepo := &fakeConfigRepo{models: []*llm.Model{model}}
 	uc := NewUsecase(repo, registry, configRepo, nil)
@@ -540,14 +558,71 @@ func TestSearch_Success(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, want, got)
+	require.Len(t, got, 1, "没有词法结果时，融合结果就是向量那一路")
+	assert.Equal(t, chunkID, got[0].ID)
+	assert.Equal(t, 7, got[0].PageStart, "学术定位字段必须原样带出")
+	// 融合后 Score 是 RRF 分（不是余弦），两路原始分留在专门字段里。
+	assert.Greater(t, got[0].Score, 0.0)
+	assert.InDelta(t, 0.87, got[0].VectorScore, 1e-9)
+	assert.Zero(t, got[0].LexicalScore)
 
-	// Repo.Search 收到的参数必须是"解析出的 embedding 模型" + "调用方传的 TopK"，
-	// 不是别的来源。
+	// Repo.Search 收到的参数：KB、解析出的 embedding 模型、放大的召回数。
 	assert.Equal(t, kbID, repo.lastSearchKBID)
 	assert.Equal(t, model.ModelID, repo.lastSearchModel)
-	assert.Equal(t, 3, repo.lastSearchTopK)
+	assert.Equal(t, 20, repo.lastSearchTopK, "topK=3 时按 4 倍放大并抬到下限 20")
 	assert.NotEmpty(t, repo.lastSearchVec, "应该真的调用了 embedder 把查询文本变成向量")
+	// 词法这一路用同一套切词规则拼 tsquery。
+	assert.Contains(t, repo.lastLexicalQuery, "查询")
+	assert.Equal(t, 20, repo.lastLexicalTopK)
+}
+
+func TestSearch_HybridFusesVectorAndLexical(t *testing.T) {
+	model := embeddingModel(uuid.New(), "embed-1", time.Now())
+	repo := newFakeRepo()
+
+	sharedID := uuid.New()
+	lexicalOnlyID := uuid.New()
+	repo.searchResult = []domain.Chunk{{ID: sharedID, Content: "向量命中", Score: 0.9, Filename: "a.md"}}
+	repo.lexicalResult = []domain.Chunk{
+		{ID: lexicalOnlyID, Content: "词法命中", Score: 4.2, Filename: "b.md", PageStart: 3},
+		{ID: sharedID, Content: "向量命中", Score: 1.1, Filename: "a.md"},
+	}
+	registry := &fakeRegistry{embedder: &fakeEmbedder{}}
+	configRepo := &fakeConfigRepo{models: []*llm.Model{model}}
+	uc := NewUsecase(repo, registry, configRepo, nil)
+
+	got, err := uc.Search(context.Background(), domain.SearchRequest{
+		KnowledgeBaseID: uuid.New(), Text: "查询文本", TopK: 5,
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 2, "两路并集必须都在")
+
+	// 两路都命中的那块排第一：RRF 分数是两次排名贡献之和。
+	assert.Equal(t, sharedID, got[0].ID)
+	assert.InDelta(t, 0.9, got[0].VectorScore, 1e-9)
+	assert.InDelta(t, 1.1, got[0].LexicalScore, 1e-9)
+	assert.Equal(t, lexicalOnlyID, got[1].ID)
+	assert.Zero(t, got[1].VectorScore)
+	assert.InDelta(t, 4.2, got[1].LexicalScore, 1e-9)
+	assert.Greater(t, got[0].Score, got[1].Score)
+}
+
+func TestSearch_LexicalFailureFallsBackToVector(t *testing.T) {
+	model := embeddingModel(uuid.New(), "embed-1", time.Now())
+	repo := newFakeRepo()
+	chunkID := uuid.New()
+	repo.searchResult = []domain.Chunk{{ID: chunkID, Content: "向量命中", Score: 0.8, Filename: "a.md"}}
+	repo.lexicalErr = errors.New("tsquery syntax error")
+	registry := &fakeRegistry{embedder: &fakeEmbedder{}}
+	configRepo := &fakeConfigRepo{models: []*llm.Model{model}}
+	uc := NewUsecase(repo, registry, configRepo, nil)
+
+	got, err := uc.Search(context.Background(), domain.SearchRequest{
+		KnowledgeBaseID: uuid.New(), Text: "查询文本", TopK: 5,
+	})
+	require.NoError(t, err, "词法失败不应让整个检索失败")
+	require.Len(t, got, 1)
+	assert.Equal(t, chunkID, got[0].ID)
 }
 
 // TopK <= 0（调用方没指定）时应该退回 Usecase 的默认值，
@@ -564,7 +639,7 @@ func TestSearch_DefaultsTopKWhenNotSpecified(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, defaultTopK, repo.lastSearchTopK)
+	assert.Equal(t, 20, repo.lastSearchTopK, "默认 topK=5 时召回放大到下限 20")
 }
 
 // WithTopK 这个 Functional Option 设的默认值应该被用上,
@@ -581,7 +656,7 @@ func TestSearch_WithTopKOption_OverridesDefault(t *testing.T) {
 	})
 
 	require.NoError(t, err)
-	assert.Equal(t, 20, repo.lastSearchTopK)
+	assert.Equal(t, 50, repo.lastSearchTopK, "WithTopK(20) 时 4 倍召回被上限 50 截住")
 }
 
 func TestSearch_NoEmbeddingModelConfigured(t *testing.T) {

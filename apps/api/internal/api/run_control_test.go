@@ -269,6 +269,12 @@ func (f *fakeChunkRepo) Search(ctx context.Context, q platform.Querier, kbID uui
 	return f.chunks, nil
 }
 
+// SearchLexical 是混合检索的第二路。这条用例只关心向量那一路的映射，
+// 所以词法返回空——融合后退化为向量结果，与纯向量检索的展示一致。
+func (f *fakeChunkRepo) SearchLexical(ctx context.Context, q platform.Querier, kbID uuid.UUID, tsQuery string, topK int) ([]domain.Chunk, error) {
+	return nil, nil
+}
+
 // fakeEmbedConfigRepo / fakeEmbedderRegistry / fakeEmbedder 让检索那条路径
 // 走完"把 query 变成向量"，而不需要联网、也不需要真的配一个 provider。
 //
@@ -341,7 +347,12 @@ func TestSearchKnowledgeBase_MapsHits(t *testing.T) {
 	assert.Equal(t, docID, got.Hits[0].DocumentId)
 	assert.Equal(t, "a.pdf", got.Hits[0].Filename)
 	assert.Equal(t, "片段", got.Hits[0].Snippet)
-	assert.InDelta(t, 0.87, got.Hits[0].Score, 0.0001)
+	// 参赛版：score 是 RRF 融合分（这一条只有向量一路，所以是 1/(60+1)），
+	// 原始余弦相似度在 vectorScore 里。
+	assert.InDelta(t, 1.0/61.0, got.Hits[0].Score, 0.0001)
+	require.NotNil(t, got.Hits[0].VectorScore)
+	assert.InDelta(t, 0.87, *got.Hits[0].VectorScore, 0.0001)
+	assert.Nil(t, got.Hits[0].LexicalScore)
 }
 
 // 没有命中时必须是**空数组**不是 null：契约里 hits 是数组，

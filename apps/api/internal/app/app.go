@@ -163,7 +163,7 @@ func Run(webFS embed.FS) error {
 	// worker 处理阶段明确失败（落 failed 终态），md/txt 行为完全不变——
 	// 这样默认启动不依赖额外进程，评审环境少一个启动条件。
 	if cfg.PDFServiceURL != "" {
-		knowUC.SetPDFParser(pdfparse.NewClient(cfg.PDFServiceURL, 3*time.Minute))
+		knowUC.SetPDFParser(pdfparse.NewClient(cfg.PDFServiceURL, cfg.PDFTimeout))
 	}
 
 	// 【llmUC 必须排在 knowUC 之后，这不是顺序偏好】换 embedding 模型时，

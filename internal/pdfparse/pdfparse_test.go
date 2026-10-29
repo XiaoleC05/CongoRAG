@@ -65,6 +65,22 @@ func TestParsePDF_SplitsTooLongBlock(t *testing.T) {
 	require.Equal(t, 1, chunks[1].PageStart)
 }
 
+func TestParsePDF_DropsNULBytes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(response{
+			PageCount: 1,
+			Blocks:    []block{{Page: 1, Type: "paragraph", Text: "a\x00b"}},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, 5*time.Second)
+	_, _, chunks, err := c.ParsePDF(context.Background(), "a.pdf", []byte("%PDF"))
+	require.NoError(t, err)
+	require.Len(t, chunks, 1)
+	require.Equal(t, "ab", chunks[0].Content, "Postgres text 不接受 NUL，必须在映射时删掉")
+}
+
 func TestParsePDF_Errors(t *testing.T) {
 	ctx := context.Background()
 

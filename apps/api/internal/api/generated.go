@@ -448,6 +448,9 @@ type KnowledgeSearchHit struct {
 	// Filename 这个分块来自哪份文档（检索 SQL 里 JOIN documents 拿到）
 	Filename string `json:"filename"`
 
+	// LexicalScore 词法 ts_rank_cd（>=0）；这一路没命中时为 null
+	LexicalScore *float64 `json:"lexicalScore"`
+
 	// Page 1-based 物理页码；md/txt 文档为 null
 	Page *int `json:"page"`
 
@@ -462,6 +465,9 @@ type KnowledgeSearchHit struct {
 
 	// Snippet 分块正文
 	Snippet string `json:"snippet"`
+
+	// VectorScore 向量余弦相似度（0~1）；这一路没命中时为 null
+	VectorScore *float64 `json:"vectorScore"`
 }
 
 // KnowledgeSearchRequest Example: {"query":"ConGoRAG 的向量检索用的是什么类型？","topK":5}
