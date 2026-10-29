@@ -307,6 +307,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/visualize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 把 CSV 表格转成图表描述、Mermaid/TikZ 代码与 Figure Caption */
+        post: operations["visualizeCSV"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/translate": {
         parameters: {
             query?: never;
@@ -892,6 +909,44 @@ export interface components {
             /** @description 按 PageRank 降序排列 */
             nodes: components["schemas"]["CitationNode"][];
             edges: components["schemas"]["CitationEdge"][];
+        };
+        VisualizeRequest: {
+            /** @description CSV 文本（首行可选表头） */
+            csv: string;
+            /**
+             * @description 图表类型；auto = 横轴有序数字用折线，否则柱状
+             * @default auto
+             * @enum {string}
+             */
+            chartType: "auto" | "line" | "bar" | "radar";
+            /** @description 图标题；空则用"数据图表" */
+            title?: string;
+        };
+        VisualizeTable: {
+            headers: string[];
+            rows: string[][];
+        };
+        VisualizeSeries: {
+            name: string;
+            values: number[];
+        };
+        VisualizeChart: {
+            /** @enum {string} */
+            type: "line" | "bar" | "radar";
+            title: string;
+            yLabel: string;
+            categories: string[];
+            series: components["schemas"]["VisualizeSeries"][];
+        };
+        VisualizeResult: {
+            table: components["schemas"]["VisualizeTable"];
+            chart: components["schemas"]["VisualizeChart"];
+            /** @description Mermaid xychart-beta 代码 */
+            mermaid: string;
+            /** @description pgfplots/TikZ 代码 */
+            tikz: string;
+            /** @description 学术图注（LLM 润色，失败时确定性兜底） */
+            caption: string;
         };
         TranslateRequest: {
             /** @description 要翻译的原文（字符数上限与后端 maxTranslateRunes 一致） */
@@ -1936,6 +1991,32 @@ export interface operations {
                 };
                 content?: never;
             };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    visualizeCSV: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VisualizeRequest"];
+            };
+        };
+        responses: {
+            /** @description 图表与代码 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisualizeResult"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
             500: components["responses"]["InternalError"];
         };
     };

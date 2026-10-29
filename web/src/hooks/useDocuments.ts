@@ -444,3 +444,30 @@ export function useCitationGraph(kbId: string) {
     },
   })
 }
+
+/**
+ * 数据可视化（参赛版 M6）：POST /api/v1/visualize。
+ *
+ * CSV 由前端读成文本传给后端；后端返回表格、图表描述、Mermaid/TikZ 代码
+ * 与图注。图表本身用 SVG 画（不引图表库），代码块可直接复制进论文。
+ */
+export function useVisualizeCSV() {
+  return useMutation({
+    mutationFn: async (input: {
+      csv: string
+      chartType?: 'auto' | 'line' | 'bar' | 'radar'
+      title?: string
+    }): Promise<Schemas['VisualizeResult']> => {
+      const res = await fetch('/api/v1/visualize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      return (await res.json()) as Schemas['VisualizeResult']
+    },
+  })
+}

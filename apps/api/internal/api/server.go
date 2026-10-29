@@ -30,6 +30,7 @@ import (
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 	"github.com/XiaoleC05/CongoRAG/internal/retrieval"
+	"github.com/XiaoleC05/CongoRAG/internal/visualize"
 )
 
 // Deps 是 Server 需要的全部依赖，由装配根填入。
@@ -474,6 +475,59 @@ func (s *Server) TranslateText(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, TranslateResponse{Translation: out})
+}
+
+// VisualizeCSV 把 CSV 转成图表描述、Mermaid/TikZ 代码与 Figure Caption（M6）。
+func (s *Server) VisualizeCSV(c *gin.Context) {
+	var req VisualizeRequest
+	if !s.bindJSON(c, &req) {
+		return
+	}
+	chartType := "auto"
+	if req.ChartType != nil {
+		chartType = string(*req.ChartType)
+	}
+	title := ""
+	if req.Title != nil {
+		title = *req.Title
+	}
+	res, err := visualize.Build(req.Csv, chartType, title)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	// 图注先给确定性兜底，再用模型润色；模型不可用不影响图表/代码产出。
+	if polished, cerr := s.figureCaption(c.Request.Context(), res.Chart, res.Caption); cerr == nil && strings.TrimSpace(polished) != "" {
+		res.Caption = strings.TrimSpace(polished)
+	}
+	series := make([]VisualizeSeries, 0, len(res.Chart.Series))
+	for _, ss := range res.Chart.Series {
+		series = append(series, VisualizeSeries{Name: ss.Name, Values: ss.Values})
+	}
+	c.JSON(http.StatusOK, VisualizeResult{
+		Table: VisualizeTable{Headers: res.Table.Headers, Rows: res.Table.Rows},
+		Chart: VisualizeChart{
+			Type:       VisualizeChartType(res.Chart.Type),
+			Title:      res.Chart.Title,
+			YLabel:     res.Chart.YLabel,
+			Categories: res.Chart.Categories,
+			Series:     series,
+		},
+		Mermaid: res.Mermaid,
+		Tikz:    res.TikZ,
+		Caption: res.Caption,
+	})
+}
+
+// figureCaption 让模型把"图表数据摘要"润色成一句学术图注。
+func (s *Server) figureCaption(ctx context.Context, chart visualize.Chart, fallback string) (string, error) {
+	data, err := json.Marshal(chart)
+	if err != nil {
+		return "", err
+	}
+	system := "你是学术写作助手。根据给定的图表数据，写一句中文 Figure Caption：说明图表类型、横纵轴变量、主要趋势与极值；不要 Markdown、不要解释。"
+	user := "图表数据（JSON）：\n" + string(data) + "\n\n确定性草稿（可改写但不要偏离数据）：\n" + fallback
+	return s.deps.LLM.Generate(ctx, system, user)
 }
 
 // GetDocumentOutline 返回阅读器目录（参赛版 M3）。

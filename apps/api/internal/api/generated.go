@@ -232,6 +232,51 @@ func (e UsageByModelKind) Valid() bool {
 	}
 }
 
+// Defines values for VisualizeChartType.
+const (
+	VisualizeChartTypeBar   VisualizeChartType = "bar"
+	VisualizeChartTypeLine  VisualizeChartType = "line"
+	VisualizeChartTypeRadar VisualizeChartType = "radar"
+)
+
+// Valid indicates whether the value is a known member of the VisualizeChartType enum.
+func (e VisualizeChartType) Valid() bool {
+	switch e {
+	case VisualizeChartTypeBar:
+		return true
+	case VisualizeChartTypeLine:
+		return true
+	case VisualizeChartTypeRadar:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisualizeRequestChartType.
+const (
+	VisualizeRequestChartTypeAuto  VisualizeRequestChartType = "auto"
+	VisualizeRequestChartTypeBar   VisualizeRequestChartType = "bar"
+	VisualizeRequestChartTypeLine  VisualizeRequestChartType = "line"
+	VisualizeRequestChartTypeRadar VisualizeRequestChartType = "radar"
+)
+
+// Valid indicates whether the value is a known member of the VisualizeRequestChartType enum.
+func (e VisualizeRequestChartType) Valid() bool {
+	switch e {
+	case VisualizeRequestChartTypeAuto:
+		return true
+	case VisualizeRequestChartTypeBar:
+		return true
+	case VisualizeRequestChartTypeLine:
+		return true
+	case VisualizeRequestChartTypeRadar:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WritingRequestKind.
 const (
 	Outline     WritingRequestKind = "outline"
@@ -856,6 +901,59 @@ type UsageSummary struct {
 	TotalPromptTokens     int64          `json:"totalPromptTokens"`
 }
 
+// VisualizeChart defines model for VisualizeChart.
+type VisualizeChart struct {
+	Categories []string           `json:"categories"`
+	Series     []VisualizeSeries  `json:"series"`
+	Title      string             `json:"title"`
+	Type       VisualizeChartType `json:"type"`
+	YLabel     string             `json:"yLabel"`
+}
+
+// VisualizeChartType defines model for VisualizeChart.Type.
+type VisualizeChartType string
+
+// VisualizeRequest defines model for VisualizeRequest.
+type VisualizeRequest struct {
+	// ChartType 图表类型；auto = 横轴有序数字用折线，否则柱状
+	ChartType *VisualizeRequestChartType `json:"chartType,omitempty"`
+
+	// Csv CSV 文本（首行可选表头）
+	Csv string `json:"csv"`
+
+	// Title 图标题；空则用"数据图表"
+	Title *string `json:"title,omitempty"`
+}
+
+// VisualizeRequestChartType 图表类型；auto = 横轴有序数字用折线，否则柱状
+type VisualizeRequestChartType string
+
+// VisualizeResult defines model for VisualizeResult.
+type VisualizeResult struct {
+	// Caption 学术图注（LLM 润色，失败时确定性兜底）
+	Caption string         `json:"caption"`
+	Chart   VisualizeChart `json:"chart"`
+
+	// Mermaid Mermaid xychart-beta 代码
+	Mermaid string         `json:"mermaid"`
+	Table   VisualizeTable `json:"table"`
+
+	// Tikz pgfplots/TikZ 代码
+	Tikz string `json:"tikz"`
+}
+
+// VisualizeSeries defines model for VisualizeSeries.
+type VisualizeSeries struct {
+	Name   string    `json:"name"`
+	Values []float64 `json:"values"`
+}
+
+// VisualizeTable defines model for VisualizeTable.
+type VisualizeTable struct {
+	Headers []string   `json:"headers"`
+	Rows    [][]string `json:"rows"`
+}
+
 // WritingRequest defines model for WritingRequest.
 type WritingRequest struct {
 	// Kind related_work = 相关工作综述段；summary = 摘要/要点总结；
@@ -1072,6 +1170,9 @@ type CreateProviderJSONRequestBody = CreateProviderRequest
 // TranslateTextJSONRequestBody defines body for TranslateText for application/json ContentType.
 type TranslateTextJSONRequestBody = TranslateRequest
 
+// VisualizeCSVJSONRequestBody defines body for VisualizeCSV for application/json ContentType.
+type VisualizeCSVJSONRequestBody = VisualizeRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListAgents 列出已创建的 Agent
@@ -1255,6 +1356,9 @@ type ServerInterface interface {
 	// GetUsageSummary 按模型聚合的 token 用量
 	// (GET /api/v1/usage)
 	GetUsageSummary(c *gin.Context, params GetUsageSummaryParams)
+	// VisualizeCSV 把 CSV 表格转成图表描述、Mermaid/TikZ 代码与 Figure Caption
+	// (POST /api/v1/visualize)
+	VisualizeCSV(c *gin.Context)
 	// Healthz 存活探针
 	// (GET /healthz)
 	Healthz(c *gin.Context)
@@ -2361,6 +2465,19 @@ func (siw *ServerInterfaceWrapper) GetUsageSummary(c *gin.Context) {
 	siw.Handler.GetUsageSummary(c, params)
 }
 
+// VisualizeCSV operation middleware
+func (siw *ServerInterfaceWrapper) VisualizeCSV(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.VisualizeCSV(c)
+}
+
 // Healthz operation middleware
 func (siw *ServerInterfaceWrapper) Healthz(c *gin.Context) {
 
@@ -2435,6 +2552,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/api/v1/documents/:id/references", wrapper.ListDocumentReferences)
 	router.GET(options.BaseURL+"/api/v1/documents/:id/file", wrapper.DownloadDocumentFile)
 	router.POST(options.BaseURL+"/api/v1/documents/:id/duplicate-resolution", wrapper.ResolveDocumentDuplicate)
+	router.POST(options.BaseURL+"/api/v1/visualize", wrapper.VisualizeCSV)
 	router.POST(options.BaseURL+"/api/v1/translate", wrapper.TranslateText)
 	router.GET(options.BaseURL+"/api/v1/conversations", wrapper.ListConversations)
 	router.POST(options.BaseURL+"/api/v1/conversations", wrapper.CreateConversation)

@@ -13,6 +13,7 @@ import { KnowledgeSearchPanel } from '@/components/knowledge/KnowledgeSearchPane
 import { KnowledgeWritingPanel } from '@/components/knowledge/KnowledgeWritingPanel'
 import { KnowledgeComparePanel } from '@/components/knowledge/KnowledgeComparePanel'
 import { KnowledgeCitationGraphPanel } from '@/components/knowledge/KnowledgeCitationGraphPanel'
+import { KnowledgeVisualizePanel } from '@/components/knowledge/KnowledgeVisualizePanel'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -441,6 +442,15 @@ export default function KnowledgeBaseDetailPage() {
           标出"基石论文"，点节点可直接跳到对应论文的阅读器。
         </p>
         <KnowledgeCitationGraphPanel kbId={kbId} />
+      </section>
+
+      {/* 数据可视化 Copilot（参赛版 M6）：CSV → 图表 + Mermaid/TikZ + 图注。 */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-base font-semibold">数据可视化 Copilot</h2>
+        <p className="text-muted-foreground mb-4 text-sm">
+          粘贴论文表格 CSV，自动生成图表、学术图注和 Mermaid / TikZ 代码，可直接放进论文或汇报。
+        </p>
+        <KnowledgeVisualizePanel />
       </section>
 
       <DeleteDocumentDialog

@@ -663,6 +663,34 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── 数据可视化（参赛版 M6）─────────────────────────────────
+  #
+  # 输入 CSV（论文表格数据），返回：解析后的表格、图表描述（前端 SVG 画图）、
+  # Mermaid / TikZ 代码（可直接贴进论文/文档）、学术图注（LLM 润色，失败时
+  # 用确定性兜底）。
+  /api/v1/visualize:
+
+    post:
+      operationId: visualizeCSV
+      summary: 把 CSV 表格转成图表描述、Mermaid/TikZ 代码与 Figure Caption
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisualizeRequest'
+      responses:
+        '200':
+          description: 图表与代码
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VisualizeResult'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ── 翻译（参赛版 M3 阅读器）─────────────────────────────────
   #
   # 阅读器把当前页的文本抽出来（PDF.js 的 textContent），交给后端用当前
@@ -1741,6 +1769,89 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CitationEdge'
+
+    VisualizeRequest:
+      type: object
+      required: [csv]
+      properties:
+        csv:
+          type: string
+          maxLength: 2097152
+          description: CSV 文本（首行可选表头）
+        chartType:
+          type: string
+          enum: [auto, line, bar, radar]
+          default: auto
+          description: 图表类型；auto = 横轴有序数字用折线，否则柱状
+        title:
+          type: string
+          maxLength: 120
+          description: 图标题；空则用"数据图表"
+
+    VisualizeTable:
+      type: object
+      required: [headers, rows]
+      properties:
+        headers:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+
+    VisualizeSeries:
+      type: object
+      required: [name, values]
+      properties:
+        name:
+          type: string
+        values:
+          type: array
+          items:
+            type: number
+            format: double
+
+    VisualizeChart:
+      type: object
+      required: [type, title, yLabel, categories, series]
+      properties:
+        type:
+          type: string
+          enum: [line, bar, radar]
+        title:
+          type: string
+        yLabel:
+          type: string
+        categories:
+          type: array
+          items:
+            type: string
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/VisualizeSeries'
+
+    VisualizeResult:
+      type: object
+      required: [table, chart, mermaid, tikz, caption]
+      properties:
+        table:
+          $ref: '#/components/schemas/VisualizeTable'
+        chart:
+          $ref: '#/components/schemas/VisualizeChart'
+        mermaid:
+          type: string
+          description: Mermaid xychart-beta 代码
+        tikz:
+          type: string
+          description: pgfplots/TikZ 代码
+        caption:
+          type: string
+          description: 学术图注（LLM 润色，失败时确定性兜底）
 
     TranslateRequest:
       type: object
