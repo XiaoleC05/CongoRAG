@@ -1,5 +1,14 @@
 # CongoRAG
 
+> 🏆 **传智杯「AI 大模型创新应用挑战赛」参赛版（2026）**
+>
+> 本仓库的 `cup-2026` 分支是参赛作品：在 v5.0.2 基线上补齐**科研学术层**——
+> PDF 页码/坐标溯源、混合检索与抗幻觉、阅读器与翻译、arXiv 检索、引用图谱、
+> 写作 Copilot。参赛说明（六模块对照、架构、快速开始、评分自评）见
+> [docs/competition/README.md](docs/competition/README.md)，Prompt 审计记录见
+> [docs/competition/prompt-audit.md](docs/competition/prompt-audit.md)。
+> 基线版本与参赛增量的边界在参赛说明第 3 节逐条列出。
+
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
@@ -36,6 +45,7 @@ api 进程默认只监听 `127.0.0.1:3210`，不对局域网开放。API Key 用
 
 ## 目录
 
+- [传智杯参赛版说明](docs/competition/README.md)
 - [界面](#界面)
 - [数据流](#数据流)
 - [核心能力](#核心能力)
