@@ -13,9 +13,10 @@ func TestText_MixedChineseAndEnglish(t *testing.T) {
 	require.Contains(t, got, "机")
 	require.Contains(t, got, "机制")
 	// 三字词"过拟合"拆成两个 bigram：过拟 / 拟合（查询与文档同一套规则，
-	// 所以这两个 token 的 OR 命中即可）。
+	// 所以这两个 token 的 OR 命中即可）。单字不出现——单字是噪声源。
 	require.Contains(t, got, "过拟")
 	require.Contains(t, got, "拟合")
+	require.NotContains(t, strings.Fields(got), "机")
 	// 标点不能变成 token
 	require.NotContains(t, strings.Fields(got), "？")
 }
@@ -45,7 +46,7 @@ func TestText_Empty(t *testing.T) {
 
 func TestQuery_ORJoinedAndSafe(t *testing.T) {
 	q := Query("深度 学习")
-	require.Equal(t, "深 | 深度 | 度 | 学 | 学习 | 习", q)
+	require.Equal(t, "深度 | 学习", q)
 	// 空查询返回空串，调用方据此跳过词法检索
 	require.Equal(t, "", Query("，。"))
 	// 表达式里不能出现 tsquery 的元字符

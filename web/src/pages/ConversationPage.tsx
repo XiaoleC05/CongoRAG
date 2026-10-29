@@ -40,6 +40,7 @@ export default function ConversationPage() {
     isStreaming,
     streamingContent,
     pendingCitations,
+    groundingReport,
     streamError,
     stoppedIds,
     regeneratedIds,
@@ -186,6 +187,36 @@ export default function ConversationPage() {
               citations={pendingCitations}
               pending
             />
+          )}
+
+          {/* 参赛版：引用落地检查徽标。done 之前后端发一条 grounding 事件，
+              句子级统计回答里的 [n] 是否都能对应到本次下发的 citation——
+              把"抗幻觉"从形容词变成可展示的数字。 */}
+          {groundingReport !== null && (
+            <div className="mx-auto w-full max-w-3xl">
+              <span
+                className={
+                  'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ' +
+                  (groundingReport.valid
+                    ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400')
+                }
+                title={
+                  '共 ' +
+                  groundingReport.sentences +
+                  ' 句，' +
+                  groundingReport.unsupported +
+                  ' 句没有可对应的引用；引用编号 ' +
+                  groundingReport.validRefs +
+                  '/' +
+                  groundingReport.refs +
+                  ' 合法'
+                }
+              >
+                引用校验：{groundingReport.cited}/{groundingReport.sentences} 句已溯源
+                {groundingReport.valid ? ' · 通过' : ' · 部分未溯源'}
+              </span>
+            </div>
           )}
 
           {streamError !== null && (

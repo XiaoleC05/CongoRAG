@@ -41,9 +41,14 @@ func Text(s string) string {
 		if len(han) == 0 {
 			return
 		}
-		for i, r := range han {
-			tokens = append(tokens, string(r))
-			if i+1 < len(han) {
+		// 【只出 bigram，不出单字】单字（的/了/多/用）在中文里出现频率极高，
+		// OR 进 tsquery 后几乎每个分块都命中，词法一路的排序就变成噪声。
+		// 单字只在"这个汉字前后都是非汉字"（孤立单字）时保留——那种情况下
+		// 它是真实查询词（例如"β 与 α"里的汉字符号附近）。
+		if len(han) == 1 {
+			tokens = append(tokens, string(han[0]))
+		} else {
+			for i := 0; i+1 < len(han); i++ {
 				tokens = append(tokens, string(han[i:i+2]))
 			}
 		}

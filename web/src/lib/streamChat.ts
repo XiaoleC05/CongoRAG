@@ -47,6 +47,18 @@ export type ChatEvent =
     }
   | { type: 'tool_call'; id: number | null; data: { id: string; name: string; args: unknown } }
   | { type: 'tool_result'; id: number | null; data: { id: string; result: unknown } }
+  | {
+      type: 'grounding'
+      id: number | null
+      data: {
+        sentences: number
+        cited: number
+        unsupported: number
+        refs: number
+        validRefs: number
+        valid: boolean
+      }
+    }
   | { type: 'error'; id: number | null; data: { type: string; detail: string } }
   | { type: 'done'; id: number | null; data: Record<string, never> }
 

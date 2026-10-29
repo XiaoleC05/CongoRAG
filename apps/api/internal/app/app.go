@@ -185,6 +185,11 @@ func Run(webFS embed.FS) error {
 		pool,
 	)
 
+	// 参赛版抗幻觉闸门：检索不到证据时固定拒答，不让模型自由发挥。
+	// 只在 api（聊天入口）打开；测试与其它装配保持旧行为，见 usecase.go
+	// noEvidenceRefusal 字段的注释。
+	convUC.SetNoEvidenceRefusal(true)
+
 	// agent 拥有工具、Agent 配置、执行记录。三个内置工具全是 ReadOnly
 	// （代码架构设计 §5.9),conversation_search 依赖 convUC 已经装好,
 	// 所以工具注册必须排在 convUC 构造之后。
