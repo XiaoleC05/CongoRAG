@@ -269,6 +269,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{id}/duplicate-resolution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 对"上传时检测到的重复"做出选择（保留两者 / 覆盖旧版本） */
+        post: operations["resolveDocumentDuplicate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/translate": {
         parameters: {
             query?: never;
@@ -928,6 +947,15 @@ export interface components {
              *     非空时有意义；越小越像。
              */
             duplicateDistance?: number;
+        };
+        DocumentDuplicateResolution: {
+            /**
+             * @description keep_both：保留新旧两份，清掉重复告警（历史仍可查两版）；
+             *     replace_old：删除旧版本（文档行 + 分块 + 磁盘文件异步清理），
+             *     保留新版本。操作不可撤销。
+             * @enum {string}
+             */
+            action: "keep_both" | "replace_old";
         };
         ReindexAccepted: {
             /**
@@ -1794,6 +1822,40 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    resolveDocumentDuplicate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentDuplicateResolution"];
+            };
+        };
+        responses: {
+            /** @description 处理完成，无返回内容 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
+            /** @description 这份文档当前没有待处理的重复告警 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             500: components["responses"]["InternalError"];
         };
     };

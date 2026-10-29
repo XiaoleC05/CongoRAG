@@ -244,6 +244,20 @@ func (f *fakeDocRepo) ListFingerprints(ctx context.Context, q platform.Querier, 
 	return out, nil
 }
 
+func (f *fakeDocRepo) ClearDuplicate(ctx context.Context, q platform.Querier, id uuid.UUID) error {
+	if f.failOn == "ClearDuplicate" {
+		return f.err
+	}
+	for _, d := range f.docs {
+		if d.ID == id {
+			d.DuplicateOf = nil
+			d.DuplicateDistance = 0
+			return nil
+		}
+	}
+	return platform.ErrNotFound
+}
+
 // ListByKnowledgeBase 复刻真实 SQL 的语义：按 (created_at DESC, id DESC) 排，
 // 按游标过滤，多取一条判 hasMore，再切回 limit 条。
 //

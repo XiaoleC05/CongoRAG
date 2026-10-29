@@ -477,6 +477,47 @@ func (u *Usecase) DeleteDocument(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+// DuplicateAction 是用户对"上传时检测到的重复"做出的选择。
+type DuplicateAction string
+
+const (
+	// DuplicateKeepBoth 保留新旧两份，只清掉告警。
+	DuplicateKeepBoth DuplicateAction = "keep_both"
+	// DuplicateReplaceOld 删除旧版本，保留新上传的版本。
+	DuplicateReplaceOld DuplicateAction = "replace_old"
+)
+
+// ResolveDuplicate 处理上传时去重的后续动作（参赛版 M1）。
+//
+// 【为什么动作不可逆】replace_old 会删掉旧文档和它的分块，磁盘文件走异步
+// 清理；这份选择一旦做出就没有"撤销"接口——回退只能重新上传旧文件。
+// 契约里因此把它做成一个 POST 动作，而不是 PATCH 一个布尔字段。
+func (u *Usecase) ResolveDuplicate(ctx context.Context, id uuid.UUID, action string) error {
+	d, err := u.docRepo.ByID(ctx, u.db, id)
+	if err != nil {
+		return fmt.Errorf("get document %s: %w", id, err)
+	}
+	if d.DuplicateOf == nil {
+		return fmt.Errorf("document %s has no pending duplicate alert: %w", id, platform.ErrConflict)
+	}
+
+	switch DuplicateAction(action) {
+	case DuplicateKeepBoth:
+		return u.docRepo.ClearDuplicate(ctx, u.db, id)
+	case DuplicateReplaceOld:
+		// 先删旧版本：若这一步失败，告警仍在，用户可以重试；先清告警再删
+		// 失败的话，用户会失去"旧版本是哪一份"的线索。
+		if err := u.DeleteDocument(ctx, *d.DuplicateOf); err != nil {
+			return fmt.Errorf("delete old version %s: %w", *d.DuplicateOf, err)
+		}
+		// 外键 ON DELETE SET NULL 已经把 duplicate_of 清掉；distance 是普通
+		// 列，需要显式归零。
+		return u.docRepo.ClearDuplicate(ctx, u.db, id)
+	default:
+		return fmt.Errorf("unknown duplicate action %q: %w", action, platform.ErrInvalid)
+	}
+}
+
 // orphanGracePeriod 是孤儿对账 job 的宽限期：只清理"不在数据库里、且
 // mtime 早于这个时长之前"的文件（开发文档 §4.7 给的区间是 10~30 分钟）。
 //

@@ -1,0 +1,11 @@
+feat(knowledge): 去重后续动作与前端提示（保留两者/覆盖旧版本）
+
+- 契约新增 POST /documents/{id}/duplicate-resolution（keep_both / replace_old）
+  与 DocumentDuplicateResolution schema；重新生成 Go/TS 客户端
+- usecase ResolveDuplicate：keep_both 只清告警；replace_old 删除旧版本
+  （文档行+分块+异步磁盘清理）后清告警；未知动作 400，无告警 409
+- 修复 ByID/列表两处 duplicate_of 扫描后未回填 *uuid.UUID 的问题
+- 前端：知识库详情页在检测到重复时展示 Alert（文件名/旧版本/距离），
+  提供「保留两者」「覆盖旧版本（二次确认）」按钮；上传文件类型加入 .pdf
+- 本机实测：v7→v1 告警出现后 UI 点保留两者 204、告警消失；
+  md 近重复场景 replace_old 204、旧版被删、新版保留；go/web 测试全绿

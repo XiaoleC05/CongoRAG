@@ -581,6 +581,20 @@ func (s *Server) DeleteDocument(c *gin.Context, id openapi_types.UUID) {
 	c.Status(http.StatusNoContent)
 }
 
+// ResolveDocumentDuplicate 处理上传时去重的后续动作（参赛版 M1）。
+func (s *Server) ResolveDocumentDuplicate(c *gin.Context, id openapi_types.UUID) {
+	var req DocumentDuplicateResolution
+	if err := c.ShouldBindJSON(&req); err != nil {
+		s.fail(c, fmt.Errorf("decode duplicate resolution: %w", platform.ErrInvalid))
+		return
+	}
+	if err := s.deps.Knowledge.ResolveDuplicate(c.Request.Context(), id, string(req.Action)); err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 // ReindexDocument 重新索引一份文档（issue #39）。
 //
 // 【202 而不是 200】和上传一样，这里只是"排上了队"——真正干活的是 worker，

@@ -112,6 +112,24 @@ func (e DocumentStatus) Valid() bool {
 	}
 }
 
+// Defines values for DocumentDuplicateResolutionAction.
+const (
+	DocumentDuplicateResolutionKeepBoth   DocumentDuplicateResolutionAction = "keep_both"
+	DocumentDuplicateResolutionReplaceOld DocumentDuplicateResolutionAction = "replace_old"
+)
+
+// Valid indicates whether the value is a known member of the DocumentDuplicateResolutionAction enum.
+func (e DocumentDuplicateResolutionAction) Valid() bool {
+	switch e {
+	case DocumentDuplicateResolutionKeepBoth:
+		return true
+	case DocumentDuplicateResolutionReplaceOld:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MessageRole.
 const (
 	MessageRoleAssistant MessageRole = "assistant"
@@ -469,6 +487,19 @@ type Document struct {
 // DocumentStatus 四态状态机（代码架构设计 §5.4）：queued → processing → ready，
 // 任意阶段失败进 failed，failed 只能退回 queued 重试。
 type DocumentStatus string
+
+// DocumentDuplicateResolution defines model for DocumentDuplicateResolution.
+type DocumentDuplicateResolution struct {
+	// Action keep_both：保留新旧两份，清掉重复告警（历史仍可查两版）；
+	// replace_old：删除旧版本（文档行 + 分块 + 磁盘文件异步清理），
+	// 保留新版本。操作不可撤销。
+	Action DocumentDuplicateResolutionAction `json:"action"`
+}
+
+// DocumentDuplicateResolutionAction keep_both：保留新旧两份，清掉重复告警（历史仍可查两版）；
+// replace_old：删除旧版本（文档行 + 分块 + 磁盘文件异步清理），
+// 保留新版本。操作不可撤销。
+type DocumentDuplicateResolutionAction string
 
 // DocumentPage defines model for DocumentPage.
 type DocumentPage struct {
@@ -971,6 +1002,9 @@ type CreateConversationJSONRequestBody = CreateConversationRequest
 // SendMessageJSONRequestBody defines body for SendMessage for application/json ContentType.
 type SendMessageJSONRequestBody = SendMessageRequest
 
+// ResolveDocumentDuplicateJSONRequestBody defines body for ResolveDocumentDuplicate for application/json ContentType.
+type ResolveDocumentDuplicateJSONRequestBody = DocumentDuplicateResolution
+
 // CreateKnowledgeBaseJSONRequestBody defines body for CreateKnowledgeBase for application/json ContentType.
 type CreateKnowledgeBaseJSONRequestBody = CreateKnowledgeBaseRequest
 
@@ -1068,6 +1102,9 @@ type ServerInterface interface {
 	// GetDocument 查一份文档的当前状态（前端拿它做处理中的轮询）
 	// (GET /api/v1/documents/{id})
 	GetDocument(c *gin.Context, id openapi_types.UUID)
+	// ResolveDocumentDuplicate 对"上传时检测到的重复"做出选择（保留两者 / 覆盖旧版本）
+	// (POST /api/v1/documents/{id}/duplicate-resolution)
+	ResolveDocumentDuplicate(c *gin.Context, id openapi_types.UUID)
 	// DownloadDocumentFile 下载文档的原始文件（PDF 阅读器用）
 	// (GET /api/v1/documents/{id}/file)
 	DownloadDocumentFile(c *gin.Context, id openapi_types.UUID)
@@ -1611,6 +1648,31 @@ func (siw *ServerInterfaceWrapper) GetDocument(c *gin.Context) {
 	}
 
 	siw.Handler.GetDocument(c, id)
+}
+
+// ResolveDocumentDuplicate operation middleware
+func (siw *ServerInterfaceWrapper) ResolveDocumentDuplicate(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ResolveDocumentDuplicate(c, id)
 }
 
 // DownloadDocumentFile operation middleware
@@ -2303,6 +2365,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/api/v1/documents/:id/outline", wrapper.GetDocumentOutline)
 	router.GET(options.BaseURL+"/api/v1/documents/:id/references", wrapper.ListDocumentReferences)
 	router.GET(options.BaseURL+"/api/v1/documents/:id/file", wrapper.DownloadDocumentFile)
+	router.POST(options.BaseURL+"/api/v1/documents/:id/duplicate-resolution", wrapper.ResolveDocumentDuplicate)
 	router.POST(options.BaseURL+"/api/v1/translate", wrapper.TranslateText)
 	router.GET(options.BaseURL+"/api/v1/conversations", wrapper.ListConversations)
 	router.POST(options.BaseURL+"/api/v1/conversations", wrapper.CreateConversation)

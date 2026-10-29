@@ -22,6 +22,7 @@ import {
   useDocumentMutations,
   useDocuments,
   useReindexKnowledgeBase,
+  useResolveDuplicate,
 } from '@/hooks/useDocuments'
 import type { DocumentFilter, DocumentSort } from '@/hooks/useDocuments'
 import { useErrorToast } from '@/hooks/useErrorToast'
@@ -76,6 +77,7 @@ export default function KnowledgeBaseDetailPage() {
   } = useDocuments(kbId)
   const docs = flattenPages(docPages)
   const { upload, remove, reindex } = useDocumentMutations(kbId)
+  const resolveDuplicate = useResolveDuplicate(kbId)
   const reindexAll = useReindexKnowledgeBase(kbId)
   const createConversation = useCreateConversation()
   const navigate = useNavigate()
@@ -96,6 +98,9 @@ export default function KnowledgeBaseDetailPage() {
   const [deleting, setDeleting] = useState<Document_ | null>(null)
 
   const visible = sortAndFilterDocuments(docs, sort, filter)
+
+  // 待处理的重复告警：worker 处理完成后才有，所以只在 ready 文档上找。
+  const duplicateDocs = docs.filter((d) => d.status === 'ready' && d.duplicateOf)
 
   // 【为什么"开始对话"在这里,而不是一个独立的"新建会话"页面】
   // 这一轮的会话天生要关联一个知识库才谈得上 RAG——见
@@ -173,7 +178,7 @@ export default function KnowledgeBaseDetailPage() {
             ref={fileInputRef}
             type="file"
             className="hidden"
-            accept=".md,.txt,.markdown"
+            accept=".pdf,.md,.txt,.markdown"
             onChange={handleFileSelected}
           />
           <Button onClick={() => fileInputRef.current?.click()} disabled={upload.isPending}>
@@ -199,6 +204,56 @@ export default function KnowledgeBaseDetailPage() {
         <EmptyState onUpload={() => fileInputRef.current?.click()} />
       ) : (
         <>
+          {duplicateDocs.length > 0 && (
+            <div className="mb-4 space-y-2">
+              {duplicateDocs.map((doc) => (
+                <Alert key={doc.id}>
+                  <AlertTitle>检测到与已有文档高度重合</AlertTitle>
+                  <AlertDescription>
+                    <p>
+                      <span className="font-medium">{doc.filename}</span> 与{' '}
+                      <span className="font-medium">{doc.duplicateFilename}</span>{' '}
+                      的正文高度相似（SimHash 距离 {doc.duplicateDistance}）。
+                      可能是同一篇论文的不同版本。
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={resolveDuplicate.isPending}
+                        onClick={() =>
+                          resolveDuplicate.mutate(
+                            { documentId: doc.id, action: 'keep_both' },
+                            { onError: showError },
+                          )
+                        }
+                      >
+                        保留两者
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={resolveDuplicate.isPending}
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              '覆盖会删除旧版本及其全部分块，且不可撤销。确定继续？',
+                            )
+                          ) {
+                            resolveDuplicate.mutate(
+                              { documentId: doc.id, action: 'replace_old' },
+                              { onError: showError },
+                            )
+                          }
+                        }}
+                      >
+                        覆盖旧版本
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              ))}
+            </div>
+          )}
           <DocumentListToolbar
             sort={sort}
             filter={filter}

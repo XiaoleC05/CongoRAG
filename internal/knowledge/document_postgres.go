@@ -73,6 +73,11 @@ func (r *PgDocRepo) ByID(ctx context.Context, q platform.Querier, id uuid.UUID) 
 		return nil, fmt.Errorf("get document %s: %w", id, platform.WrapPgErr(err))
 	}
 	d.Status = Status(status)
+	if dupOf != "" {
+		if parsed, perr := uuid.Parse(dupOf); perr == nil {
+			d.DuplicateOf = &parsed
+		}
+	}
 	return d, nil
 }
 
@@ -158,6 +163,16 @@ func (r *PgDocRepo) ListFingerprints(ctx context.Context, q platform.Querier, kb
 		return nil, fmt.Errorf("iterate document fingerprints: %w", err)
 	}
 	return out, nil
+}
+
+// ClearDuplicate 清掉重复告警（keep_both / replace_old 收尾都走它）。
+func (r *PgDocRepo) ClearDuplicate(ctx context.Context, q platform.Querier, id uuid.UUID) error {
+	_, err := q.Exec(ctx,
+		"UPDATE documents SET duplicate_of = NULL, duplicate_distance = 0 WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("clear duplicate of document %s: %w", id, platform.WrapPgErr(err))
+	}
+	return nil
 }
 
 // reindexableStatuses 是可以被重新索引的状态集合，拼进下面三条 SQL 的
@@ -334,6 +349,11 @@ func (r *PgDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier,
 			return nil, false, fmt.Errorf("scan document: %w", err)
 		}
 		d.Status = Status(status)
+		if dupOf != "" {
+			if parsed, perr := uuid.Parse(dupOf); perr == nil {
+				d.DuplicateOf = &parsed
+			}
+		}
 		out = append(out, d)
 	}
 	if err := rows.Err(); err != nil {

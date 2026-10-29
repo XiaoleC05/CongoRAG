@@ -147,6 +147,10 @@ func (noopDocRepo) ListFingerprints(ctx context.Context, q platform.Querier, kbI
 	return nil, nil
 }
 
+func (noopDocRepo) ClearDuplicate(ctx context.Context, q platform.Querier, id uuid.UUID) error {
+	return nil
+}
+
 func (noopDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID, cur *platform.ListCursor, limit int) ([]*knowledge.Document, bool, error) {
 	return nil, false, nil
 }

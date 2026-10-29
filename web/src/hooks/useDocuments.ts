@@ -399,3 +399,28 @@ export function useKnowledgeSearch(kbId: string) {
     },
   })
 }
+
+/**
+ * 写：处理"上传时检测到的重复"（参赛版 M1）。
+ *
+ * 服务端在 worker 处理完成后把 duplicateOf 挂在文档上；用户在这一页选择
+ * 保留两者或覆盖旧版本。两个动作都会让文档的重复告警消失，所以成功后
+ * 失效整个文档列表（覆盖旧版本还会让旧文档那一行消失）。
+ */
+export function useResolveDuplicate(kbId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: {
+      documentId: string
+      action: 'keep_both' | 'replace_old'
+    }) => {
+      const { error } = await api.POST('/api/v1/documents/{id}/duplicate-resolution', {
+        params: { path: { id: input.documentId } },
+        body: { action: input.action },
+      })
+      if (error) throw error
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: documentsKey(kbId) }),
+  })
+}

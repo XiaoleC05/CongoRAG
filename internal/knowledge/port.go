@@ -115,6 +115,10 @@ type DocRepo interface {
 	// 上传处理路径用它做"上传时语义去重"：只比较正文，不看文件名。
 	ListFingerprints(ctx context.Context, q platform.Querier, kbID uuid.UUID, excludeID uuid.UUID) ([]DocumentFingerprint, error)
 
+	// ClearDuplicate 清掉"这份文档与旧版本重合"的告警（保留/覆盖动作的结果）。
+	// 不动 content_fingerprint：指纹是正文属性，下次重新索引还要用它。
+	ClearDuplicate(ctx context.Context, q platform.Querier, id uuid.UUID) error
+
 	// ListOutline 返回文档的章节大纲：heading 分块按页码与出现顺序排列，
 	// Level 来自 section_path 的层级深度（见 domain.OutlineEntry）。
 	//
