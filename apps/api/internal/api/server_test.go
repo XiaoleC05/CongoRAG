@@ -124,6 +124,12 @@ func (noopDocRepo) UpdateStatus(ctx context.Context, q platform.Querier, id uuid
 func (noopDocRepo) UpdateParsedInfo(ctx context.Context, q platform.Querier, id uuid.UUID, pageCount int, parser string) error {
 	return nil
 }
+
+// ListOutline 是参赛版 M3 阅读器目录；绝大多数用例不关心目录，返回空。
+func (noopDocRepo) ListOutline(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.OutlineEntry, error) {
+	return nil, nil
+}
+
 func (noopDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID, cur *platform.ListCursor, limit int) ([]*knowledge.Document, bool, error) {
 	return nil, false, nil
 }

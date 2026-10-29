@@ -1312,11 +1312,11 @@ func (s *Server) SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 	hits := make([]KnowledgeSearchHit, 0, len(chunks))
 	for _, ch := range chunks {
 		hits = append(hits, KnowledgeSearchHit{
-			ChunkId:     ch.ID,
-			DocumentId:  ch.DocumentID,
-			Filename:    ch.Filename,
-			Snippet:     ch.Content,
-			Score:       ch.Score,
+			ChunkId:      ch.ID,
+			DocumentId:   ch.DocumentID,
+			Filename:     ch.Filename,
+			Snippet:      ch.Content,
+			Score:        ch.Score,
 			Page:         intPtrOrNil(ch.PageStart),
 			PageEnd:      intPtrOrNil(ch.PageEnd),
 			Bbox:         floatSlicePtrOrNil(ch.BBox),
