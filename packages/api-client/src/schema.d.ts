@@ -915,6 +915,19 @@ export interface components {
             pageCount: number;
             /** @description 解析器版本（如 pdf-service-0.1.0）；md/txt 为空串 */
             parser: string;
+            /**
+             * @description 上传时语义去重：如果正文与同库另一份文档高度重合，这里是那份
+             *     旧文档的 id；为空表示没有检测到重复（不是"未检测"——未处理完
+             *     的文档也不会带这个字段）。
+             */
+            duplicateOf?: string;
+            /** @description duplicateOf 对应文档的文件名；没有重复时为空串。 */
+            duplicateFilename?: string;
+            /**
+             * @description 两份文档正文 SimHash 的汉明距离（0~64）。只在 duplicateOf
+             *     非空时有意义；越小越像。
+             */
+            duplicateDistance?: number;
         };
         ReindexAccepted: {
             /**

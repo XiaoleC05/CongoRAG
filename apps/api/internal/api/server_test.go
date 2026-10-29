@@ -139,6 +139,14 @@ func (noopDocRepo) ListOutline(ctx context.Context, q platform.Querier, id uuid.
 	return nil, nil
 }
 
+func (noopDocRepo) UpdateFingerprint(ctx context.Context, q platform.Querier, id uuid.UUID, fingerprint string, duplicateOf *uuid.UUID, distance int) error {
+	return nil
+}
+
+func (noopDocRepo) ListFingerprints(ctx context.Context, q platform.Querier, kbID uuid.UUID, excludeID uuid.UUID) ([]knowledge.DocumentFingerprint, error) {
+	return nil, nil
+}
+
 func (noopDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID, cur *platform.ListCursor, limit int) ([]*knowledge.Document, bool, error) {
 	return nil, false, nil
 }

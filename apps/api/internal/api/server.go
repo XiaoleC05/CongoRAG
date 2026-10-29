@@ -321,17 +321,39 @@ func (s *Server) DeleteKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 // toAPIDocument 和 toAPIKB 一样的理由：业务类型和契约类型分开，
 // "哪些字段暴露给前端"只有这一处可看。
 func toAPIDocument(d *knowledge.Document) Document {
+	// 可选的去重告警字段用指针：契约里它们不是 required，生成类型是
+	// *string/*int；没有重复时留 nil，JSON 里就不会出现空字段。
+	var (
+		duplicateOf       *string
+		duplicateFilename *string
+		duplicateDistance *int
+	)
+	if d.DuplicateOf != nil {
+		id := d.DuplicateOf.String()
+		duplicateOf = &id
+	}
+	if d.DuplicateFilename != "" {
+		name := d.DuplicateFilename
+		duplicateFilename = &name
+	}
+	if d.DuplicateDistance != 0 {
+		distance := d.DuplicateDistance
+		duplicateDistance = &distance
+	}
 	return Document{
-		Id:              d.ID,
-		KnowledgeBaseId: d.KnowledgeBaseID,
-		Filename:        d.Filename,
-		Status:          DocumentStatus(d.Status),
-		ByteSize:        d.ByteSize,
-		ChunkCount:      d.ChunkCount,
-		PageCount:       d.PageCount,
-		Parser:          d.Parser,
-		CreatedAt:       d.CreatedAt,
-		UpdatedAt:       d.UpdatedAt,
+		Id:                d.ID,
+		KnowledgeBaseId:   d.KnowledgeBaseID,
+		Filename:          d.Filename,
+		Status:            DocumentStatus(d.Status),
+		ByteSize:          d.ByteSize,
+		ChunkCount:        d.ChunkCount,
+		PageCount:         d.PageCount,
+		Parser:            d.Parser,
+		DuplicateOf:       duplicateOf,
+		DuplicateFilename: duplicateFilename,
+		DuplicateDistance: duplicateDistance,
+		CreatedAt:         d.CreatedAt,
+		UpdatedAt:         d.UpdatedAt,
 	}
 }
 

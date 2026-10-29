@@ -695,6 +695,36 @@ func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID, isLastAt
 	// 错误交给 River 重投；事务里任何一步失败则整体回滚，文档同样还是
 	// processing。两条路都走 failProcessing：只有最后一次 attempt 才落
 	// 终态 failed。
+	// 【参赛版：上传时语义去重】解析产物已经就绪，这里先算正文指纹，并与
+	// 同库其它文档比较；判为近重复时把"与哪份重合、差多少"随文档一起落库，
+	// 前端据此弹出"保留/覆盖"的提醒。判据是正文 token（中文 bigram +
+	// 英文词），不是文件名——官方用例 v1/v7 的文件名不同但内容高度重合。
+	fingerprint := FingerprintOfChunks(chunks)
+	var (
+		duplicateOf       *uuid.UUID
+		duplicateDistance int
+	)
+	if fingerprint != "" {
+		others, ferr := u.docRepo.ListFingerprints(ctx, u.db, d.KnowledgeBaseID, docID)
+		if ferr != nil {
+			// 去重是增强能力，不该让索引失败：记录后继续，文档照常 ready。
+			slog.Default().Warn("list document fingerprints failed",
+				"document_id", docID, "error", ferr)
+		} else {
+			best := duplicateThreshold + 1
+			for _, other := range others {
+				dist := FingerprintDistance(fingerprint, other.Fingerprint)
+				if dist < 0 || dist > duplicateThreshold || dist >= best {
+					continue
+				}
+				best = dist
+				o := other.ID
+				duplicateOf = &o
+				duplicateDistance = dist
+			}
+		}
+	}
+
 	vecs, model, err := u.indexer.EmbedChunks(ctx, u.db, docID, chunks)
 	if err != nil {
 		return u.failProcessing(ctx, docID, isLastAttempt, fmt.Errorf("embed document %s: %w", docID, err))
@@ -708,6 +738,9 @@ func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID, isLastAt
 		// 分开写会留下"页数变了、块没变"的中间态。
 		if err := u.docRepo.UpdateParsedInfo(ctx, q, docID, pageCount, parser); err != nil {
 			return fmt.Errorf("record parsed info of document %s: %w", docID, err)
+		}
+		if err := u.docRepo.UpdateFingerprint(ctx, q, docID, fingerprint, duplicateOf, duplicateDistance); err != nil {
+			return fmt.Errorf("record fingerprint of document %s: %w", docID, err)
 		}
 		if err := u.docRepo.UpdateStatus(ctx, q, docID, StatusProcessing, StatusReady); err != nil {
 			return fmt.Errorf("mark document %s ready: %w", docID, err)

@@ -436,6 +436,18 @@ type Document struct {
 	ChunkCount int64     `json:"chunkCount"`
 	CreatedAt  time.Time `json:"createdAt"`
 
+	// DuplicateDistance 两份文档正文 SimHash 的汉明距离（0~64）。只在 duplicateOf
+	// 非空时有意义；越小越像。
+	DuplicateDistance *int `json:"duplicateDistance,omitempty"`
+
+	// DuplicateFilename duplicateOf 对应文档的文件名；没有重复时为空串。
+	DuplicateFilename *string `json:"duplicateFilename,omitempty"`
+
+	// DuplicateOf 上传时语义去重：如果正文与同库另一份文档高度重合，这里是那份
+	// 旧文档的 id；为空表示没有检测到重复（不是"未检测"——未处理完
+	// 的文档也不会带这个字段）。
+	DuplicateOf *string `json:"duplicateOf,omitempty"`
+
 	// Filename 用户上传时的原始文件名
 	Filename        string             `json:"filename"`
 	Id              openapi_types.UUID `json:"id"`

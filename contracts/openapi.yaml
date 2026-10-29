@@ -1775,6 +1775,20 @@ components:
         parser:
           type: string
           description: 解析器版本（如 pdf-service-0.1.0）；md/txt 为空串
+        duplicateOf:
+          type: string
+          description: |
+            上传时语义去重：如果正文与同库另一份文档高度重合，这里是那份
+            旧文档的 id；为空表示没有检测到重复（不是"未检测"——未处理完
+            的文档也不会带这个字段）。
+        duplicateFilename:
+          type: string
+          description: duplicateOf 对应文档的文件名；没有重复时为空串。
+        duplicateDistance:
+          type: integer
+          description: |
+            两份文档正文 SimHash 的汉明距离（0~64）。只在 duplicateOf
+            非空时有意义；越小越像。
 
     # 整库重建的响应。只报"这次真的排进去多少份"——不报总量、不报进度，
     # 那些由前端轮询文档列表（受影响的行会显示为 queued）自己看。

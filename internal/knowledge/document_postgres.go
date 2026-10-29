@@ -48,6 +48,8 @@ func (r *PgDocRepo) Insert(ctx context.Context, q platform.Querier, d *Document)
 const documentByIDSQL = `SELECT d.id, d.knowledge_base_id, d.filename, d.storage_key,
 	        d.status, d.byte_size, d.created_at, d.updated_at,
 	        d.page_count, d.parser,
+	        COALESCE(d.content_fingerprint, ''), COALESCE(d.duplicate_of::text, ''), COALESCE(d.duplicate_distance, 0),
+	        COALESCE((SELECT filename FROM documents dup WHERE dup.id = d.duplicate_of), ''),
 	        count(c.id)
 	 FROM documents d
 	 LEFT JOIN document_chunks c ON c.document_id = d.id
@@ -57,9 +59,12 @@ const documentByIDSQL = `SELECT d.id, d.knowledge_base_id, d.filename, d.storage
 func (r *PgDocRepo) ByID(ctx context.Context, q platform.Querier, id uuid.UUID) (*Document, error) {
 	d := &Document{}
 	var status string
+	var dupOf string
 	err := q.QueryRow(ctx, documentByIDSQL, id).Scan(
 		&d.ID, &d.KnowledgeBaseID, &d.Filename, &d.StorageKey, &status, &d.ByteSize,
-		&d.CreatedAt, &d.UpdatedAt, &d.PageCount, &d.Parser, &d.ChunkCount)
+		&d.CreatedAt, &d.UpdatedAt, &d.PageCount, &d.Parser,
+		&d.ContentFingerprint, &dupOf, &d.DuplicateDistance, &d.DuplicateFilename,
+		&d.ChunkCount)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("document %s: %w", id, platform.ErrNotFound)
@@ -112,6 +117,47 @@ func (r *PgDocRepo) UpdateParsedInfo(ctx context.Context, q platform.Querier, id
 		return fmt.Errorf("update parsed info of document %s: %w", id, platform.WrapPgErr(err))
 	}
 	return nil
+}
+
+// UpdateFingerprint 写入正文指纹与重复告警（migration 0018）。
+//
+// 【为什么不刷新 updated_at】这次更新是"处理完成"的副产物，不是用户对
+// 文档的修改；列表按 created_at 排序，刷新 updated_at 只会让
+// "最近更新"这类展示时间跳动，对去重语义没有帮助。
+func (r *PgDocRepo) UpdateFingerprint(ctx context.Context, q platform.Querier, id uuid.UUID, fingerprint string, duplicateOf *uuid.UUID, distance int) error {
+	_, err := q.Exec(ctx,
+		`UPDATE documents SET content_fingerprint = $2, duplicate_of = $3, duplicate_distance = $4 WHERE id = $1`,
+		id, fingerprint, duplicateOf, distance)
+	if err != nil {
+		return fmt.Errorf("update fingerprint of document %s: %w", id, platform.WrapPgErr(err))
+	}
+	return nil
+}
+
+// ListFingerprints 返回同库里已算过指纹的其它文档（排除自己）。
+func (r *PgDocRepo) ListFingerprints(ctx context.Context, q platform.Querier, kbID uuid.UUID, excludeID uuid.UUID) ([]DocumentFingerprint, error) {
+	rows, err := q.Query(ctx,
+		`SELECT id, filename, content_fingerprint FROM documents
+		  WHERE knowledge_base_id = $1 AND id <> $2
+		    AND content_fingerprint IS NOT NULL AND content_fingerprint <> ''`,
+		kbID, excludeID)
+	if err != nil {
+		return nil, fmt.Errorf("list fingerprints of knowledge base %s: %w", kbID, platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	var out []DocumentFingerprint
+	for rows.Next() {
+		var f DocumentFingerprint
+		if err := rows.Scan(&f.ID, &f.Filename, &f.Fingerprint); err != nil {
+			return nil, fmt.Errorf("scan document fingerprint: %w", err)
+		}
+		out = append(out, f)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate document fingerprints: %w", err)
+	}
+	return out, nil
 }
 
 // reindexableStatuses 是可以被重新索引的状态集合，拼进下面三条 SQL 的
@@ -209,6 +255,8 @@ func (r *PgDocRepo) markForReindexReturningIDs(ctx context.Context, q platform.Q
 const documentsSelectCols = `SELECT d.id, d.knowledge_base_id, d.filename, d.storage_key,
 	        d.status, d.byte_size, d.created_at, d.updated_at,
 	        d.page_count, d.parser,
+	        COALESCE(d.content_fingerprint, ''), COALESCE(d.duplicate_of::text, ''), COALESCE(d.duplicate_distance, 0),
+	        COALESCE((SELECT filename FROM documents dup WHERE dup.id = d.duplicate_of), ''),
 	        (SELECT count(*) FROM document_chunks c WHERE c.document_id = d.id)
 	 FROM documents d`
 
@@ -278,8 +326,11 @@ func (r *PgDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier,
 	for rows.Next() {
 		d := &Document{}
 		var status string
+		var dupOf string
 		if err := rows.Scan(&d.ID, &d.KnowledgeBaseID, &d.Filename, &d.StorageKey, &status,
-			&d.ByteSize, &d.CreatedAt, &d.UpdatedAt, &d.PageCount, &d.Parser, &d.ChunkCount); err != nil {
+			&d.ByteSize, &d.CreatedAt, &d.UpdatedAt, &d.PageCount, &d.Parser,
+			&d.ContentFingerprint, &dupOf, &d.DuplicateDistance, &d.DuplicateFilename,
+			&d.ChunkCount); err != nil {
 			return nil, false, fmt.Errorf("scan document: %w", err)
 		}
 		d.Status = Status(status)

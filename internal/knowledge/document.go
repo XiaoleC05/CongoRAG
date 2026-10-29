@@ -89,6 +89,21 @@ type Document struct {
 	PageCount int
 	Parser    string
 
+	// ContentFingerprint / DuplicateOf / DuplicateDistance 是参赛版
+	// 「上传时语义去重」字段（migration 0018）。
+	//
+	// 【为什么不存在 duplicate 表】"哪份文档和哪份重合"是文档行自身的属性：
+	// 一份文档至多指一份最相似的旧版本，多对一关系用自引用一列足够；
+	// 单开一张边表反而要处理"同一对重复出现两行"的一致性问题。
+	//
+	// Fingerprint 是正文的 SimHash（16 位十六进制）。md/txt 与未处理完的
+	// 文档为空串；DuplicateDistance 只在检测到重复时才有意义（否则为 0，
+	// 前端以 DuplicateOf 是否为 nil 判断）。
+	ContentFingerprint string
+	DuplicateOf        *uuid.UUID
+	DuplicateFilename  string
+	DuplicateDistance  int
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

@@ -216,6 +216,34 @@ func (f *fakeDocRepo) UpdateParsedInfo(ctx context.Context, q platform.Querier, 
 	return platform.ErrNotFound
 }
 
+func (f *fakeDocRepo) UpdateFingerprint(ctx context.Context, q platform.Querier, id uuid.UUID, fingerprint string, duplicateOf *uuid.UUID, distance int) error {
+	if f.failOn == "UpdateFingerprint" {
+		return f.err
+	}
+	for _, d := range f.docs {
+		if d.ID == id {
+			d.ContentFingerprint = fingerprint
+			d.DuplicateOf = duplicateOf
+			d.DuplicateDistance = distance
+			return nil
+		}
+	}
+	return platform.ErrNotFound
+}
+
+func (f *fakeDocRepo) ListFingerprints(ctx context.Context, q platform.Querier, kbID uuid.UUID, excludeID uuid.UUID) ([]DocumentFingerprint, error) {
+	if f.failOn == "ListFingerprints" {
+		return nil, f.err
+	}
+	var out []DocumentFingerprint
+	for _, d := range f.docs {
+		if d.KnowledgeBaseID == kbID && d.ID != excludeID && d.ContentFingerprint != "" {
+			out = append(out, DocumentFingerprint{ID: d.ID, Filename: d.Filename, Fingerprint: d.ContentFingerprint})
+		}
+	}
+	return out, nil
+}
+
 // ListByKnowledgeBase 复刻真实 SQL 的语义：按 (created_at DESC, id DESC) 排，
 // 按游标过滤，多取一条判 hasMore，再切回 limit 条。
 //

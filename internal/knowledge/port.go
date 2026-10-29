@@ -69,6 +69,16 @@ type PDFParser interface {
 	ParsePDF(ctx context.Context, filename string, content []byte) (pageCount int, parser string, chunks []domain.Chunk, err error)
 }
 
+// DocumentFingerprint 是"同库另一份文档的正文指纹"，供上传后的去重比较。
+//
+// 只带判重需要的三列，不返回整个 Document：worker 每处理完一份文档都要
+// 比较同库全部指纹，减少列宽能让这次查询在几十份文档时也保持轻量。
+type DocumentFingerprint struct {
+	ID          uuid.UUID
+	Filename    string
+	Fingerprint string
+}
+
 // DocRepo 是文档的存取接口。
 //
 // 名字必须是 DocRepo，不能叫 Repo——同一个包里已经有 KBRepo，
@@ -96,6 +106,14 @@ type DocRepo interface {
 	// 按页码与出现顺序）。md/txt 没有这种分块时返回空切片，调用方会退回
 	// "按行解析文献列表"的兜底路径（见 Usecase.References）。
 	ListReferences(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.ReferenceEntry, error)
+
+	// UpdateFingerprint 记录正文指纹，并把"与哪份旧文档重合"写进三个告警列
+	// （migration 0018）。与分块落库同事务调用：指纹描述的是同一份解析产物。
+	UpdateFingerprint(ctx context.Context, q platform.Querier, id uuid.UUID, fingerprint string, duplicateOf *uuid.UUID, distance int) error
+
+	// ListFingerprints 返回同一知识库里其它已算过指纹的文档（排除 excludeID）。
+	// 上传处理路径用它做"上传时语义去重"：只比较正文，不看文件名。
+	ListFingerprints(ctx context.Context, q platform.Querier, kbID uuid.UUID, excludeID uuid.UUID) ([]DocumentFingerprint, error)
 
 	// ListOutline 返回文档的章节大纲：heading 分块按页码与出现顺序排列，
 	// Level 来自 section_path 的层级深度（见 domain.OutlineEntry）。
