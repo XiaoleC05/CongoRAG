@@ -2,14 +2,34 @@
 
 > 🏆 **传智杯「AI 大模型创新应用挑战赛」参赛版（2026）**
 >
-> 本仓库的 `cup-2026` 分支是参赛作品：在 v5.0.2 基线上补齐**科研学术层**——
+> 本仓库的 `main` / `cup-2026` 分支是参赛作品：在 v5.0.2 基线上补齐**科研学术层**——
 > PDF 页码/坐标溯源、混合检索与抗幻觉、阅读器与翻译、arXiv 检索、引用图谱、
-> 写作 Copilot。参赛说明（六模块对照、架构、快速开始、评分自评）见
+> 写作 Copilot；并进一步落地上传语义去重与版本差异摘要、双语对照/划词翻译、
+> PageRank 引用图谱与自动综述、CSV 图表/图注、arXiv 推荐与下钻入库。
+> 参赛说明（六模块对照、架构、快速开始、评分自评）见
 > [docs/competition/README.md](docs/competition/README.md)，Prompt 审计记录见
 > [docs/competition/prompt-audit.md](docs/competition/prompt-audit.md)。
 > **提交材料（技术文档 PDF / 演示视频 / 自检清单 / 评测报告）见
 > [docs/competition/submission/](docs/competition/submission/README.md)。**
 > 基线版本与参赛增量的边界在参赛说明第 3 节逐条列出。
+
+## 参赛信息（个人赛）
+
+| 项 | 内容 |
+|---|---|
+| 参赛者 | 陈晓乐（个人赛） |
+| 学校 / 专业 | 西华大学 · 软件工程 · 2023 级（本科） |
+| 参赛编号 | 1885438 |
+| 赛事 | 传智杯「AI 大模型创新应用挑战赛」（赛道 10040） |
+| 作品 | ConGoRAG 科研助手——可溯源、抗幻觉的论文阅读与写作工作台 |
+| 代码仓库 | https://github.com/XiaoleC05/CongoRAG（`main` / `cup-2026`） |
+| 联系 | 714085964@qq.com |
+
+## 提交材料索引
+
+技术文档 PDF、演示视频、评审自检清单、评测报告都在
+[docs/competition/submission/](docs/competition/submission/README.md)；
+在线演示与评审口令以提交说明为准（`https://congorag.cloud`）。
 
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
