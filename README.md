@@ -29,7 +29,7 @@
 
 技术文档 PDF、演示视频、评审自检清单、评测报告都在
 [docs/competition/submission/](docs/competition/submission/README.md)；
-在线演示与评审口令以提交说明为准（`https://congorag.cloud`）。
+在线演示与评审口令以提交说明为准（`http://118.25.138.177`）。
 
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
