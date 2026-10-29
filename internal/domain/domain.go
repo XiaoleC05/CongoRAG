@@ -91,6 +91,7 @@ type Citation struct {
 	// 【零值语义与 Chunk 一致】md/txt 文档这三个字段是零值，前端不渲染
 	// 页码按钮；PDF 才有。见 Chunk.IsAcademic。
 	Page        int
+	PageEnd     int
 	BBox        []float64
 	SectionPath []string
 }

@@ -72,6 +72,11 @@ export type DisplayCitation = {
   filename: string
   snippet: string
   score: number
+  /** 1-based 物理页码；md/txt 文档为 null/undefined（旧帧没有这两个字段） */
+  page?: number | null
+  pageEnd?: number | null
+  bbox?: number[] | null
+  sectionPath?: string[] | null
 }
 
 /**

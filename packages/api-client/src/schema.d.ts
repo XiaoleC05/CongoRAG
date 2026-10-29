@@ -174,6 +174,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** 下载文档的原始文件（PDF 阅读器用） */
+        get: operations["downloadDocumentFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conversations": {
         parameters: {
             query?: never;
@@ -646,6 +665,17 @@ export interface components {
              * @description 余弦相似度，越大越相关
              */
             score: number;
+            /** @description 1-based 物理页码；md/txt 文档为 null */
+            page: number | null;
+            /** @description 跨页分块的结束页码；未跨页时等于 page */
+            pageEnd: number | null;
+            /**
+             * @description 归一化 [x0, y0, x1, y1]，0~1，左上原点。前端 PDF.js 叠层
+             *     按百分比定位，不处理缩放/旋转。md/txt 文档为 null。
+             */
+            bbox: number[] | null;
+            /** @description 章节路径（如 ["3 Model Architecture", "3.2 Attention"]）；md/txt 为 null */
+            sectionPath: string[] | null;
         };
         KnowledgeSearchResult: {
             /**
@@ -687,6 +717,13 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            /**
+             * @description PDF 页数；md/txt 文档是 0（不是 null——"没有页概念"与"未知"
+             *     对前端是同一个分支，少一个空态）。
+             */
+            pageCount: number;
+            /** @description 解析器版本（如 pdf-service-0.1.0）；md/txt 为空串 */
+            parser: string;
         };
         ReindexAccepted: {
             /**
@@ -1405,6 +1442,30 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    downloadDocumentFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 原始文件字节 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };

@@ -406,6 +406,40 @@ paths:
           $ref: '#/components/responses/InternalError'
 
   # ── 会话 ────────────────────────────────────────────────────
+  # ── 文档：原始文件 ──────────────────────────────────────────
+  #
+  # 阅读器（ReaderPage）要用它取原始 PDF 的字节流：PDF.js 需要文件本体，
+  # 而不是解析后的 JSON。md/txt 也走这条（浏览器直接下载）。
+  #
+  # 【为什么单独一个端点，不复用 /documents/{id}】后者返回 JSON 元信息，
+  # 混在一起要么给 JSON 塞 base64（体积 ×1.33、前端还得解），要么按
+  # Accept 头分叉响应类型——都不如一个明确的二进制端点干净。
+  /api/v1/documents/{id}/file:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: downloadDocumentFile
+      summary: 下载文档的原始文件（PDF 阅读器用）
+      responses:
+        '200':
+          description: 原始文件字节
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/conversations:
 
     get:
@@ -1250,7 +1284,7 @@ components:
     # 不需要为调试视图再做一套展示。
     KnowledgeSearchHit:
       type: object
-      required: [chunkId, documentId, filename, snippet, score]
+      required: [chunkId, documentId, filename, snippet, score, page, pageEnd, bbox, sectionPath]
       properties:
         chunkId:
           type: string
@@ -1269,6 +1303,36 @@ components:
           format: double
           description: 余弦相似度，越大越相关
 
+        # ── 参赛版「科研助手」：学术定位信息 ──────────────────────
+        #
+        # 【为什么 required + nullable】这四个字段对 md/txt 文档没有意义，
+        # 但对 PDF 必须出现——直接标 optional 的话生成的 Go 字段是指针、
+        # JSON 里省略，前端要同时处理"字段缺失"和"值为 null"两种空态。
+        # 统一成"始终出现、没有就是 null"，前端一条分支就够。
+        page:
+          type: integer
+          nullable: true
+          description: 1-based 物理页码；md/txt 文档为 null
+        pageEnd:
+          type: integer
+          nullable: true
+          description: 跨页分块的结束页码；未跨页时等于 page
+        bbox:
+          type: array
+          nullable: true
+          items:
+            type: number
+            format: double
+          description: |
+            归一化 [x0, y0, x1, y1]，0~1，左上原点。前端 PDF.js 叠层
+            按百分比定位，不处理缩放/旋转。md/txt 文档为 null。
+        sectionPath:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: 章节路径（如 ["3 Model Architecture", "3.2 Attention"]）；md/txt 为 null
+
     KnowledgeSearchResult:
       type: object
       required: [hits]
@@ -1284,7 +1348,7 @@ components:
 
     Document:
       type: object
-      required: [id, knowledgeBaseId, filename, status, byteSize, chunkCount, createdAt, updatedAt]
+      required: [id, knowledgeBaseId, filename, status, byteSize, chunkCount, pageCount, parser, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -1323,6 +1387,14 @@ components:
         updatedAt:
           type: string
           format: date-time
+        pageCount:
+          type: integer
+          description: |
+            PDF 页数；md/txt 文档是 0（不是 null——"没有页概念"与"未知"
+            对前端是同一个分支，少一个空态）。
+        parser:
+          type: string
+          description: 解析器版本（如 pdf-service-0.1.0）；md/txt 为空串
 
     # 整库重建的响应。只报"这次真的排进去多少份"——不报总量、不报进度，
     # 那些由前端轮询文档列表（受影响的行会显示为 queued）自己看。

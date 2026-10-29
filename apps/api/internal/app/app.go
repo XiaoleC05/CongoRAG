@@ -247,6 +247,7 @@ func Run(webFS embed.FS) error {
 		LLM:            llmUC,
 		Conversation:   convUC,
 		Agent:          agentUC,
+		Files:          files,
 		Retrieval:      retrievalUC,
 		MaxUploadBytes: cfg.MaxUploadBytes,
 		// pool 是 *pgxpool.Pool，结构性地满足 platform.Pinger；/readyz 用它

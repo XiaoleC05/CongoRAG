@@ -404,6 +404,13 @@ type Document struct {
 	Id              openapi_types.UUID `json:"id"`
 	KnowledgeBaseId openapi_types.UUID `json:"knowledgeBaseId"`
 
+	// PageCount PDF 页数；md/txt 文档是 0（不是 null——"没有页概念"与"未知"
+	// 对前端是同一个分支，少一个空态）。
+	PageCount int `json:"pageCount"`
+
+	// Parser 解析器版本（如 pdf-service-0.1.0）；md/txt 为空串
+	Parser string `json:"parser"`
+
 	// Status 四态状态机（代码架构设计 §5.4）：queued → processing → ready，
 	// 任意阶段失败进 failed，failed 只能退回 queued 重试。
 	Status    DocumentStatus `json:"status"`
@@ -432,14 +439,26 @@ type KnowledgeBase struct {
 
 // KnowledgeSearchHit defines model for KnowledgeSearchHit.
 type KnowledgeSearchHit struct {
+	// Bbox 归一化 [x0, y0, x1, y1]，0~1，左上原点。前端 PDF.js 叠层
+	// 按百分比定位，不处理缩放/旋转。md/txt 文档为 null。
+	Bbox       *[]float64         `json:"bbox"`
 	ChunkId    openapi_types.UUID `json:"chunkId"`
 	DocumentId openapi_types.UUID `json:"documentId"`
 
 	// Filename 这个分块来自哪份文档（检索 SQL 里 JOIN documents 拿到）
 	Filename string `json:"filename"`
 
+	// Page 1-based 物理页码；md/txt 文档为 null
+	Page *int `json:"page"`
+
+	// PageEnd 跨页分块的结束页码；未跨页时等于 page
+	PageEnd *int `json:"pageEnd"`
+
 	// Score 余弦相似度，越大越相关
 	Score float64 `json:"score"`
+
+	// SectionPath 章节路径（如 ["3 Model Architecture", "3.2 Attention"]）；md/txt 为 null
+	SectionPath *[]string `json:"sectionPath"`
 
 	// Snippet 分块正文
 	Snippet string `json:"snippet"`
@@ -888,6 +907,9 @@ type ServerInterface interface {
 	// GetDocument 查一份文档的当前状态（前端拿它做处理中的轮询）
 	// (GET /api/v1/documents/{id})
 	GetDocument(c *gin.Context, id openapi_types.UUID)
+	// DownloadDocumentFile 下载文档的原始文件（PDF 阅读器用）
+	// (GET /api/v1/documents/{id}/file)
+	DownloadDocumentFile(c *gin.Context, id openapi_types.UUID)
 	// ReindexDocument 重新索引一份文档（重新切分、向量化、入库）
 	// (POST /api/v1/documents/{id}/reindex)
 	ReindexDocument(c *gin.Context, id openapi_types.UUID)
@@ -1413,6 +1435,31 @@ func (siw *ServerInterfaceWrapper) GetDocument(c *gin.Context) {
 	}
 
 	siw.Handler.GetDocument(c, id)
+}
+
+// DownloadDocumentFile operation middleware
+func (siw *ServerInterfaceWrapper) DownloadDocumentFile(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DownloadDocumentFile(c, id)
 }
 
 // ReindexDocument operation middleware
@@ -1962,6 +2009,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/api/v1/documents/:id", wrapper.DeleteDocument)
 	router.GET(options.BaseURL+"/api/v1/documents/:id", wrapper.GetDocument)
 	router.POST(options.BaseURL+"/api/v1/documents/:id/reindex", wrapper.ReindexDocument)
+	router.GET(options.BaseURL+"/api/v1/documents/:id/file", wrapper.DownloadDocumentFile)
 	router.GET(options.BaseURL+"/api/v1/conversations", wrapper.ListConversations)
 	router.POST(options.BaseURL+"/api/v1/conversations", wrapper.CreateConversation)
 	router.DELETE(options.BaseURL+"/api/v1/conversations/:id", wrapper.DeleteConversation)

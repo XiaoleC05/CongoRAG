@@ -12,8 +12,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -38,6 +40,11 @@ type Deps struct {
 	LLM          *llm.Usecase
 	Conversation *conversation.Usecase
 	Agent        *agent.Usecase
+
+	// Files 是原始文件存储，只有下载端点（GET /documents/{id}/file）用。
+	// 类型是接口而不是 *knowledge.LocalFileStore：HTTP 边界不该知道文件是
+	// 落在本地磁盘还是对象存储（将来换 S3 只换装配根）。
+	Files knowledge.FileStore
 
 	// Retrieval 是检索调试视图（POST /knowledge-bases/{id}/search）用的。
 	// 它和 knowledge 是不同的关注点：knowledge 管知识库与文档的 CRUD，
@@ -321,6 +328,8 @@ func toAPIDocument(d *knowledge.Document) Document {
 		Status:          DocumentStatus(d.Status),
 		ByteSize:        d.ByteSize,
 		ChunkCount:      d.ChunkCount,
+		PageCount:       d.PageCount,
+		Parser:          d.Parser,
 		CreatedAt:       d.CreatedAt,
 		UpdatedAt:       d.UpdatedAt,
 	}
@@ -400,6 +409,79 @@ func (s *Server) GetDocument(c *gin.Context, id openapi_types.UUID) {
 		return
 	}
 	c.JSON(http.StatusOK, toAPIDocument(doc))
+}
+
+// intPtrOrNil 把"0 表示没有"的整数转成契约里的 nullable 字段。
+//
+// 【为什么不是直接传 int 的地址】0 是一个合法的值（页数从 1 开始，页码 0
+// 不是合法页码），但零值语义是"没有页码"。直接取地址会让前端拿到 page=0，
+// 分不清"第 0 页"和"没有页"。
+func intPtrOrNil(v int) *int {
+	if v == 0 {
+		return nil
+	}
+	return &v
+}
+
+func floatSlicePtrOrNil(v []float64) *[]float64 {
+	if len(v) == 0 {
+		return nil
+	}
+	out := append([]float64(nil), v...)
+	return &out
+}
+
+func stringSlicePtrOrNil(v []string) *[]string {
+	if len(v) == 0 {
+		return nil
+	}
+	out := append([]string(nil), v...)
+	return &out
+}
+
+// DownloadDocumentFile 把原始文件字节流给阅读器（PDF.js）。
+//
+// 【为什么不缓存】本地单机应用、文件几 MB，每次从磁盘读比维护一层缓存
+// 简单；真要缓存留给公网部署那层（反向代理）去做。
+func (s *Server) DownloadDocumentFile(c *gin.Context, id openapi_types.UUID) {
+	ctx := c.Request.Context()
+
+	doc, err := s.deps.Knowledge.GetDocument(ctx, id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	rc, err := s.deps.Files.Open(ctx, doc.StorageKey)
+	if err != nil {
+		// 元信息还在、文件没了，是"数据库和磁盘不同步"的坏状态。
+		// 对客户端来说就是 404：它要的东西不在了。
+		if errors.Is(err, os.ErrNotExist) {
+			s.fail(c, fmt.Errorf("file of document %s is gone: %w", id, platform.ErrNotFound))
+			return
+		}
+		s.fail(c, fmt.Errorf("open file of document %s: %w", id, err))
+		return
+	}
+	defer func() { _ = rc.Close() }()
+
+	contentType := "application/octet-stream"
+	disposition := "attachment"
+	if strings.HasSuffix(strings.ToLower(doc.Filename), ".pdf") {
+		contentType = "application/pdf"
+		// inline：浏览器内置 PDF 查看器直接打开，不弹下载框
+		disposition = "inline"
+	}
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Disposition", fmt.Sprintf("%s; filename=%q", disposition, doc.Filename))
+	c.Header("Cache-Control", "private, max-age=300")
+
+	if _, err := io.Copy(c.Writer, rc); err != nil {
+		// 响应头已经发出去了，这里只能记日志——客户端会看到截断的响应，
+		// 那是网络侧的失败，不是我们能改写的 HTTP 错误。
+		s.deps.Logger.Warn("stream document file failed",
+			"document_id", id, "error", err)
+	}
 }
 
 func (s *Server) DeleteDocument(c *gin.Context, id openapi_types.UUID) {
@@ -1206,11 +1288,15 @@ func (s *Server) SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 	hits := make([]KnowledgeSearchHit, 0, len(chunks))
 	for _, ch := range chunks {
 		hits = append(hits, KnowledgeSearchHit{
-			ChunkId:    ch.ID,
-			DocumentId: ch.DocumentID,
-			Filename:   ch.Filename,
-			Snippet:    ch.Content,
-			Score:      ch.Score,
+			ChunkId:     ch.ID,
+			DocumentId:  ch.DocumentID,
+			Filename:    ch.Filename,
+			Snippet:     ch.Content,
+			Score:       ch.Score,
+			Page:        intPtrOrNil(ch.PageStart),
+			PageEnd:     intPtrOrNil(ch.PageEnd),
+			Bbox:        floatSlicePtrOrNil(ch.BBox),
+			SectionPath: stringSlicePtrOrNil(ch.SectionPath),
 		})
 	}
 	c.JSON(http.StatusOK, KnowledgeSearchResult{Hits: hits})

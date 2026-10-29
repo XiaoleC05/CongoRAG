@@ -50,6 +50,8 @@ const doc: Document = {
   status: 'ready',
   byteSize: 1024,
   chunkCount: 8,
+  pageCount: 0,
+  parser: '',
   createdAt: '2026-09-21T00:00:00Z',
   updatedAt: '2026-09-21T00:00:00Z',
 }
@@ -61,6 +63,8 @@ const failedDoc: Document = {
   status: 'failed',
   byteSize: 128,
   chunkCount: 3,
+  pageCount: 0,
+  parser: '',
   createdAt: '2026-09-21T00:00:01Z',
   updatedAt: '2026-09-21T00:00:01Z',
 }

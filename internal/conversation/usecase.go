@@ -1030,19 +1030,52 @@ type tokenPayload struct {
 	Text string `json:"text"`
 }
 
+// citationPayload 是 SSE citation 事件的 data。
+//
+// 【参赛版新增 page/pageEnd/bbox/sectionPath】前端要能"点引用跳到论文
+// 第几页、高亮哪一块"。md/txt 文档没有页概念，这四项是 null（不是
+// 省略）——与 KnowledgeSearchHit 的约定一致，前端一条分支处理空态。
 type citationPayload struct {
-	ChunkID    uuid.UUID `json:"chunkId"`
-	DocumentID uuid.UUID `json:"documentId"`
-	Filename   string    `json:"filename"`
-	Snippet    string    `json:"snippet"`
-	Score      float64   `json:"score"`
+	ChunkID     uuid.UUID  `json:"chunkId"`
+	DocumentID  uuid.UUID  `json:"documentId"`
+	Filename    string     `json:"filename"`
+	Snippet     string     `json:"snippet"`
+	Score       float64    `json:"score"`
+	Page        *int       `json:"page"`
+	PageEnd     *int       `json:"pageEnd"`
+	BBox        *[]float64 `json:"bbox"`
+	SectionPath *[]string  `json:"sectionPath"`
+}
+
+// citationLocator 把 domain.Chunk 的学术定位字段转成 SSE payload 的
+// nullable 形状。零值 -> null 的规则与 API 层 intPtrOrNil 一致。
+func citationLocator(c domain.Citation) (page, pageEnd *int, bbox *[]float64, section *[]string) {
+	if c.Page > 0 {
+		page = &c.Page
+		pe := c.Page
+		if c.PageEnd > pe {
+			pe = c.PageEnd
+		}
+		pageEnd = &pe
+	}
+	if len(c.BBox) > 0 {
+		v := append([]float64(nil), c.BBox...)
+		bbox = &v
+	}
+	if len(c.SectionPath) > 0 {
+		v := append([]string(nil), c.SectionPath...)
+		section = &v
+	}
+	return page, pageEnd, bbox, section
 }
 
 func (u *Usecase) emitCitations(ctx context.Context, convID uuid.UUID, sink EventSink, citations []domain.Citation) error {
 	for _, c := range citations {
+		page, pageEnd, bbox, section := citationLocator(c)
 		payload := citationPayload{
 			ChunkID: c.ChunkID, DocumentID: c.DocumentID,
 			Filename: c.Filename, Snippet: c.Snippet, Score: c.Score,
+			Page: page, PageEnd: pageEnd, BBox: bbox, SectionPath: section,
 		}
 		if err := u.emitEvent(ctx, convID, sink, "citation", payload); err != nil {
 			return err
