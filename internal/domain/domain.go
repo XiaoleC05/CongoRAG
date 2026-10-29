@@ -134,3 +134,16 @@ type MessageSnippet struct {
 	Content    string
 	SequenceNo int64
 }
+
+
+// OutlineEntry 是论文阅读器左侧目录的一行（参赛版 M3）。
+//
+// 【为什么 Level 由 section_path 长度推出，而不是解析标题里的 3.2.1 编号】
+// 编号格式在不同出版社的 PDF 里差异很大（有的用 1.、有的用 A.、有的没有
+// 编号）；而 sidecar 已经按版面层级推出了章节路径，长度就是天然的层级。
+// 前端只需按 Level 缩进，不用理解编号规则。
+type OutlineEntry struct {
+	Title string // 章节标题（heading 分块的原文）
+	Page  int    // 1-based 物理页码，点击目录直接跳这一页
+	Level int    // 1-based 层级 = len(section_path)
+}

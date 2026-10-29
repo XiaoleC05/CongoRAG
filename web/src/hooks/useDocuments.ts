@@ -1,8 +1,31 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@congorag/api-client'
 import type { Schemas } from '@congorag/api-client'
 import { flattenPages, nextPageParam } from '@/lib/pagination'
+
+/**
+ * 阅读器目录（参赛版 M3）：GET /documents/{id}/outline。
+ *
+ * 【为什么单独一个 hook】目录只有在阅读器打开时才需要，且与文档列表的
+ * 轮询无关；塞进列表查询会让每次轮询都白跑一遍目录。react-query 的 key
+ * 按文档 id 分开缓存，切换文档不会读到上一份的目录。
+ */
+export function useDocumentOutline(docId: string) {
+  // 显式给 TData：react-query v5 对 queryFn 返回类型的推断在某些
+  // 选项组合（enabled/staleTime）下会退化成 any，目录因此丢类型。
+  return useQuery<Schemas['OutlineEntry'][]>({
+    queryKey: ['document-outline', docId],
+    queryFn: async (): Promise<Schemas['OutlineEntry'][]> => {
+      const res = await fetch(`/api/v1/documents/${docId}/outline`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return (await res.json()) as Schemas['OutlineEntry'][]
+    },
+    enabled: docId !== '',
+    // 目录来自解析产物，重新索引前不会变；不自动轮询。
+    staleTime: 5 * 60 * 1000,
+  })
+}
 
 /** 文档状态。直接用契约里的枚举，前端不另立一套（web/README.md §5）。 */
 export type DocumentStatus = Schemas['Document']['status']

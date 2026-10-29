@@ -4,6 +4,7 @@ package knowledge
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
 
@@ -356,6 +358,48 @@ func (r *PgDocRepo) ExistingStorageKeys(ctx context.Context, q platform.Querier,
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate storage keys: %w", err)
+	}
+	return out, nil
+}
+
+func (r *PgDocRepo) ListOutline(ctx context.Context, q platform.Querier, docID uuid.UUID) ([]domain.OutlineEntry, error) {
+	rows, err := q.Query(ctx,
+		`SELECT content, page_start, section_path
+		 FROM document_chunks
+		 WHERE document_id = $1 AND block_type = 'heading'
+		 ORDER BY page_start, id`, docID)
+	if err != nil {
+		return nil, fmt.Errorf("list outline of document %s: %w", docID, platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	var out []domain.OutlineEntry
+	for rows.Next() {
+		var (
+			title      string
+			page       *int
+			sectionRaw []byte
+		)
+		if err := rows.Scan(&title, &page, &sectionRaw); err != nil {
+			return nil, fmt.Errorf("scan outline row of document %s: %w", docID, err)
+		}
+		entry := domain.OutlineEntry{Title: title, Level: 1}
+		if page != nil {
+			entry.Page = *page
+		}
+		if len(sectionRaw) > 0 {
+			var path []string
+			if err := json.Unmarshal(sectionRaw, &path); err != nil {
+				return nil, fmt.Errorf("decode section path of outline row in document %s: %w", docID, err)
+			}
+			if len(path) > entry.Level {
+				entry.Level = len(path)
+			}
+		}
+		out = append(out, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate outline of document %s: %w", docID, err)
 	}
 	return out, nil
 }

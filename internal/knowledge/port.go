@@ -88,6 +88,13 @@ type DocRepo interface {
 	// "页数更新了、分块还是旧的"（或反过来）的中间态。
 	UpdateParsedInfo(ctx context.Context, q platform.Querier, id uuid.UUID, pageCount int, parser string) error
 
+	// ListOutline 返回文档的章节大纲：heading 分块按页码与出现顺序排列，
+	// Level 来自 section_path 的层级深度（见 domain.OutlineEntry）。
+	//
+	// 文档不存在（没有任何分块）时返回空切片而不是 ErrNotFound——"空大纲"
+	// 和"没有这个文档"在这里不可区分，调用方会先 ByID 校验文档存在。
+	ListOutline(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.OutlineEntry, error)
+
 	// ListByKnowledgeBase 按 created_at 倒序取一个知识库下的文档，最多 limit 条。
 	//
 	// 【keyset 分页，不是 offset】游标是第一页最后那一行的 (created_at, id)。

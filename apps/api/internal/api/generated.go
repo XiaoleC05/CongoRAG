@@ -541,6 +541,18 @@ type ModelSummary struct {
 // ModelSummaryKind defines model for ModelSummary.Kind.
 type ModelSummaryKind string
 
+// OutlineEntry 论文阅读器目录的一行
+type OutlineEntry struct {
+	// Level 层级（1 = 一级标题），前端按它缩进
+	Level int `json:"level"`
+
+	// Page 1-based 物理页码，点击目录跳这一页
+	Page int `json:"page"`
+
+	// Title 章节标题（heading 分块原文）
+	Title string `json:"title"`
+}
+
 // Problem defines model for Problem.
 type Problem struct {
 	// Detail 具体说明
@@ -916,6 +928,9 @@ type ServerInterface interface {
 	// DownloadDocumentFile 下载文档的原始文件（PDF 阅读器用）
 	// (GET /api/v1/documents/{id}/file)
 	DownloadDocumentFile(c *gin.Context, id openapi_types.UUID)
+	// GetDocumentOutline 取一份文档的章节大纲（heading 分块 → 阅读器目录）
+	// (GET /api/v1/documents/{id}/outline)
+	GetDocumentOutline(c *gin.Context, id openapi_types.UUID)
 	// ReindexDocument 重新索引一份文档（重新切分、向量化、入库）
 	// (POST /api/v1/documents/{id}/reindex)
 	ReindexDocument(c *gin.Context, id openapi_types.UUID)
@@ -1468,6 +1483,31 @@ func (siw *ServerInterfaceWrapper) DownloadDocumentFile(c *gin.Context) {
 	siw.Handler.DownloadDocumentFile(c, id)
 }
 
+// GetDocumentOutline operation middleware
+func (siw *ServerInterfaceWrapper) GetDocumentOutline(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetDocumentOutline(c, id)
+}
+
 // ReindexDocument operation middleware
 func (siw *ServerInterfaceWrapper) ReindexDocument(c *gin.Context) {
 
@@ -2015,6 +2055,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/api/v1/documents/:id", wrapper.DeleteDocument)
 	router.GET(options.BaseURL+"/api/v1/documents/:id", wrapper.GetDocument)
 	router.POST(options.BaseURL+"/api/v1/documents/:id/reindex", wrapper.ReindexDocument)
+	router.GET(options.BaseURL+"/api/v1/documents/:id/outline", wrapper.GetDocumentOutline)
 	router.GET(options.BaseURL+"/api/v1/documents/:id/file", wrapper.DownloadDocumentFile)
 	router.GET(options.BaseURL+"/api/v1/conversations", wrapper.ListConversations)
 	router.POST(options.BaseURL+"/api/v1/conversations", wrapper.CreateConversation)

@@ -406,6 +406,38 @@ paths:
           $ref: '#/components/responses/InternalError'
 
   # ── 会话 ────────────────────────────────────────────────────
+  # ── 文档：章节目录（参赛版 M3）───────────────────────────────
+  #
+  # 阅读器左侧目录用它：解析阶段已经给每个 heading 分块算了页码和章节
+  # 层级（section_path 长度），这里只是把它们按原文顺序取出来，不再做
+  # 任何推导。返回裸数组：目录天然是"一整个列表"，没有分页语义。
+  /api/v1/documents/{id}/outline:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getDocumentOutline
+      summary: 取一份文档的章节大纲（heading 分块 → 阅读器目录）
+      responses:
+        '200':
+          description: 按原文顺序排列的章节列表；还没解析出 heading 时为空数组
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OutlineEntry'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ── 文档：原始文件 ──────────────────────────────────────────
   #
   # 阅读器（ReaderPage）要用它取原始 PDF 的字节流：PDF.js 需要文件本体，
@@ -1348,6 +1380,23 @@ components:
           format: double
           nullable: true
           description: 词法 ts_rank_cd（>=0）；这一路没命中时为 null
+
+    OutlineEntry:
+      type: object
+      description: 论文阅读器目录的一行
+      required: [title, page, level]
+      properties:
+        title:
+          type: string
+          description: 章节标题（heading 分块原文）
+        page:
+          type: integer
+          minimum: 1
+          description: 1-based 物理页码，点击目录跳这一页
+        level:
+          type: integer
+          minimum: 1
+          description: 层级（1 = 一级标题），前端按它缩进
 
     KnowledgeSearchResult:
       type: object

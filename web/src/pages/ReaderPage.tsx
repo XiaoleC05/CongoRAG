@@ -13,6 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ErrorText } from '@/components/ErrorText'
 import { PageFallback } from '@/components/PageFallback'
+import { useDocumentOutline } from '@/hooks/useDocuments'
 
 // PDF.js 的 worker 必须显式指定。workerPort 接一个真的 Worker 实例，
 // 比 workerSrc 再让 pdf.js 自己按 URL 去 import 更可控（见上面的 ?worker 说明）。
@@ -84,6 +85,15 @@ function ReaderView({
   const [pageNo, setPageNo] = useState(initialPage)
   const [scale, setScale] = useState(1.4)
   const [rendering, setRendering] = useState(false)
+
+  // 章节目录（参赛版 M3）：点击某节直接把页码切过去。
+  //
+  // 【本地再声明一次形状，而不是依赖 Schemas】useQuery 的返回类型在这里
+  // 退化成 any（见 useDocuments.ts 里的说明），而 JSX 的 map 回调参数是
+  // any 时 tsc 会报 noImplicitAny。这里把数据形状钉在消费侧最直接。
+  type OutlineRow = { title: string; page: number; level: number }
+  const { data: outlineData } = useDocumentOutline(id)
+  const outline: OutlineRow[] | undefined = outlineData
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
@@ -257,9 +267,46 @@ function ReaderView({
         </div>
       </div>
 
-      {/* 画布区：滚动容器 + 居中页面。overlay 和 canvas 在同一个
-          position:relative 的盒子里，按百分比定位，两者尺寸永远一致。 */}
-      <div className="min-h-0 flex-1 overflow-auto bg-neutral-100 p-6 dark:bg-neutral-900">
+      <div className="flex min-h-0 flex-1">
+        {/* 章节目录：解析阶段已经算好页码与层级，这里只负责渲染和跳页。 */}
+        <aside className="hidden w-60 shrink-0 overflow-auto border-r lg:block">
+          <div className="text-muted-foreground px-3 py-2 text-xs font-medium">章节目录</div>
+          {outline && outline.length > 0 ? (
+            <ul className="pb-4">
+              {outline.map((entry, index) => {
+                // 当前页落在哪一节：取"页码 ≤ 当前页"的最后一个条目。
+                const active = outline.reduce(
+                  (acc, cur, i) => (cur.page <= pageNo ? i : acc),
+                  -1,
+                )
+                return (
+                  <li key={index}>
+                    <button
+                      type="button"
+                      onClick={() => go(entry.page)}
+                      className={
+                        'block w-full truncate px-3 py-1 text-left text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800 ' +
+                        (index === active ? 'text-primary font-medium' : 'text-muted-foreground')
+                      }
+                      style={{ paddingLeft: 12 + (entry.level - 1) * 14 }}
+                      title={entry.title}
+                    >
+                      {entry.title}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <p className="text-muted-foreground px-3 text-xs">
+              {outline ? '这份文档没有解析出章节标题' : '加载中…'}
+            </p>
+          )}
+        </aside>
+
+        {/* 画布区：滚动容器 + 居中页面。overlay 和 canvas 在同一个
+            position:relative 的盒子里，按百分比定位，两者尺寸永远一致。 */}
+        <div className="min-h-0 flex-1 overflow-auto bg-neutral-100 p-6 dark:bg-neutral-900">
         {!pdf || rendering ? (
           <div className="mb-3 text-center text-xs text-neutral-500">
             {!pdf ? '正在加载 PDF…' : '正在渲染…'}
@@ -283,8 +330,9 @@ function ReaderView({
         </div>
         {!pdf && !loadError ? <PageFallback /> : null}
           </div>
-        </>
-      )}
+        </div>
+      </>
+    )}
     </div>
   )
 }

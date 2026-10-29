@@ -411,6 +411,20 @@ func (s *Server) GetDocument(c *gin.Context, id openapi_types.UUID) {
 	c.JSON(http.StatusOK, toAPIDocument(doc))
 }
 
+// GetDocumentOutline 返回阅读器目录（参赛版 M3）。
+func (s *Server) GetDocumentOutline(c *gin.Context, id openapi_types.UUID) {
+	entries, err := s.deps.Knowledge.Outline(c.Request.Context(), id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	out := make([]OutlineEntry, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, OutlineEntry{Title: e.Title, Page: e.Page, Level: e.Level})
+	}
+	c.JSON(http.StatusOK, out)
+}
+
 // intPtrOrNil 把"0 表示没有"的整数转成契约里的 nullable 字段。
 //
 // 【为什么不是直接传 int 的地址】0 是一个合法的值（页数从 1 开始，页码 0

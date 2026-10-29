@@ -174,6 +174,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{id}/outline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** 取一份文档的章节大纲（heading 分块 → 阅读器目录） */
+        get: operations["getDocumentOutline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{id}/file": {
         parameters: {
             query?: never;
@@ -686,6 +705,15 @@ export interface components {
              * @description 词法 ts_rank_cd（>=0）；这一路没命中时为 null
              */
             lexicalScore: number | null;
+        };
+        /** @description 论文阅读器目录的一行 */
+        OutlineEntry: {
+            /** @description 章节标题（heading 分块原文） */
+            title: string;
+            /** @description 1-based 物理页码，点击目录跳这一页 */
+            page: number;
+            /** @description 层级（1 = 一级标题），前端按它缩进 */
+            level: number;
         };
         KnowledgeSearchResult: {
             /**
@@ -1452,6 +1480,30 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getDocumentOutline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按原文顺序排列的章节列表；还没解析出 heading 时为空数组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlineEntry"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };
     };

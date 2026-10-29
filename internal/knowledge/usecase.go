@@ -437,6 +437,22 @@ func (u *Usecase) RequeueAllDocuments(ctx context.Context, q platform.Querier) (
 	return len(ids), nil
 }
 
+// Outline 返回论文阅读器左侧目录需要的章节列表（参赛版 M3）。
+//
+// 【为什么先 ByID 再查分块】分块为空可能是"文档还没处理完"，也可能是
+// "文档不存在"；前端对这两种情况的处理不同（前者继续轮询、后者报错）。
+// 所以先确认文档存在，让 404 / 空数组在语义上分开。
+func (u *Usecase) Outline(ctx context.Context, id uuid.UUID) ([]domain.OutlineEntry, error) {
+	if _, err := u.docRepo.ByID(ctx, u.db, id); err != nil {
+		return nil, fmt.Errorf("get document %s: %w", id, err)
+	}
+	entries, err := u.docRepo.ListOutline(ctx, u.db, id)
+	if err != nil {
+		return nil, fmt.Errorf("list outline of document %s: %w", id, err)
+	}
+	return entries, nil
+}
+
 // GetDocument 按 id 取一份文档，主要给"查处理状态"这个端点用。
 func (u *Usecase) GetDocument(ctx context.Context, id uuid.UUID) (*Document, error) {
 	d, err := u.docRepo.ByID(ctx, u.db, id)

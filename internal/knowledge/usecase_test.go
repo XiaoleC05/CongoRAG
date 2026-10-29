@@ -120,8 +120,18 @@ var _ DocRepo = (*fakeDocRepo)(nil)
 type fakeDocRepo struct {
 	docs []*Document
 
+	// outline 是 ListOutline 要返回的目录（参赛版 M3）。
+	outline []domain.OutlineEntry
+
 	failOn string
 	err    error
+}
+
+func (f *fakeDocRepo) ListOutline(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.OutlineEntry, error) {
+	if f.failOn == "ListOutline" {
+		return nil, f.err
+	}
+	return f.outline, nil
 }
 
 func (f *fakeDocRepo) Insert(ctx context.Context, q platform.Querier, d *Document) error {
