@@ -545,3 +545,21 @@ export function useVersionDiff() {
     },
   })
 }
+
+/** 引用图谱自动综述（M5 加分项）：POST /knowledge-bases/{id}/citation-survey。 */
+export function useCitationSurvey(kbId: string) {
+  return useMutation({
+    mutationFn: async (focus?: string): Promise<Schemas['CitationSurvey']> => {
+      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/citation-survey`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ focus: focus ?? '' }),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      return (await res.json()) as Schemas['CitationSurvey']
+    },
+  })
+}

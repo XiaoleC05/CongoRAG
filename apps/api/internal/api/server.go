@@ -25,6 +25,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/XiaoleC05/CongoRAG/internal/agent"
@@ -772,6 +773,60 @@ func (s *Server) ReindexDocument(c *gin.Context, id openapi_types.UUID) {
 		return
 	}
 	c.JSON(http.StatusAccepted, toAPIDocument(doc))
+}
+
+// GetCitationSurvey 基于引用图谱生成领域综述与 Future Work（M5 加分项）。
+func (s *Server) GetCitationSurvey(c *gin.Context, id openapi_types.UUID) {
+	var req CitationSurveyRequest
+	if !s.bindJSON(c, &req) {
+		return
+	}
+	ctx := c.Request.Context()
+	graph, err := s.deps.Knowledge.CitationGraph(ctx, id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	if len(graph.Nodes) == 0 {
+		s.fail(c, fmt.Errorf("知识库里没有 ready 文档，无法生成综述: %w", platform.ErrInvalid))
+		return
+	}
+	focus := ""
+	if req.Focus != nil {
+		focus = strings.TrimSpace(*req.Focus)
+	}
+
+	filename := make(map[uuid.UUID]string, len(graph.Nodes))
+	var docs strings.Builder
+	for i, node := range graph.Nodes {
+		filename[node.DocumentID] = node.Filename
+		if i >= 10 {
+			continue
+		}
+		chunks, cerr := s.deps.Knowledge.ChunksPreview(ctx, node.DocumentID, 2)
+		if cerr != nil {
+			continue
+		}
+		label := node.Filename
+		if strings.TrimSpace(node.Title) != "" {
+			label = node.Title + "（" + node.Filename + "）"
+		}
+		docs.WriteString("### " + label + "\n")
+		docs.WriteString(excerptChunks(chunks, 700))
+		docs.WriteString("\n\n")
+	}
+	var rels strings.Builder
+	for _, e := range graph.Edges {
+		rels.WriteString("- " + filename[e.From] + " 引用了 " + filename[e.To] + "（" + strconv.Itoa(e.Weight) + " 条参考文献）\n")
+	}
+	system := "你是学术综述助手。基于给定的库内论文片段与引用关系，用中文写一份 400-600 字的领域综述（Markdown，包含研究脉络、代表工作、引用关系），然后给出 3 条 Future Work 方向。只能使用给定材料，不要编造未出现的论文或结论；材料不足时明确说明。"
+	user := "关注方向：" + focus + "\n\n论文片段：\n" + docs.String() + "\n引用关系：\n" + rels.String() + "\n请输出综述 + Future Work。"
+	markdown, err := s.deps.LLM.Generate(ctx, system, user)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, CitationSurvey{Markdown: markdown})
 }
 
 // GetArxivRecommendations 根据知识库主题推荐 arXiv 最新论文（M4）。

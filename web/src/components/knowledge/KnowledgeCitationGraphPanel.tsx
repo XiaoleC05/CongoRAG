@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Network } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { BookOpen, Network } from 'lucide-react'
 
 import { ErrorText } from '@/components/ErrorText'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { useCitationGraph } from '@/hooks/useDocuments'
+import { useCitationGraph, useCitationSurvey } from '@/hooks/useDocuments'
 
 /**
  * 局域引用图谱（参赛版 M5）。
@@ -28,6 +30,7 @@ function shortName(filename: string): string {
 export function KnowledgeCitationGraphPanel({ kbId }: { kbId: string }) {
   const navigate = useNavigate()
   const graph = useCitationGraph(kbId)
+  const survey = useCitationSurvey(kbId)
   const [hovered, setHovered] = useState<string | null>(null)
 
   const result = graph.data
@@ -179,6 +182,31 @@ export function KnowledgeCitationGraphPanel({ kbId }: { kbId: string }) {
                     </tbody>
                   </table>
                 </div>
+              )}
+            </div>
+
+            <div className="border-border rounded-xl border p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-muted-foreground flex items-center gap-2 text-xs">
+                  <BookOpen className="size-3.5" /> 领域综述 / Future Work
+                </div>
+                <Button size="sm" variant="outline" onClick={() => survey.mutate(undefined)} disabled={survey.isPending}>
+                  {survey.isPending ? '生成中…' : '基于图谱生成综述'}
+                </Button>
+              </div>
+              {survey.error ? (
+                <p className="mt-2 text-xs text-red-600">
+                  <ErrorText error={survey.error} />
+                </p>
+              ) : null}
+              {survey.data ? (
+                <div className="mt-3 text-sm leading-relaxed [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-sm [&_li]:ml-4 [&_li]:list-disc [&_p]:mb-2">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{survey.data.markdown}</ReactMarkdown>
+                </div>
+              ) : (
+                <p className="text-muted-foreground mt-2 text-xs">
+                  基于库内论文片段与引用关系生成 400-600 字综述 + 3 条 Future Work，只使用给定材料。
+                </p>
               )}
             </div>
           </div>

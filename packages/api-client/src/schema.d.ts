@@ -116,6 +116,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge-bases/{id}/citation-survey": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 基于引用图谱生成领域综述与 Future Work */
+        post: operations["getCitationSurvey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/knowledge-bases/{id}/arxiv-recommendations": {
         parameters: {
             query?: never;
@@ -1028,6 +1047,14 @@ export interface components {
             /** @description 用作入库文件名（可空，服务端会兜底） */
             title?: string;
         };
+        CitationSurveyRequest: {
+            /** @description 可选的关注方向（如"长文档注意力效率"） */
+            focus?: string;
+        };
+        CitationSurvey: {
+            /** @description 400-600 字领域综述 + 3 条 Future Work（Markdown） */
+            markdown: string;
+        };
         VersionDiffRequest: {
             /**
              * Format: uuid
@@ -1806,6 +1833,35 @@ export interface operations {
                     "application/json": components["schemas"]["CitationGraph"];
                 };
             };
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getCitationSurvey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CitationSurveyRequest"];
+            };
+        };
+        responses: {
+            /** @description 综述 Markdown */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationSurvey"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };

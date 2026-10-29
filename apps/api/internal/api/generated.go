@@ -525,6 +525,18 @@ type CitationNode struct {
 	Title string `json:"title"`
 }
 
+// CitationSurvey defines model for CitationSurvey.
+type CitationSurvey struct {
+	// Markdown 400-600 字领域综述 + 3 条 Future Work（Markdown）
+	Markdown string `json:"markdown"`
+}
+
+// CitationSurveyRequest defines model for CitationSurveyRequest.
+type CitationSurveyRequest struct {
+	// Focus 可选的关注方向（如"长文档注意力效率"）
+	Focus *string `json:"focus,omitempty"`
+}
+
 // CompareRequest defines model for CompareRequest.
 type CompareRequest struct {
 	// Question 要对比的问题（如"这些论文如何解决长距离依赖"）
@@ -1270,6 +1282,9 @@ type IngestArxivPaperJSONRequestBody = ArxivIngestRequest
 // GetArxivRecommendationsJSONRequestBody defines body for GetArxivRecommendations for application/json ContentType.
 type GetArxivRecommendationsJSONRequestBody = ArxivRecommendationRequest
 
+// GetCitationSurveyJSONRequestBody defines body for GetCitationSurvey for application/json ContentType.
+type GetCitationSurveyJSONRequestBody = CitationSurveyRequest
+
 // ComparePapersJSONRequestBody defines body for ComparePapers for application/json ContentType.
 type ComparePapersJSONRequestBody = CompareRequest
 
@@ -1409,6 +1424,9 @@ type ServerInterface interface {
 	// GetCitationGraph 获取知识库的局域引用图谱（节点、边、PageRank）
 	// (GET /api/v1/knowledge-bases/{id}/citation-graph)
 	GetCitationGraph(c *gin.Context, id openapi_types.UUID)
+	// GetCitationSurvey 基于引用图谱生成领域综述与 Future Work
+	// (POST /api/v1/knowledge-bases/{id}/citation-survey)
+	GetCitationSurvey(c *gin.Context, id openapi_types.UUID)
 	// ComparePapers 基于知识库的多篇论文对比（表格 + 结论 + 引用）
 	// (POST /api/v1/knowledge-bases/{id}/compare)
 	ComparePapers(c *gin.Context, id openapi_types.UUID)
@@ -2281,6 +2299,31 @@ func (siw *ServerInterfaceWrapper) GetCitationGraph(c *gin.Context) {
 	siw.Handler.GetCitationGraph(c, id)
 }
 
+// GetCitationSurvey operation middleware
+func (siw *ServerInterfaceWrapper) GetCitationSurvey(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetCitationSurvey(c, id)
+}
+
 // ComparePapers operation middleware
 func (siw *ServerInterfaceWrapper) ComparePapers(c *gin.Context) {
 
@@ -2774,6 +2817,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/api/v1/knowledge-bases/:id/documents", wrapper.ListDocuments)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/documents", wrapper.UploadDocument)
 	router.GET(options.BaseURL+"/api/v1/knowledge-bases/:id/citation-graph", wrapper.GetCitationGraph)
+	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/citation-survey", wrapper.GetCitationSurvey)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/arxiv-recommendations", wrapper.GetArxivRecommendations)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/arxiv-feedback", wrapper.SubmitArxivFeedback)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/arxiv-ingest", wrapper.IngestArxivPaper)

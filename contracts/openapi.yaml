@@ -270,6 +270,43 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── 引用图谱自动综述（参赛版 M5 加分项）────────────────────
+  #
+  # 在引用图谱基础上生成 400-600 字领域综述 + 3 条 Future Work；
+  # 只使用库内文档的开头片段与图上的引用关系，避免模型编造文献。
+  /api/v1/knowledge-bases/{id}/citation-survey:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: getCitationSurvey
+      summary: 基于引用图谱生成领域综述与 Future Work
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CitationSurveyRequest'
+      responses:
+        '200':
+          description: 综述 Markdown
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CitationSurvey'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ── arXiv 推荐 / 反馈 / 下钻入库（参赛版 M4）──────────────
   #
   # 推荐：用库内标题关键词查 arXiv 最新论文，服务端按相关性/新近度/开源代码
@@ -1976,6 +2013,22 @@ components:
         title:
           type: string
           description: 用作入库文件名（可空，服务端会兜底）
+
+    CitationSurveyRequest:
+      type: object
+      properties:
+        focus:
+          type: string
+          maxLength: 200
+          description: 可选的关注方向（如"长文档注意力效率"）
+
+    CitationSurvey:
+      type: object
+      required: [markdown]
+      properties:
+        markdown:
+          type: string
+          description: 400-600 字领域综述 + 3 条 Future Work（Markdown）
 
     VersionDiffRequest:
       type: object
