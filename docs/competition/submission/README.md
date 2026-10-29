@@ -24,7 +24,7 @@
 
 **临时演示地址（隧道方案，评审期间以提交说明中的地址为准）**
 
-- 地址：https://9e9b3d3ec97bd3.lhr.life
+- 地址：（临时隧道地址，见提交说明）
 - 用户名：`reviewer`　密码：`CongoRAG2026`
 - 说明：临时隧道依赖作者本机开机，且 URL 在隧道重启后会变化；**正式版本
   使用 `deployments/competition` 的 Docker Compose（5 服务）+ Caddy HTTPS +
