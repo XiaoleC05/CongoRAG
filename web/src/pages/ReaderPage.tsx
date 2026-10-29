@@ -87,8 +87,24 @@ function ReaderView({
   const [rendering, setRendering] = useState(false)
   // 翻译面板（参赛版 M3）：把当前页文本抽出来交给后端，用当前 chat 模型翻译。
   const [translating, setTranslating] = useState(false)
-  const [translation, setTranslation] = useState<string | null>(null)
+  // 按页保存翻译与原文（state 而不是 ref：翻页/切双语时要触发渲染）。
+  const [translations, setTranslations] = useState<Record<number, string>>({})
+  const [pageTexts, setPageTexts] = useState<Record<number, string>>({})
   const [translateError, setTranslateError] = useState<unknown>(null)
+  // 双语对照（参赛版 M3）：左 PDF / 右"原文 + 译文"双栏；翻页时两栏一起切到
+  // 该页（页级联动）。划词翻译在原文栏选中文字触发。
+  const [bilingual, setBilingual] = useState(false)
+  const [selection, setSelection] = useState<{
+    text: string
+    translation: string | null
+    loading: boolean
+  } | null>(null)
+  // 原文抽取缓存（去重网络/解析）；翻译/原文的展示值由上面的 state 派生。
+  const pageTextCache = useRef(new Map<number, string>())
+
+  const translation = translations[pageNo] ?? null
+  const pageText = pageTexts[pageNo] ?? null
+  const pageTextLoading = bilingual && pageText === null
 
   // 章节目录（参赛版 M3）：点击某节直接把页码切过去。
   //
@@ -185,15 +201,14 @@ function ReaderView({
     [pdf],
   )
 
-  // 提取当前页文本并翻译。PDF.js 的 textContent 是"文本片段"数组，
+  // 抽取某一页的文本（带缓存）。PDF.js 的 textContent 是"文本片段"数组，
   // 直接 join 会丢词间空格，所以用空格拼、再压掉连续空白。
-  const translatePage = useCallback(async () => {
-    if (!pdf) return
-    setTranslating(true)
-    setTranslation(null)
-    setTranslateError(null)
-    try {
-      const page = await pdf.getPage(pageNo)
+  const loadPageText = useCallback(
+    async (pageNumber: number): Promise<string> => {
+      const cached = pageTextCache.current.get(pageNumber)
+      if (cached !== undefined) return cached
+      if (!pdf) return ''
+      const page = await pdf.getPage(pageNumber)
       const content = await page.getTextContent()
       const text = content.items
         .map((item) => ('str' in item ? item.str : ''))
@@ -201,6 +216,39 @@ function ReaderView({
         .replace(/\s+/g, ' ')
         .trim()
         .slice(0, 8000)
+      pageTextCache.current.set(pageNumber, text)
+      return text
+    },
+    [pdf],
+  )
+
+  // 当前页文本：双语对照打开时自动抽出来，翻页则跟着换页。
+  //
+  // 【为什么不在 effect 里同步 setState】react-hooks 的 set-state-in-effect
+  // 会把"effect 里同步 setLoading(true)"判成级联渲染；这里只在 await 之后
+  // 落文本，loading 状态由派生值 pageTextLoading 表达。
+  useEffect(() => {
+    if (!bilingual || !pdf) return
+    let cancelled = false
+    loadPageText(pageNo)
+      .then((text) => {
+        if (!cancelled) setPageTexts((prev) => (prev[pageNo] === text ? prev : { ...prev, [pageNo]: text }))
+      })
+      .catch((e) => {
+        if (!cancelled) setTranslateError(e)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [bilingual, pageNo, pdf, loadPageText])
+
+  // 提取当前页文本并翻译。结果按页缓存，双语对照翻页时可直接复用。
+  const translatePage = useCallback(async () => {
+    if (!pdf) return
+    setTranslating(true)
+    setTranslateError(null)
+    try {
+      const text = await loadPageText(pageNo)
       if (!text) throw new Error('这一页没有可提取的文字（可能是纯图片页）')
       const res = await fetch('/api/v1/translate', {
         method: 'POST',
@@ -209,13 +257,33 @@ function ReaderView({
       })
       if (!res.ok) throw new Error('HTTP ' + res.status)
       const data = (await res.json()) as { translation: string }
-      setTranslation(data.translation)
+      setTranslations((prev) => ({ ...prev, [pageNo]: data.translation }))
     } catch (e) {
       setTranslateError(e)
     } finally {
       setTranslating(false)
     }
-  }, [pdf, pageNo])
+  }, [pdf, pageNo, loadPageText])
+
+  // 划词翻译：在双语对照的"原文"栏里选中一段，自动请求该段的译文。
+  const handleSelectionTranslate = useCallback(async () => {
+    const text = window.getSelection()?.toString().trim() ?? ''
+    if (text.length < 2) return
+    const clipped = text.slice(0, 600)
+    setSelection({ text: clipped, translation: null, loading: true })
+    try {
+      const res = await fetch('/api/v1/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: clipped, targetLang: 'zh-CN' }),
+      })
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      const data = (await res.json()) as { translation: string }
+      setSelection({ text: clipped, translation: data.translation, loading: false })
+    } catch {
+      setSelection({ text: clipped, translation: '翻译失败，请重试', loading: false })
+    }
+  }, [])
 
   // 错误态统一在下面渲染：页面只能有一个 <h1>（headingStructure.test.ts 钉着
   // 这条规范），所以不能每个分支各写一个 return + h1。
@@ -294,6 +362,19 @@ function ReaderView({
             onClick={() => setScale((s) => Math.min(3, +(s + 0.2).toFixed(1)))}
           >
             <ZoomIn />
+          </Button>
+          <Button
+            variant={bilingual ? 'default' : 'outline'}
+            size="sm"
+            aria-pressed={bilingual}
+            onClick={() => {
+              setBilingual((v) => !v)
+              
+              setTranslateError(null)
+            }}
+            disabled={!pdf}
+          >
+            <Languages /> {bilingual ? '关闭对照' : '双语对照'}
           </Button>
           <Button
             variant="outline"
@@ -414,25 +495,89 @@ function ReaderView({
         {!pdf && !loadError ? <PageFallback /> : null}
           </div>
 
-          {/* 翻译面板：抽当前页文本 -> /api/v1/translate -> 显示译文。
+          {/* 双语对照 / 翻译面板。
+              bilingual=true 时右侧固定显示"原文 + 译文"：翻页两栏按页联动，
+              原文可划词（选中自动翻译）；只点"翻译本页"时退化为单译文面板。
               失败留在面板里（读操作，不弹 toast）。 */}
-          {translation !== null || translateError !== null ? (
-            <aside className="hidden w-80 shrink-0 overflow-auto border-l p-4 lg:block">
+          {bilingual || translation !== null || translateError !== null ? (
+            <aside className="hidden w-96 shrink-0 overflow-auto border-l p-4 lg:block">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium">译文 · 第 {pageNo} 页</div>
+                <div className="text-xs font-medium">
+                  {bilingual ? '双语对照' : '译文'} · 第 {pageNo} 页
+                </div>
                 <button
                   type="button"
-                  aria-label="关闭译文"
+                  aria-label="关闭翻译面板"
                   className="text-muted-foreground hover:text-foreground"
                   onClick={() => {
-                    setTranslation(null)
+                    setBilingual(false)
+                    
                     setTranslateError(null)
+                    setSelection(null)
                   }}
                 >
                   <X className="size-4" />
                 </button>
               </div>
-              {translateError !== null ? (
+
+              {bilingual ? (
+                <div className="mt-2 space-y-4">
+                  <div>
+                    <div className="text-muted-foreground mb-1 flex items-center justify-between text-xs">
+                      <span>原文（选中文字可划词翻译）</span>
+                      {pageTextLoading ? <span>提取中…</span> : null}
+                    </div>
+                    <p
+                      className="max-h-72 overflow-auto text-sm leading-relaxed whitespace-pre-wrap select-text"
+                      onMouseUp={() => void handleSelectionTranslate()}
+                    >
+                      {pageText ?? (pageTextLoading ? '正在提取本页文本…' : '本页没有可提取的文字')}
+                    </p>
+                  </div>
+
+                  {selection ? (
+                    <div className="border-primary/40 bg-primary/5 rounded-lg border p-2">
+                      <div className="text-muted-foreground mb-1 flex items-center justify-between text-xs">
+                        <span>划词翻译</span>
+                        <button
+                          type="button"
+                          className="hover:text-foreground"
+                          onClick={() => setSelection(null)}
+                        >
+                          关闭
+                        </button>
+                      </div>
+                      <p className="text-muted-foreground text-xs">{selection.text}</p>
+                      <p className="mt-1 text-sm leading-relaxed">
+                        {selection.loading ? '翻译中…' : selection.translation}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  <div>
+                    <div className="text-muted-foreground mb-1 flex items-center justify-between text-xs">
+                      <span>译文</span>
+                      <button
+                        type="button"
+                        className="text-primary hover:underline disabled:text-muted-foreground"
+                        onClick={() => void translatePage()}
+                        disabled={translating}
+                      >
+                        {translating ? '翻译中…' : translation ? '重新翻译' : '翻译本页'}
+                      </button>
+                    </div>
+                    {translateError !== null ? (
+                      <p className="text-xs text-red-600">
+                        <ErrorText error={translateError} />
+                      </p>
+                    ) : (
+                      <p className="max-h-72 overflow-auto text-sm leading-relaxed whitespace-pre-wrap">
+                        {translation ?? '当前页还没有译文，点"翻译本页"生成。翻页时会自动复用已缓存的译文。'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : translateError !== null ? (
                 <p className="mt-2 text-xs text-red-600">
                   <ErrorText error={translateError} />
                 </p>
