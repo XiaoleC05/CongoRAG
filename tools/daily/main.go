@@ -158,24 +158,56 @@ func run() error {
 func enrichReadmes(ctx context.Context, repos []Repo) {
 	client := httpClient()
 	for i := range repos {
-		url := fmt.Sprintf("https://api.github.com/repos/%s/%s/readme", repos[i].Owner, repos[i].Name)
+		full := repos[i].Owner + "/" + repos[i].Name
+		data := fetchRawReadme(ctx, client, full)
+		if len(data) == 0 {
+			data = fetchAPIReadme(ctx, client, full)
+		}
+		if len(data) == 0 {
+			slog.Warn("readme unavailable", "repo", full)
+			continue
+		}
+		repos[i].Readme = string(data)
+	}
+}
+
+func fetchRawReadme(ctx context.Context, client *http.Client, full string) []byte {
+	for _, name := range []string{"README.md", "README.rst", "README"} {
+		url := fmt.Sprintf("https://raw.githubusercontent.com/%s/HEAD/%s", full, name)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			continue
 		}
 		req.Header.Set("User-Agent", userAgent)
-		req.Header.Set("Accept", "application/vnd.github.raw")
 		resp, err := client.Do(req)
 		if err != nil {
-			slog.Warn("readme fetch failed", "repo", repos[i].Owner+"/"+repos[i].Name, "error", err)
 			continue
 		}
 		data, readErr := io.ReadAll(io.LimitReader(resp.Body, 12000))
 		resp.Body.Close()
-		if readErr != nil || resp.StatusCode != http.StatusOK {
-			slog.Warn("readme unavailable", "repo", repos[i].Owner+"/"+repos[i].Name, "status", resp.Status)
-			continue
+		if readErr == nil && resp.StatusCode == http.StatusOK && len(strings.TrimSpace(string(data))) > 0 {
+			return data
 		}
-		repos[i].Readme = string(data)
 	}
+	return nil
+}
+
+func fetchAPIReadme(ctx context.Context, client *http.Client, full string) []byte {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/readme", full)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("Accept", "application/vnd.github.raw")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil
+	}
+	data, readErr := io.ReadAll(io.LimitReader(resp.Body, 12000))
+	resp.Body.Close()
+	if readErr != nil || resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	return data
 }
