@@ -240,6 +240,36 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── 引用图谱（参赛版 M5）──────────────────────────────────
+  #
+  # 返回一个知识库的局域引用图：节点是库内文档，边是"参考文献命中库内
+  # 标题"形成的引用关系。PageRank 用来挖"基石论文"，cornerstone 是服务端
+  # 已按 PageRank 选好的前 20%。
+  /api/v1/knowledge-bases/{id}/citation-graph:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getCitationGraph
+      summary: 获取知识库的局域引用图谱（节点、边、PageRank）
+      responses:
+        '200':
+          description: 引用图谱
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CitationGraph'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ── 知识库：整库重新索引 ────────────────────────────────────
   #
   # 粒度与单文档那条的区别只在范围：一个库里的全部文档一起重排。
@@ -1655,6 +1685,62 @@ components:
           type: string
           nullable: true
           description: 同库里命中的文档文件名；未命中为 null
+
+    CitationNode:
+      type: object
+      required: [documentId, filename, title, citationCount, referenceCount, pageRank, cornerstone]
+      properties:
+        documentId:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        title:
+          type: string
+          description: 从章节大纲第一行取到的论文标题；取不到时为空串
+        citationCount:
+          type: integer
+          description: 被库内其它文档引用的次数（入度，按引用条目数计）
+        referenceCount:
+          type: integer
+          description: 参考文献中命中库内文档的条数（出度）
+        pageRank:
+          type: number
+          format: double
+          description: 带阻尼的 PageRank 分值（0~1，全图求和为 1）
+        cornerstone:
+          type: boolean
+          description: 服务端按 PageRank 选出的"基石论文"（前 20%，且被引 > 0）
+
+    CitationEdge:
+      type: object
+      required: [from, to, weight]
+      properties:
+        from:
+          type: string
+          format: uuid
+          description: 引用方的文档 id
+        to:
+          type: string
+          format: uuid
+          description: 被引用方的文档 id
+        weight:
+          type: integer
+          description: 引用条目数（同一篇多处引用会累加）
+
+    CitationGraph:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/CitationNode'
+          description: 按 PageRank 降序排列
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/CitationEdge'
 
     TranslateRequest:
       type: object

@@ -12,6 +12,7 @@ import { DocumentStatusBadge } from '@/components/knowledge/DocumentStatusBadge'
 import { KnowledgeSearchPanel } from '@/components/knowledge/KnowledgeSearchPanel'
 import { KnowledgeWritingPanel } from '@/components/knowledge/KnowledgeWritingPanel'
 import { KnowledgeComparePanel } from '@/components/knowledge/KnowledgeComparePanel'
+import { KnowledgeCitationGraphPanel } from '@/components/knowledge/KnowledgeCitationGraphPanel'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -430,6 +431,16 @@ export default function KnowledgeBaseDetailPage() {
           每条依据都带页码可回原文核对。
         </p>
         <KnowledgeComparePanel kbId={kbId} />
+      </section>
+
+      {/* 引用图谱（参赛版 M5）：把库内论文的引用关系画出来，用 PageRank 挖基石论文。 */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-base font-semibold">引用图谱</h2>
+        <p className="text-muted-foreground mb-4 text-sm">
+          解析每篇文档的参考文献，匹配库内论文标题，生成有向引用图；按 PageRank
+          标出"基石论文"，点节点可直接跳到对应论文的阅读器。
+        </p>
+        <KnowledgeCitationGraphPanel kbId={kbId} />
       </section>
 
       <DeleteDocumentDialog

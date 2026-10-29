@@ -97,6 +97,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge-bases/{id}/citation-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** 获取知识库的局域引用图谱（节点、边、PageRank） */
+        get: operations["getCitationGraph"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/knowledge-bases/{id}/reindex": {
         parameters: {
             query?: never;
@@ -837,6 +856,43 @@ export interface components {
             /** @description 同库里命中的文档文件名；未命中为 null */
             matchedFilename: string | null;
         };
+        CitationNode: {
+            /** Format: uuid */
+            documentId: string;
+            filename: string;
+            /** @description 从章节大纲第一行取到的论文标题；取不到时为空串 */
+            title: string;
+            /** @description 被库内其它文档引用的次数（入度，按引用条目数计） */
+            citationCount: number;
+            /** @description 参考文献中命中库内文档的条数（出度） */
+            referenceCount: number;
+            /**
+             * Format: double
+             * @description 带阻尼的 PageRank 分值（0~1，全图求和为 1）
+             */
+            pageRank: number;
+            /** @description 服务端按 PageRank 选出的"基石论文"（前 20%，且被引 > 0） */
+            cornerstone: boolean;
+        };
+        CitationEdge: {
+            /**
+             * Format: uuid
+             * @description 引用方的文档 id
+             */
+            from: string;
+            /**
+             * Format: uuid
+             * @description 被引用方的文档 id
+             */
+            to: string;
+            /** @description 引用条目数（同一篇多处引用会累加） */
+            weight: number;
+        };
+        CitationGraph: {
+            /** @description 按 PageRank 降序排列 */
+            nodes: components["schemas"]["CitationNode"][];
+            edges: components["schemas"]["CitationEdge"][];
+        };
         TranslateRequest: {
             /** @description 要翻译的原文（字符数上限与后端 maxTranslateRunes 一致） */
             text: string;
@@ -1540,6 +1596,30 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getCitationGraph: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 引用图谱 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationGraph"];
+                };
+            };
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
         };

@@ -829,6 +829,55 @@ func (u *Usecase) markFailed(ctx context.Context, docID uuid.UUID) {
 // 引用图谱（参赛版 M5）
 // ────────────────────────────────────────────────────────────────
 
+// CitationGraph 返回一个知识库的局域引用图谱（节点 + 边 + PageRank）。
+//
+// 【依赖 References 的匹配结果】引用关系不另建一套解析：References 已经
+// 把"参考文献文本 ↔ 库内标题"的匹配做完了（含 md 兜底路径），这里只做
+// 聚合与图论计算。代价是每篇文档要再跑一次 References 的查询——几十篇
+// 论文量级可接受；文档到几百篇时应改成一次性批量查询（写进 Roadmap）。
+func (u *Usecase) CitationGraph(ctx context.Context, kbID uuid.UUID) (*CitationGraph, error) {
+	docs, _, err := u.docRepo.ListByKnowledgeBase(ctx, u.db, kbID, nil, 100)
+	if err != nil {
+		return nil, fmt.Errorf("list documents of knowledge base %s: %w", kbID, err)
+	}
+	// 只纳入 ready 文档：processing 的文档分块还不完整，引用匹配会随
+	// 处理进度抖动，图也跟着抖。
+	ready := make([]*Document, 0, len(docs))
+	for _, d := range docs {
+		if d.Status == StatusReady {
+			ready = append(ready, d)
+		}
+	}
+	if len(ready) > 50 {
+		ready = ready[:50]
+	}
+
+	titles := make(map[uuid.UUID]string, len(ready))
+	refs := make(map[uuid.UUID][]domain.ReferenceEntry, len(ready))
+	for _, d := range ready {
+		if outline, oerr := u.docRepo.ListOutline(ctx, u.db, d.ID); oerr == nil {
+			for _, e := range outline {
+				if t := strings.TrimSpace(e.Title); t != "" && !genericOutlineTitle(t) {
+					titles[d.ID] = t
+					break
+				}
+			}
+		}
+		if titles[d.ID] == "" {
+			// 兜底用文件名：比"Abstract"更适合当节点标签。
+			titles[d.ID] = strings.TrimSpace(strings.TrimSuffix(d.Filename, path.Ext(d.Filename)))
+		}
+		entries, rerr := u.References(ctx, d.ID)
+		if rerr != nil {
+			// 单篇失败不该让整张图失败：该节点保留、边缺失，返回 200
+			// 比整库 500 更诚实（图的可解释性本来就依赖匹配覆盖率）。
+			continue
+		}
+		refs[d.ID] = entries
+	}
+	return BuildCitationGraph(ready, titles, refs), nil
+}
+
 // referenceIndexPattern 匹配参考文献开头的编号：[12] / [ 12 ]。
 var referenceIndexPattern = regexp.MustCompile(`^\s*\[\s*([0-9]{1,3})\s*\]`)
 
@@ -964,4 +1013,18 @@ func parseReferenceIndex(text string) int {
 // normalizeTitle 把标题归一化成小写、空格分隔的字母/数字串。
 func normalizeTitle(s string) string {
 	return strings.Join(strings.Fields(nonTitlePattern.ReplaceAllString(strings.ToLower(s), " ")), " ")
+}
+
+// genericOutlineTitle 判断大纲第一行是不是"论文标题"级别的噪声。
+//
+// PDF 解析出的第一个 heading 常常是 Abstract / References 这类结构标题，
+// 拿它们当节点标签会把所有论文都叫成同一个名字；真标题通常是第一个
+// 不在这个集合里的一级/二级标题。
+func genericOutlineTitle(title string) bool {
+	switch strings.ToLower(strings.TrimSpace(title)) {
+	case "abstract", "references", "introduction", "contents", "table of contents",
+		"appendix", "acknowledgements", "acknowledgments", "keywords":
+		return true
+	}
+	return false
 }

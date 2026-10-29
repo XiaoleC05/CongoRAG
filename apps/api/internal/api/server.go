@@ -627,6 +627,32 @@ func (s *Server) ReindexKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 	c.JSON(http.StatusAccepted, ReindexAccepted{Enqueued: enqueued})
 }
 
+// GetCitationGraph 返回知识库的局域引用图谱（参赛版 M5）。
+func (s *Server) GetCitationGraph(c *gin.Context, id openapi_types.UUID) {
+	g, err := s.deps.Knowledge.CitationGraph(c.Request.Context(), id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	nodes := make([]CitationNode, 0, len(g.Nodes))
+	for _, n := range g.Nodes {
+		nodes = append(nodes, CitationNode{
+			DocumentId:     n.DocumentID,
+			Filename:       n.Filename,
+			Title:          n.Title,
+			CitationCount:  n.CitationCount,
+			ReferenceCount: n.ReferenceCount,
+			PageRank:       n.PageRank,
+			Cornerstone:    n.Cornerstone,
+		})
+	}
+	edges := make([]CitationEdge, 0, len(g.Edges))
+	for _, e := range g.Edges {
+		edges = append(edges, CitationEdge{From: e.From, To: e.To, Weight: e.Weight})
+	}
+	c.JSON(http.StatusOK, CitationGraph{Nodes: nodes, Edges: edges})
+}
+
 // ────────────────────────────────────────────────────────────────
 // BYOK：ListProviders / CreateProvider
 // ────────────────────────────────────────────────────────────────

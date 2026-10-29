@@ -346,6 +346,46 @@ type ChatModelInput struct {
 	TokenizerType string `json:"tokenizerType"`
 }
 
+// CitationEdge defines model for CitationEdge.
+type CitationEdge struct {
+	// From 引用方的文档 id
+	From openapi_types.UUID `json:"from"`
+
+	// To 被引用方的文档 id
+	To openapi_types.UUID `json:"to"`
+
+	// Weight 引用条目数（同一篇多处引用会累加）
+	Weight int `json:"weight"`
+}
+
+// CitationGraph defines model for CitationGraph.
+type CitationGraph struct {
+	Edges []CitationEdge `json:"edges"`
+
+	// Nodes 按 PageRank 降序排列
+	Nodes []CitationNode `json:"nodes"`
+}
+
+// CitationNode defines model for CitationNode.
+type CitationNode struct {
+	// CitationCount 被库内其它文档引用的次数（入度，按引用条目数计）
+	CitationCount int `json:"citationCount"`
+
+	// Cornerstone 服务端按 PageRank 选出的"基石论文"（前 20%，且被引 > 0）
+	Cornerstone bool               `json:"cornerstone"`
+	DocumentId  openapi_types.UUID `json:"documentId"`
+	Filename    string             `json:"filename"`
+
+	// PageRank 带阻尼的 PageRank 分值（0~1，全图求和为 1）
+	PageRank float64 `json:"pageRank"`
+
+	// ReferenceCount 参考文献中命中库内文档的条数（出度）
+	ReferenceCount int `json:"referenceCount"`
+
+	// Title 从章节大纲第一行取到的论文标题；取不到时为空串
+	Title string `json:"title"`
+}
+
 // CompareRequest defines model for CompareRequest.
 type CompareRequest struct {
 	// Question 要对比的问题（如"这些论文如何解决长距离依赖"）
@@ -1132,6 +1172,9 @@ type ServerInterface interface {
 	// RenameKnowledgeBase 改知识库的名字
 	// (PATCH /api/v1/knowledge-bases/{id})
 	RenameKnowledgeBase(c *gin.Context, id openapi_types.UUID)
+	// GetCitationGraph 获取知识库的局域引用图谱（节点、边、PageRank）
+	// (GET /api/v1/knowledge-bases/{id}/citation-graph)
+	GetCitationGraph(c *gin.Context, id openapi_types.UUID)
 	// ComparePapers 基于知识库的多篇论文对比（表格 + 结论 + 引用）
 	// (POST /api/v1/knowledge-bases/{id}/compare)
 	ComparePapers(c *gin.Context, id openapi_types.UUID)
@@ -1876,6 +1919,31 @@ func (siw *ServerInterfaceWrapper) RenameKnowledgeBase(c *gin.Context) {
 	siw.Handler.RenameKnowledgeBase(c, id)
 }
 
+// GetCitationGraph operation middleware
+func (siw *ServerInterfaceWrapper) GetCitationGraph(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetCitationGraph(c, id)
+}
+
 // ComparePapers operation middleware
 func (siw *ServerInterfaceWrapper) ComparePapers(c *gin.Context) {
 
@@ -2355,6 +2423,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.PATCH(options.BaseURL+"/api/v1/knowledge-bases/:id", wrapper.RenameKnowledgeBase)
 	router.GET(options.BaseURL+"/api/v1/knowledge-bases/:id/documents", wrapper.ListDocuments)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/documents", wrapper.UploadDocument)
+	router.GET(options.BaseURL+"/api/v1/knowledge-bases/:id/citation-graph", wrapper.GetCitationGraph)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/reindex", wrapper.ReindexKnowledgeBase)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/search", wrapper.SearchKnowledgeBase)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/writing", wrapper.GenerateWritingDraft)

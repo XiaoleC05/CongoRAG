@@ -424,3 +424,23 @@ export function useResolveDuplicate(kbId: string) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: documentsKey(kbId) }),
   })
 }
+
+/**
+ * 引用图谱（参赛版 M5）：GET /knowledge-bases/{id}/citation-graph。
+ *
+ * 【为什么是 mutation 而不是页面打开就查】图计算要遍历知识库里每篇文档的
+ * 参考文献并做一次 PageRank；文档多时它明显比列表查询重。由用户点"生成"
+ * 触发，既避免每次进入详情页都算一遍，也让"这是一次主动分析"的语义清楚。
+ */
+export function useCitationGraph(kbId: string) {
+  return useMutation({
+    mutationFn: async (): Promise<Schemas['CitationGraph']> => {
+      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/citation-graph`)
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      return (await res.json()) as Schemas['CitationGraph']
+    },
+  })
+}
