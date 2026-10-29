@@ -1244,7 +1244,7 @@ func (u *Usecase) emitRunEvent(ctx context.Context, runID uuid.UUID, sink conver
 // 之前，没有 run_events 可以挂，也就没有真实的 event_id。
 //
 // 【event id 用 0，而不是编一个】0 不是任何一条已持久化事件的号
-//（两张计数器表的 next_event_id 都从 1 开始），sseSink 因此把 `id:` 那一行
+// （两张计数器表的 next_event_id 都从 1 开始），sseSink 因此把 `id:` 那一行
 // 整个省掉——与 docs/sse-protocol.md 里"没有 id 的帧不参与发号"那条一致。
 // 编一个号会更糟：客户端会把游标推到一个不存在的位置。
 func (u *Usecase) emitUnpersisted(sink conversation.EventSink, cause error) {

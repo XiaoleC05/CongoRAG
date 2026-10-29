@@ -262,11 +262,11 @@ type IdempotencyStore interface {
 // 写明了同样的理由）。差异只会在真正需要时出现，而那时分开的类型
 // 正好是可以各自演进的前提。
 type IdempotencyRecord struct {
-	Endpoint      string
-	Key           string
-	ResourceType  string
-	ResourceID    uuid.UUID
-	FirstEventID  int64
+	Endpoint     string
+	Key          string
+	ResourceType string
+	ResourceID   uuid.UUID
+	FirstEventID int64
 	// RequestFingerprint 是请求正文的 sha256。同一个键配不同的正文时要
 	// 报错，而不是把上一次的运行重放给用户——否则用户新写的那句输入
 	// 既没执行、也不会报错，界面上只是旧结果又出现了一遍。

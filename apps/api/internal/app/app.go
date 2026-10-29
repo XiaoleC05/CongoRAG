@@ -27,6 +27,7 @@ import (
 
 	"github.com/XiaoleC05/CongoRAG/apps/api/internal/api"
 	"github.com/XiaoleC05/CongoRAG/internal/agent"
+	"github.com/XiaoleC05/CongoRAG/internal/arxiv"
 	"github.com/XiaoleC05/CongoRAG/internal/conversation"
 	"github.com/XiaoleC05/CongoRAG/internal/ctxmgr"
 	"github.com/XiaoleC05/CongoRAG/internal/knowledge"
@@ -197,6 +198,8 @@ func Run(webFS embed.FS) error {
 	toolReg := agent.NewToolRegistry()
 	toolReg.Register(agent.NewCalculator())
 	toolReg.Register(agent.NewKnowledgeSearch(retrievalUC))
+	// 参赛版 M4：arXiv 论文检索（联网工具，只读、可重试）。
+	toolReg.Register(agent.NewArxivSearch(arxiv.NewClient()))
 	toolReg.Register(agent.NewConversationSearch(convUC))
 	agentUC := agent.NewUsecase(
 		agentRepo,

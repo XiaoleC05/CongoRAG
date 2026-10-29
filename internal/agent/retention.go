@@ -11,18 +11,18 @@
 // 会话那一侧只有一张事件表，判据是一维的（created_at < cutoff）。agent
 // 这一侧有两张表，而它们的读者完全不同：
 //
-//   run_events        的读者是**补发**（post /agents/{id}/runs 命中幂等键时
-//                     把那一轮记录的事件重放一遍）与 run 级断线重订阅。
-//                     它们与"这条 run 是什么状态"无关，只与"客户端还会不会
-//                     来读"有关。所以判据是时间：键一过期，那张表就不会再有
-//                     第二个读者 → runEventsRetention = IdempotencyKeyTTL。
+//	run_events        的读者是**补发**（post /agents/{id}/runs 命中幂等键时
+//	                  把那一轮记录的事件重放一遍）与 run 级断线重订阅。
+//	                  它们与"这条 run 是什么状态"无关，只与"客户端还会不会
+//	                  来读"有关。所以判据是时间：键一过期，那张表就不会再有
+//	                  第二个读者 → runEventsRetention = IdempotencyKeyTTL。
 //
-//   tool_effect_log   的读者只有一个：恢复路径的 gateToolReplay。而它只在
-//                     run 是 interrupted 时才会被调用（PrepareResume 的第一
-//                     道判断）。终态是**吸收态**（model.go 的 runTransitions
-//                     里 completed/failed/cancelled 没有任何出边），所以一条
-//                     终态 run 的账本再也不会被读到；反过来，一条 interrupted
-//                     的 run 无论多旧都可能被用户点"恢复"。
+//	tool_effect_log   的读者只有一个：恢复路径的 gateToolReplay。而它只在
+//	                  run 是 interrupted 时才会被调用（PrepareResume 的第一
+//	                  道判断）。终态是**吸收态**（model.go 的 runTransitions
+//	                  里 completed/failed/cancelled 没有任何出边），所以一条
+//	                  终态 run 的账本再也不会被读到；反过来，一条 interrupted
+//	                  的 run 无论多旧都可能被用户点"恢复"。
 //
 // **按时间剪账本会把恢复机制反过来打脸。** 假设窗口设成 24 小时：一条
 // interrupted 的 run 在第 3 天被恢复，gateToolReplay 去查账本，返回 false
