@@ -51,6 +51,11 @@ type Config struct {
 	// 就让整个服务起不来。
 	PDFServiceURL string
 
+	// RetrievalDedupe 控制混合检索结果里的"近重复抑制"（同一论文多版本
+	// 只保留排名最高的一条）。默认 true；CONGORAG_RETRIEVAL_DEDUP=off 时
+	// 关闭——只用于离线评测做 A/B 对比。
+	RetrievalDedupe bool
+
 	// PDFTimeout 是单次 PDF 解析请求的上限。
 	//
 	// 【为什么必须是分钟级】541 页的《Understanding Deep Learning》官方用例
@@ -131,6 +136,7 @@ func LoadConfig() (*Config, error) {
 		DatabaseURL:      os.Getenv("CONGORAG_DB_URL"),
 		ListenAddr:       envOr("CONGORAG_LISTEN_ADDR", defaultListenAddr),
 		PDFServiceURL:    os.Getenv("CONGORAG_PDF_SERVICE_URL"),
+		RetrievalDedupe:  !strings.EqualFold(strings.TrimSpace(os.Getenv("CONGORAG_RETRIEVAL_DEDUP")), "off"),
 		PDFTimeout:       envDuration("CONGORAG_PDF_TIMEOUT", defaultPDFTimeout),
 		DocumentsDir:     envOr("CONGORAG_DOCUMENTS_DIR", defaultDocumentsDir),
 		LogLevel:         envOr("CONGORAG_LOG_LEVEL", defaultLogLevel),

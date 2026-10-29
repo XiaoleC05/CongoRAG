@@ -25,7 +25,7 @@
 | # | 赛题模块 | 参赛版实现 | 关键代码 / 接口 |
 |---|---|---|---|
 | 1 | PDF 学术解析与页码溯源 | Python sidecar（PyMuPDF + RapidOCR）输出**块级** page / bbox / section_path / block_type；落库 migration 0015；SSE citation 带 page/bbox/sectionPath；前端阅读器按 bbox 高亮 | `sidecars/pdf-service/`、`internal/pdfparse/`、`migrations/0015_pdf_blocks`、`web/src/pages/ReaderPage.tsx` |
-| 2 | 抗幻觉 RAG（混合检索） | 中文 bigram + 英文小写切词 → Postgres FTS；pgvector 向量检索；**RRF 融合**（k=60）；`grounding` 事件做句子级引用落地检查；无证据时**固定拒答**（不经过模型） | `internal/tokenize/`、`internal/retrieval/`、`migrations/0016_hybrid_search`、`internal/grounding/`、`internal/conversation/usecase.go` |
+| 2 | 抗幻觉 RAG（混合检索 + 近重复抑制） | 中文 bigram + 英文小写切词 → Postgres FTS；pgvector 向量检索；**RRF 融合**（k=60）；`grounding` 事件做句子级引用落地检查；无证据时**固定拒答**（不经过模型） | `internal/tokenize/`、`internal/retrieval/`、`migrations/0016_hybrid_search`、`internal/grounding/`、`internal/conversation/usecase.go` |
 | 3 | 版式阅读与翻译 | PDF.js 渲染 + 章节目录侧栏（heading → outline 接口）+ 当前页文本一键翻译（保留公式/术语/引用编号） | `web/src/pages/ReaderPage.tsx`、`GET /documents/{id}/outline`、`POST /api/v1/translate` |
 | 4 | arXiv 文献检索 | 自研 Atom 客户端 + Agent 工具 `arxiv_search`（模型自主决定检索词，返回标题/作者/摘要/链接） | `internal/arxiv/`、`internal/agent/tool_arxiv_search.go` |
 | 5 | 引用图谱 | 参考文献抽取（reference 分块，md/txt 按行兜底）→ 与同库文档标题归一化匹配 → 阅读器"参考文献"面板标出库内命中 | `GET /documents/{id}/references`、`internal/knowledge/usecase.go` |
@@ -164,6 +164,7 @@ make dev-web                  # http://127.0.0.1:5173，代理到 3210
 | arXiv | Agent 自主检索并返回 DiNAT 等真实论文（SSE 有 tool_call/tool_result） |
 | 检索评测（7 条查询） | **hit@1 71.4% / hit@3 100% / MRR 0.833** |
 | 引用页码命中（3 条问答） | **3/3**；grounding 通过 2/3（未通过的那条如实显示"部分未溯源"） |
+| 近重复抑制 A/B | top-3 近重复对 1→0，hit@1 不降（评测报告 §6） |
 
 > 评测方法与逐条结果见提交材料里的《评测报告》；复现脚本见
 > [eval/retrieval-eval.mjs](eval/retrieval-eval.mjs)（复制 config.example.json 填自己的库 id）。

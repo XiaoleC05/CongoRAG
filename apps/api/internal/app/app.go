@@ -146,7 +146,8 @@ func Run(webFS embed.FS) error {
 	// ChunkIndexer 依赖——真正调用 IndexDocument 的是 apps/worker 的
 	// ProcessDocument，api 进程从不触发它。两边各自装一份是
 	// "worker 有自己的装配根"这条权衡的自然结果（见文件顶部注释）。
-	retrievalUC := retrieval.NewUsecase(chunkRepo, registry, llmRepo, pool)
+	retrievalUC := retrieval.NewUsecase(chunkRepo, registry, llmRepo, pool,
+		retrieval.WithNearDedupe(cfg.RetrievalDedupe))
 
 	// sched 在这个进程里同样是占位：StartReconciler 只在 worker 启动时
 	// 调用一次，api 进程从不调它，所以这里不需要接 river.Client。

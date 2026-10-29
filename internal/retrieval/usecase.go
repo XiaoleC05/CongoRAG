@@ -58,6 +58,10 @@ type Usecase struct {
 	llmRepo  llm.ConfigRepo
 	db       platform.Querier
 	topK     int // 默认值，Search 的 req.TopK > 0 时被覆盖
+
+	// dedupeEnabled 控制"近重复抑制"（同名论文多版本去重）。默认开启；
+	// 关闭只用于离线评测做 A/B 对比（见评测报告），不是给用户调的旋钮。
+	dedupeEnabled bool
 }
 
 // Option 是技术方案 §4.1 点名的 Functional Options 模式：用在"运行期
@@ -69,8 +73,17 @@ func WithTopK(k int) Option {
 	return func(u *Usecase) { u.topK = k }
 }
 
+// WithNearDedupe 控制是否做近重复抑制（默认开启）。
+//
+// 【为什么做成 Option 而不是配置项】它只服务离线评测的 A/B 对比；
+// 生产行为应该是确定的，不该让部署环境把它关掉。评测脚本通过
+// CONGORAG_RETRIEVAL_DEDUP=off 由装配根显式传入。
+func WithNearDedupe(enabled bool) Option {
+	return func(u *Usecase) { u.dedupeEnabled = enabled }
+}
+
 func NewUsecase(repo Repo, registry llm.Registry, llmRepo llm.ConfigRepo, db platform.Querier, opts ...Option) *Usecase {
-	u := &Usecase{repo: repo, registry: registry, llmRepo: llmRepo, db: db, topK: defaultTopK}
+	u := &Usecase{repo: repo, registry: registry, llmRepo: llmRepo, dedupeEnabled: true, db: db, topK: defaultTopK}
 	for _, o := range opts {
 		o(u)
 	}
@@ -152,7 +165,13 @@ func (u *Usecase) Search(ctx context.Context, req domain.SearchRequest) ([]domai
 		lexicalHits = nil
 	}
 
-	return fuseRRF(vectorHits, lexicalHits, topK), nil
+	// 先按召回池融合（可能多于 topK），再做近重复抑制，最后截到 topK：
+	// 若先截 topK 再去重，被去重挤掉的名额无法由后面的候选补上。
+	fused := fuseRRF(vectorHits, lexicalHits, recall)
+	if u.dedupeEnabled {
+		return dedupeNearDuplicates(fused, topK), nil
+	}
+	return fused[:min(len(fused), topK)], nil
 }
 
 // 混合检索参数。
