@@ -1,0 +1,13 @@
+{
+ "measuredAt": "2026-10-29",
+ "retrieval": {
+  "hitAt1": 0.714,
+  "hitAt3": 1,
+  "mrr": 0.833,
+  "n": 7
+ },
+ "citation": {
+  "pageHit": "3/3",
+  "groundingValid": "2/3"
+ }
+}

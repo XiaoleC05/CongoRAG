@@ -1,0 +1,165 @@
+{
+ "baseUrl": "http://127.0.0.1:3210/api/v1",
+ "knowledgeBases": {
+  "pdf": "<pdf-kb-uuid>",
+  "udl": "<udl-kb-uuid>",
+  "notes": "<notes-kb-uuid>"
+ },
+ "documents": {
+  "v1": "<doc-uuid>",
+  "scan": "<doc-uuid>",
+  "udl": "<doc-uuid>",
+  "md01": "<doc-uuid>",
+  "notesDoc": "<doc-uuid>"
+ },
+ "cases": [
+  {
+   "kb": "<pdf-kb-uuid>",
+   "query": "训练用了多少块 GPU？",
+   "want": [
+    {
+     "doc": "v1",
+     "pages": [
+      7,
+      8
+     ]
+    },
+    {
+     "doc": "scan",
+     "pages": [
+      7,
+      8
+     ]
+    }
+   ]
+  },
+  {
+   "kb": "<pdf-kb-uuid>",
+   "query": "What BLEU score does the Transformer achieve on WMT 2014 English-to-German?",
+   "want": [
+    {
+     "doc": "v1",
+     "pages": [
+      8
+     ]
+    },
+    {
+     "doc": "scan",
+     "pages": [
+      8
+     ]
+    }
+   ]
+  },
+  {
+   "kb": "<pdf-kb-uuid>",
+   "query": "self-attention 的计算复杂度为什么比 RNN 低？",
+   "want": [
+    {
+     "doc": "v1",
+     "pages": [
+      5,
+      6
+     ]
+    },
+    {
+     "doc": "scan",
+     "pages": [
+      5,
+      6
+     ]
+    },
+    {
+     "doc": "md01",
+     "pages": [
+      0
+     ]
+    }
+   ]
+  },
+  {
+   "kb": "<pdf-kb-uuid>",
+   "query": "Table 2 的 BLEU 结果是多少？",
+   "want": [
+    {
+     "doc": "scan",
+     "pages": [
+      8
+     ]
+    },
+    {
+     "doc": "v1",
+     "pages": [
+      8
+     ]
+    }
+   ]
+  },
+  {
+   "kb": "<udl-kb-uuid>",
+   "query": "overfitting",
+   "want": [
+    {
+     "doc": "udl",
+     "pages": [
+      139,
+      142
+     ]
+    }
+   ]
+  },
+  {
+   "kb": "<udl-kb-uuid>",
+   "query": "convolutional layer",
+   "want": [
+    {
+     "doc": "udl",
+     "pages": [
+      177,
+      180,
+      195
+     ]
+    }
+   ]
+  },
+  {
+   "kb": "<notes-kb-uuid>",
+   "query": "读书笔记",
+   "want": [
+    {
+     "doc": "notesDoc",
+     "pages": [
+      0
+     ]
+    }
+   ]
+  }
+ ],
+ "citationCases": [
+  {
+   "kb": "<pdf-kb-uuid>",
+   "query": "Attention 论文训练用了多少块 GPU？",
+   "pages": [
+    7,
+    8
+   ]
+  },
+  {
+   "kb": "<pdf-kb-uuid>",
+   "query": "What BLEU score does the Transformer achieve on WMT 2014 English-to-German?",
+   "pages": [
+    8
+   ]
+  },
+  {
+   "kb": "<pdf-kb-uuid>",
+   "query": "这篇论文的 self-attention 是如何工作的？",
+   "pages": [
+    2,
+    3,
+    4,
+    5
+   ]
+  }
+ ]
+}

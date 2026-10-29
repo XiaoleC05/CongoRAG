@@ -161,6 +161,11 @@ make dev-web                  # http://127.0.0.1:5173，代理到 3210
 | 抗幻觉 | DeepSeek-V3 回答 2/2 句带 `[4][5]`，`grounding.valid=true`；无证据时固定拒答 |
 | 写作 Copilot | 759 字「相关工作」草稿，逐句 [n]，4 条引用含页码 |
 | arXiv | Agent 自主检索并返回 DiNAT 等真实论文（SSE 有 tool_call/tool_result） |
+| 检索评测（7 条查询） | **hit@1 71.4% / hit@3 100% / MRR 0.833** |
+| 引用页码命中（3 条问答） | **3/3**；grounding 通过 2/3（未通过的那条如实显示"部分未溯源"） |
+
+> 评测方法与逐条结果见提交材料里的《评测报告》；复现脚本见
+> [eval/retrieval-eval.mjs](eval/retrieval-eval.mjs)（复制 config.example.json 填自己的库 id）。
 
 ## 7. 评分对照（自评）
 
