@@ -193,8 +193,14 @@ Prompt 设计、修改原因与效果记录见 [prompt-audit.md](prompt-audit.md
 4. 大文档（>500 页）首次解析耗时分钟级，已通过缓存与 10 分钟超时兜底；
 5. sidecar 的 OCR 仅覆盖扫描件场景，复杂公式仍以文本层为准。
 
-## 10. 目录
+## 10. 提交材料
 
+四件套（技术文档 PDF、演示视频、自检清单、评测报告）随仓库分发在
+[submission/](submission/README.md)，评委可直接下载；代码即本仓库 `cup-2026` 分支。
+
+## 11. 目录
+
+- [submission/](submission/README.md) —— 四件套提交材料（视频/PDF/清单/评测）
 - [prompt-audit.md](prompt-audit.md) —— Prompt 审计记录（版本/原因/效果/代码位置）
 - [../../docs/sse-protocol.md](../sse-protocol.md) —— SSE 协议（含 citation/grounding 帧）
 - [../../README.md](../../README.md) —— 基线项目完整文档

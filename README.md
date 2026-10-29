@@ -7,6 +7,8 @@
 > 写作 Copilot。参赛说明（六模块对照、架构、快速开始、评分自评）见
 > [docs/competition/README.md](docs/competition/README.md)，Prompt 审计记录见
 > [docs/competition/prompt-audit.md](docs/competition/prompt-audit.md)。
+> **提交材料（技术文档 PDF / 演示视频 / 自检清单 / 评测报告）见
+> [docs/competition/submission/](docs/competition/submission/README.md)。**
 > 基线版本与参赛增量的边界在参赛说明第 3 节逐条列出。
 
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
