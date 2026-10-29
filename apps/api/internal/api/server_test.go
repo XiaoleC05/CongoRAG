@@ -125,6 +125,15 @@ func (noopDocRepo) UpdateParsedInfo(ctx context.Context, q platform.Querier, id 
 	return nil
 }
 
+// ListReferences / ListChunkContents 是参赛版 M5 引用图谱；大多数用例不关心。
+func (noopDocRepo) ListReferences(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.ReferenceEntry, error) {
+	return nil, nil
+}
+
+func (noopDocRepo) ListChunkContents(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.Chunk, error) {
+	return nil, nil
+}
+
 // ListOutline 是参赛版 M3 阅读器目录；绝大多数用例不关心目录，返回空。
 func (noopDocRepo) ListOutline(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.OutlineEntry, error) {
 	return nil, nil

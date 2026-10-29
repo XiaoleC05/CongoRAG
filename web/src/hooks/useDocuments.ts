@@ -36,6 +36,35 @@ export function useWritingDraft(kbId: string) {
   })
 }
 
+/** 参考文献条目（参赛版 M5 引用图谱）。 */
+export type DocumentReference = {
+  index: number
+  text: string
+  page: number
+  matchedDocumentId: string | null
+  matchedFilename: string | null
+}
+
+/**
+ * 阅读器「参考文献」面板：GET /documents/{id}/references。
+ *
+ * 【为什么和 outline 一样单独缓存】参考文献只在阅读器里用，而且它依赖
+ * "库内其它文档"——知识库新增/删除文档后结果会变，所以 staleTime 比
+ * outline 短，并在重新索引后由 ReaderPage 的文档查询失效间接触发。
+ */
+export function useDocumentReferences(docId: string) {
+  return useQuery<DocumentReference[]>({
+    queryKey: ['document-references', docId],
+    queryFn: async (): Promise<DocumentReference[]> => {
+      const res = await fetch(`/api/v1/documents/${docId}/references`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return (await res.json()) as DocumentReference[]
+    },
+    enabled: docId !== '',
+    staleTime: 30 * 1000,
+  })
+}
+
 /**
  * 阅读器目录（参赛版 M3）：GET /documents/{id}/outline。
  *

@@ -482,6 +482,37 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── 文档：参考文献（参赛版 M5，引用图谱）────────────────────
+  #
+  # 返回文档的参考文献条目，并标出其中哪些文献也在**当前知识库**里
+  #（matchedDocumentId 非空）。阅读器用它渲染"本文引用 + 库内被引"面板。
+  /api/v1/documents/{id}/references:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: listDocumentReferences
+      summary: 取一份文档的参考文献并标注库内命中
+      responses:
+        '200':
+          description: 按原文顺序排列的参考文献；没有解析出文献时为空数组
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReferenceEntry'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ── 文档：原始文件 ──────────────────────────────────────────
   #
   # 阅读器（ReaderPage）要用它取原始 PDF 的字节流：PDF.js 需要文件本体，
@@ -1452,6 +1483,31 @@ components:
           format: double
           nullable: true
           description: 词法 ts_rank_cd（>=0）；这一路没命中时为 null
+
+    ReferenceEntry:
+      type: object
+      description: 参考文献的一条（参赛版 M5）
+      required: [index, text, page, matchedDocumentId, matchedFilename]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          description: 引文编号（[n] 里的 n）；解析不出来时为 0
+        text:
+          type: string
+          description: 参考文献原文
+        page:
+          type: integer
+          minimum: 0
+          description: 所在页码（PDF）；md/txt 为 0
+        matchedDocumentId:
+          type: string
+          nullable: true
+          description: 同库里命中的文档 id；未命中为 null
+        matchedFilename:
+          type: string
+          nullable: true
+          description: 同库里命中的文档文件名；未命中为 null
 
     TranslateRequest:
       type: object

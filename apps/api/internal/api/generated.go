@@ -608,6 +608,24 @@ type ProviderWithModels struct {
 	RequeuedDocuments *int `json:"requeuedDocuments,omitempty"`
 }
 
+// ReferenceEntry 参考文献的一条（参赛版 M5）
+type ReferenceEntry struct {
+	// Index 引文编号（[n] 里的 n）；解析不出来时为 0
+	Index int `json:"index"`
+
+	// MatchedDocumentId 同库里命中的文档 id；未命中为 null
+	MatchedDocumentId *string `json:"matchedDocumentId"`
+
+	// MatchedFilename 同库里命中的文档文件名；未命中为 null
+	MatchedFilename *string `json:"matchedFilename"`
+
+	// Page 所在页码（PDF）；md/txt 为 0
+	Page int `json:"page"`
+
+	// Text 参考文献原文
+	Text string `json:"text"`
+}
+
 // ReindexAccepted defines model for ReindexAccepted.
 type ReindexAccepted struct {
 	// Enqueued 本次真的排进队列的文档数。已经在排队或正在处理的文档不计入——
@@ -1000,6 +1018,9 @@ type ServerInterface interface {
 	// GetDocumentOutline 取一份文档的章节大纲（heading 分块 → 阅读器目录）
 	// (GET /api/v1/documents/{id}/outline)
 	GetDocumentOutline(c *gin.Context, id openapi_types.UUID)
+	// ListDocumentReferences 取一份文档的参考文献并标注库内命中
+	// (GET /api/v1/documents/{id}/references)
+	ListDocumentReferences(c *gin.Context, id openapi_types.UUID)
 	// ReindexDocument 重新索引一份文档（重新切分、向量化、入库）
 	// (POST /api/v1/documents/{id}/reindex)
 	ReindexDocument(c *gin.Context, id openapi_types.UUID)
@@ -1581,6 +1602,31 @@ func (siw *ServerInterfaceWrapper) GetDocumentOutline(c *gin.Context) {
 	}
 
 	siw.Handler.GetDocumentOutline(c, id)
+}
+
+// ListDocumentReferences operation middleware
+func (siw *ServerInterfaceWrapper) ListDocumentReferences(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListDocumentReferences(c, id)
 }
 
 // ReindexDocument operation middleware
@@ -2170,6 +2216,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/api/v1/documents/:id", wrapper.GetDocument)
 	router.POST(options.BaseURL+"/api/v1/documents/:id/reindex", wrapper.ReindexDocument)
 	router.GET(options.BaseURL+"/api/v1/documents/:id/outline", wrapper.GetDocumentOutline)
+	router.GET(options.BaseURL+"/api/v1/documents/:id/references", wrapper.ListDocumentReferences)
 	router.GET(options.BaseURL+"/api/v1/documents/:id/file", wrapper.DownloadDocumentFile)
 	router.POST(options.BaseURL+"/api/v1/translate", wrapper.TranslateText)
 	router.GET(options.BaseURL+"/api/v1/conversations", wrapper.ListConversations)

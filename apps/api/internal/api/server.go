@@ -411,6 +411,31 @@ func (s *Server) GetDocument(c *gin.Context, id openapi_types.UUID) {
 	c.JSON(http.StatusOK, toAPIDocument(doc))
 }
 
+// ListDocumentReferences 返回参考文献并标注库内命中（参赛版 M5）。
+func (s *Server) ListDocumentReferences(c *gin.Context, id openapi_types.UUID) {
+	entries, err := s.deps.Knowledge.References(c.Request.Context(), id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	out := make([]ReferenceEntry, 0, len(entries))
+	for _, e := range entries {
+		item := ReferenceEntry{
+			Index: e.Index,
+			Text:  e.Text,
+			Page:  e.Page,
+		}
+		if e.MatchedDocumentID != "" {
+			docID := e.MatchedDocumentID
+			name := e.MatchedFilename
+			item.MatchedDocumentId = &docID
+			item.MatchedFilename = &name
+		}
+		out = append(out, item)
+	}
+	c.JSON(http.StatusOK, out)
+}
+
 // TranslateText 翻译一段论文文本（参赛版 M3 阅读器翻译）。
 func (s *Server) TranslateText(c *gin.Context) {
 	var req TranslateRequest

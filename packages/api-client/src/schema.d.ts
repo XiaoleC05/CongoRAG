@@ -212,6 +212,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/documents/{id}/references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** 取一份文档的参考文献并标注库内命中 */
+        get: operations["listDocumentReferences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{id}/file": {
         parameters: {
             query?: never;
@@ -741,6 +760,19 @@ export interface components {
              * @description 词法 ts_rank_cd（>=0）；这一路没命中时为 null
              */
             lexicalScore: number | null;
+        };
+        /** @description 参考文献的一条（参赛版 M5） */
+        ReferenceEntry: {
+            /** @description 引文编号（[n] 里的 n）；解析不出来时为 0 */
+            index: number;
+            /** @description 参考文献原文 */
+            text: string;
+            /** @description 所在页码（PDF）；md/txt 为 0 */
+            page: number;
+            /** @description 同库里命中的文档 id；未命中为 null */
+            matchedDocumentId: string | null;
+            /** @description 同库里命中的文档文件名；未命中为 null */
+            matchedFilename: string | null;
         };
         TranslateRequest: {
             /** @description 要翻译的原文（字符数上限与后端 maxTranslateRunes 一致） */
@@ -1605,6 +1637,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OutlineEntry"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listDocumentReferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按原文顺序排列的参考文献；没有解析出文献时为空数组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceEntry"][];
                 };
             };
             404: components["responses"]["NotFound"];

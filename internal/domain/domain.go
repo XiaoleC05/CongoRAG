@@ -147,3 +147,17 @@ type OutlineEntry struct {
 	Page  int    // 1-based 物理页码，点击目录直接跳这一页
 	Level int    // 1-based 层级 = len(section_path)
 }
+
+// ReferenceEntry 是论文参考文献的一条（参赛版 M5 引用图谱的基础节点）。
+//
+// 【MatchedDocumentID/MatchedFilename 的意义】它表示"这条参考文献对应的
+// 论文也在当前知识库里"——只有这样，引用图谱才有跨文档的边。匹配靠标题
+// 文本包含（见 knowledge.Usecase.References），不是真正的实体消歧：
+// 标题相同但年份不同的两篇论文会被认成同一篇，这一点写进技术文档的已知限制。
+type ReferenceEntry struct {
+	Index             int    // 引文编号（[n] 里的 n）；解析不出来时为 0
+	Text              string // 参考文献原文（可能跨行，已折叠空白）
+	Page              int    // 所在页码（PDF；md/txt 为 0）
+	MatchedDocumentID string // 命中的库内文档 id；空串 = 未命中
+	MatchedFilename   string // 命中的库内文档文件名
+}

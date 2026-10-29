@@ -88,6 +88,15 @@ type DocRepo interface {
 	// "页数更新了、分块还是旧的"（或反过来）的中间态。
 	UpdateParsedInfo(ctx context.Context, q platform.Querier, id uuid.UUID, pageCount int, parser string) error
 
+	// ListChunkContents 返回一个文档的全部分块（只填 ID/Content/PageStart），
+	// 供参考文献兜底解析用：md/txt 没有 block_type 分类，需要按行扫文献列表。
+	ListChunkContents(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.Chunk, error)
+
+	// ListReferences 返回文档的参考文献条目（block_type='reference' 的分块，
+	// 按页码与出现顺序）。md/txt 没有这种分块时返回空切片，调用方会退回
+	// "按行解析文献列表"的兜底路径（见 Usecase.References）。
+	ListReferences(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.ReferenceEntry, error)
+
 	// ListOutline 返回文档的章节大纲：heading 分块按页码与出现顺序排列，
 	// Level 来自 section_path 的层级深度（见 domain.OutlineEntry）。
 	//

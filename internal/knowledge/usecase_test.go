@@ -122,6 +122,9 @@ type fakeDocRepo struct {
 
 	// outline 是 ListOutline 要返回的目录（参赛版 M3）。
 	outline []domain.OutlineEntry
+	// references / chunks 是引用图谱（M5）测试的摆放值。
+	references []domain.ReferenceEntry
+	chunks     []domain.Chunk
 
 	failOn string
 	err    error
@@ -132,6 +135,20 @@ func (f *fakeDocRepo) ListOutline(ctx context.Context, q platform.Querier, id uu
 		return nil, f.err
 	}
 	return f.outline, nil
+}
+
+func (f *fakeDocRepo) ListReferences(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.ReferenceEntry, error) {
+	if f.failOn == "ListReferences" {
+		return nil, f.err
+	}
+	return f.references, nil
+}
+
+func (f *fakeDocRepo) ListChunkContents(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.Chunk, error) {
+	if f.failOn == "ListChunkContents" {
+		return nil, f.err
+	}
+	return f.chunks, nil
 }
 
 func (f *fakeDocRepo) Insert(ctx context.Context, q platform.Querier, d *Document) error {

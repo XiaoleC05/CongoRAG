@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -748,4 +749,145 @@ func (u *Usecase) markFailed(ctx context.Context, docID uuid.UUID) {
 		slog.Default().Error("failed to mark document as failed",
 			"document_id", docID, "error", err)
 	}
+}
+
+// ────────────────────────────────────────────────────────────────
+// 引用图谱（参赛版 M5）
+// ────────────────────────────────────────────────────────────────
+
+// referenceIndexPattern 匹配参考文献开头的编号：[12] / [ 12 ]。
+var referenceIndexPattern = regexp.MustCompile(`^\s*\[\s*([0-9]{1,3})\s*\]`)
+
+// referenceLinePattern 匹配"以 [n] 开头的一行"（md 兜底解析用）。
+var referenceLinePattern = regexp.MustCompile(`(?m)^\s*\[\s*([0-9]{1,3})\s*\]\s*(.+)$`)
+
+// nonTitlePattern 把标题归一化成"只含字母/数字、以小写单词空格分隔"。
+var nonTitlePattern = regexp.MustCompile(`[^\p{L}\p{Nd}]+`)
+
+// ReferenceCandidate 是一篇"库内可能被引用"的文档（标题/文件名）。
+type refCandidate struct {
+	docID    uuid.UUID
+	filename string
+	norm     string
+}
+
+// References 返回一份文档的参考文献列表，并标出其中哪些文献也在当前
+// 知识库里（参赛版 M5 的"引用图谱"数据）。
+//
+// 【为什么匹配靠标题文本包含，而不是做一个实体库】比赛作品里的知识库
+// 只有几十份论文，标题匹配已经能覆盖"同一篇论文的不同版本/引用格式"
+// 这类主要场景；真正的实体消歧（同名不同年、缩写、翻译标题）需要外部
+// 文献元数据服务，写进已知限制比假装做到更诚实。
+func (u *Usecase) References(ctx context.Context, docID uuid.UUID) ([]domain.ReferenceEntry, error) {
+	doc, err := u.docRepo.ByID(ctx, u.db, docID)
+	if err != nil {
+		return nil, fmt.Errorf("get document %s: %w", docID, err)
+	}
+
+	entries, err := u.docRepo.ListReferences(ctx, u.db, docID)
+	if err != nil {
+		return nil, fmt.Errorf("list references of document %s: %w", docID, err)
+	}
+	if len(entries) == 0 {
+		entries, err = u.referencesFromChunks(ctx, docID)
+		if err != nil {
+			return nil, fmt.Errorf("extract references from chunks of document %s: %w", docID, err)
+		}
+	}
+	for i := range entries {
+		// 只在文本里真的带 [n] 前缀时用它覆盖：md 兜底路径的 Index 来自
+		// 行首编号，Text 已经剥掉了前缀，不能被覆盖回 0。
+		if idx := parseReferenceIndex(entries[i].Text); idx > 0 {
+			entries[i].Index = idx
+			// 文本里的 [n] 前缀剥掉：编号已经单独放在 Index 里，前端
+			// 只渲染一次；两种来源（reference 分块/按行兜底）统一形状。
+			entries[i].Text = strings.TrimSpace(referenceIndexPattern.ReplaceAllString(entries[i].Text, ""))
+		}
+	}
+
+	// 同库其它文档作为"可能被引"的候选。
+	others, _, err := u.docRepo.ListByKnowledgeBase(ctx, u.db, doc.KnowledgeBaseID, nil, 100)
+	if err != nil {
+		// 匹配失败不该让参考文献列表本身失败：降级为"全部未命中"。
+		return entries, nil
+	}
+	candidates := make([]refCandidate, 0, len(others))
+	for _, od := range others {
+		if od.ID == docID {
+			continue
+		}
+		names := []string{strings.TrimSuffix(od.Filename, path.Ext(od.Filename))}
+		// 论文的标题通常就是大纲的第一行（PDF 的标题块）。
+		if outline, oerr := u.docRepo.ListOutline(ctx, u.db, od.ID); oerr == nil && len(outline) > 0 {
+			names = append(names, outline[0].Title)
+		}
+		for _, name := range names {
+			if norm := normalizeTitle(name); len(norm) >= 12 {
+				candidates = append(candidates, refCandidate{docID: od.ID, filename: od.Filename, norm: norm})
+			}
+		}
+	}
+	for i := range entries {
+		norm := normalizeTitle(entries[i].Text)
+		for _, c := range candidates {
+			if strings.Contains(norm, c.norm) {
+				entries[i].MatchedDocumentID = c.docID.String()
+				entries[i].MatchedFilename = c.filename
+				break
+			}
+		}
+	}
+	return entries, nil
+}
+
+// referencesFromChunks 是 md/txt 文档的兜底解析：这些文档没有
+// block_type='reference' 的分块，但正文里可能有以 [n] 开头的文献列表行。
+//
+// 【为什么限制最多 200 条】防止把正文里所有形如 [12] 的引用标记都当
+// 文献条目；真正的文献列表不会超过这个量级，超出说明解析跑偏了。
+func (u *Usecase) referencesFromChunks(ctx context.Context, docID uuid.UUID) ([]domain.ReferenceEntry, error) {
+	chunks, err := u.docRepo.ListChunkContents(ctx, u.db, docID)
+	if err != nil {
+		return nil, err
+	}
+	var out []domain.ReferenceEntry
+	seen := map[int]bool{}
+	for _, c := range chunks {
+		for _, m := range referenceLinePattern.FindAllStringSubmatch(c.Content, -1) {
+			idx := 0
+			for _, r := range m[1] {
+				idx = idx*10 + int(r-'0')
+			}
+			if idx <= 0 || seen[idx] || len(out) >= 200 {
+				continue
+			}
+			seen[idx] = true
+			// Text 只存文献正文；编号在 Index 里。两条路径（block_type
+			// 解析与按行兜底）都遵守这个约定，前端只渲染一次编号。
+			out = append(out, domain.ReferenceEntry{
+				Index: idx,
+				Text:  strings.Join(strings.Fields(m[2]), " "),
+				Page:  c.PageStart,
+			})
+		}
+	}
+	return out, nil
+}
+
+// parseReferenceIndex 从参考文献原文开头解析编号。
+func parseReferenceIndex(text string) int {
+	m := referenceIndexPattern.FindStringSubmatch(text)
+	if m == nil {
+		return 0
+	}
+	n := 0
+	for _, r := range m[1] {
+		n = n*10 + int(r-'0')
+	}
+	return n
+}
+
+// normalizeTitle 把标题归一化成小写、空格分隔的字母/数字串。
+func normalizeTitle(s string) string {
+	return strings.Join(strings.Fields(nonTitlePattern.ReplaceAllString(strings.ToLower(s), " ")), " ")
 }

@@ -13,7 +13,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ErrorText } from '@/components/ErrorText'
 import { PageFallback } from '@/components/PageFallback'
-import { useDocumentOutline } from '@/hooks/useDocuments'
+import { useDocumentOutline, useDocumentReferences } from '@/hooks/useDocuments'
 
 // PDF.js 的 worker 必须显式指定。workerPort 接一个真的 Worker 实例，
 // 比 workerSrc 再让 pdf.js 自己按 URL 去 import 更可控（见上面的 ?worker 说明）。
@@ -98,6 +98,8 @@ function ReaderView({
   type OutlineRow = { title: string; page: number; level: number }
   const { data: outlineData } = useDocumentOutline(id)
   const outline: OutlineRow[] | undefined = outlineData
+  // 引用图谱（M5）：参考文献列表 + 库内命中标记。
+  const { data: references } = useDocumentReferences(id)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
@@ -344,6 +346,43 @@ function ReaderView({
           ) : (
             <p className="text-muted-foreground px-3 text-xs">
               {outline ? '这份文档没有解析出章节标题' : '加载中…'}
+            </p>
+          )}
+
+          {/* 引用图谱（M5）：参考文献 + 库内被引。
+              命中的条目用主色标出——它表示这篇参考文献的作者版本也在
+              当前知识库里，可以点过去看。 */}
+          <div className="text-muted-foreground border-t px-3 py-2 text-xs font-medium">
+            参考文献{references && references.length > 0 ? `（${references.length}）` : ''}
+          </div>
+          {references && references.length > 0 ? (
+            <ul className="pb-4">
+              {references.map((ref, index) => (
+                <li key={(ref.index || 0) + '-' + index} className="px-3 py-1">
+                  {ref.matchedDocumentId ? (
+                    <a
+                      href={`/documents/${ref.matchedDocumentId}/reader?page=1`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary block truncate text-xs hover:underline"
+                      title={ref.text + '（库内：' + (ref.matchedFilename ?? '') + '）'}
+                    >
+                      [{ref.index || index + 1}] {ref.text}
+                    </a>
+                  ) : (
+                    <span
+                      className="text-muted-foreground block truncate text-xs"
+                      title={ref.text + (ref.page > 0 ? `（第 ${ref.page} 页）` : '')}
+                    >
+                      [{ref.index || index + 1}] {ref.text}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-muted-foreground px-3 pb-4 text-xs">
+              {references ? '没有解析出参考文献' : '加载中…'}
             </p>
           )}
         </aside>

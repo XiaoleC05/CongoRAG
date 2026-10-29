@@ -403,3 +403,55 @@ func (r *PgDocRepo) ListOutline(ctx context.Context, q platform.Querier, docID u
 	}
 	return out, nil
 }
+
+// ListReferences 返回参考文献分块（参赛版 M5）。Index/Matched* 由业务层填。
+func (r *PgDocRepo) ListReferences(ctx context.Context, q platform.Querier, docID uuid.UUID) ([]domain.ReferenceEntry, error) {
+	rows, err := q.Query(ctx,
+		`SELECT content, coalesce(page_start, 0)
+		 FROM document_chunks
+		 WHERE document_id = $1 AND block_type = 'reference'
+		 ORDER BY page_start, id`, docID)
+	if err != nil {
+		return nil, fmt.Errorf("list references of document %s: %w", docID, platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	var out []domain.ReferenceEntry
+	for rows.Next() {
+		var e domain.ReferenceEntry
+		if err := rows.Scan(&e.Text, &e.Page); err != nil {
+			return nil, fmt.Errorf("scan reference row of document %s: %w", docID, err)
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate references of document %s: %w", docID, err)
+	}
+	return out, nil
+}
+
+// ListChunkContents 取一个文档的全部分块（参赛版 M5 的兜底解析用）。
+func (r *PgDocRepo) ListChunkContents(ctx context.Context, q platform.Querier, docID uuid.UUID) ([]domain.Chunk, error) {
+	rows, err := q.Query(ctx,
+		`SELECT id, content, coalesce(page_start, 0)
+		 FROM document_chunks
+		 WHERE document_id = $1
+		 ORDER BY page_start, id`, docID)
+	if err != nil {
+		return nil, fmt.Errorf("list chunks of document %s: %w", docID, platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	var out []domain.Chunk
+	for rows.Next() {
+		var c domain.Chunk
+		if err := rows.Scan(&c.ID, &c.Content, &c.PageStart); err != nil {
+			return nil, fmt.Errorf("scan chunk row of document %s: %w", docID, err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate chunks of document %s: %w", docID, err)
+	}
+	return out, nil
+}
