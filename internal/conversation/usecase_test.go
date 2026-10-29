@@ -20,6 +20,7 @@ import (
 
 	"github.com/XiaoleC05/CongoRAG/internal/ctxmgr"
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
+	"github.com/XiaoleC05/CongoRAG/internal/grounding"
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
@@ -433,7 +434,8 @@ func (f *fakeRepo) ListMessagesPage(ctx context.Context, q platform.Querier, con
 	return candidates, hasMore, nil
 }
 
-func (f *fakeRepo) UpdateMessageContent(ctx context.Context, q platform.Querier, id uuid.UUID, content string, status MessageStatus) error {
+func (f *fakeRepo) UpdateMessageContent(ctx context.Context, q platform.Querier, id uuid.UUID, content string, status MessageStatus,
+	citations []domain.Citation, groundingReport *grounding.Report) error {
 	if f.failOn == "UpdateMessageContent" {
 		return f.err
 	}
@@ -444,6 +446,8 @@ func (f *fakeRepo) UpdateMessageContent(ctx context.Context, q platform.Querier,
 			if m.ID == id {
 				m.Content = content
 				m.Status = status
+				m.Citations = citations
+				m.Grounding = groundingReport
 				return nil
 			}
 		}

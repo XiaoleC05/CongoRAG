@@ -1361,9 +1361,47 @@ components:
           maxLength: 8000
           example: ConGoRAG 的默认端口是多少？
 
+    # 参赛版：消息上持久化的引用与引用校验结果（migration 0017）。
+    #
+    # 【为什么独立于 SSE】SSE 的 citation/grounding 只在当轮有效；刷新页面后
+    # 历史消息靠这两个字段渲染可点击角标与"已溯源/部分未溯源"徽标。
+    MessageCitation:
+      type: object
+      required: [chunkId, documentId, filename, snippet, score, page, pageEnd, bbox, sectionPath]
+      properties:
+        chunkId:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        snippet:
+          type: string
+        score:
+          type: number
+          format: double
+        page:
+          type: integer
+          nullable: true
+        pageEnd:
+          type: integer
+          nullable: true
+        bbox:
+          type: array
+          nullable: true
+          items:
+            type: number
+        sectionPath:
+          type: array
+          nullable: true
+          items:
+            type: string
+
     Message:
       type: object
-      required: [id, conversationId, role, content, status, sequenceNo, createdAt]
+      required: [id, conversationId, role, content, status, sequenceNo, createdAt, citations]
       properties:
         id:
           type: string
@@ -1385,6 +1423,29 @@ components:
         createdAt:
           type: string
           format: date-time
+        citations:
+          type: array
+          description: 这一轮回答的引用（总是数组；没有引用时为空）
+          items:
+            $ref: '#/components/schemas/MessageCitation'
+        grounding:
+          type: object
+          nullable: true
+          description: 引用落地检查结果；流式中/失败的消息为 null
+          properties:
+            sentences:
+              type: integer
+            cited:
+              type: integer
+            unsupported:
+              type: integer
+            refs:
+              type: integer
+            validRefs:
+              type: integer
+            valid:
+              type: boolean
+          required: [sentences, cited, unsupported, refs, validRefs, valid]
 
     # ── 文档 ──────────────────────────────────────────────────
 

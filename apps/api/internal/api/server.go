@@ -755,7 +755,24 @@ func toAPIConversation(c *conversation.Conversation) Conversation {
 }
 
 func toAPIMessage(m *conversation.Message) Message {
-	return Message{
+	// 引用与 grounding 是参赛版持久化字段（migration 0017）：空切片不是 nil，
+	// 契约里 citations 是数组，nil 会序列化成 null（前端 .map() 会崩）。
+	citations := make([]MessageCitation, 0, len(m.Citations))
+	for _, c := range m.Citations {
+		citations = append(citations, MessageCitation{
+			ChunkId:     c.ChunkID,
+			DocumentId:  c.DocumentID,
+			Filename:    c.Filename,
+			Snippet:     c.Snippet,
+			Score:       c.Score,
+			Page:        intPtrOrNil(c.Page),
+			PageEnd:     intPtrOrNil(c.PageEnd),
+			Bbox:        floatSlice32PtrOrNil(c.BBox),
+			SectionPath: stringSlicePtrOrNil(c.SectionPath),
+		})
+	}
+
+	out := Message{
 		Id:             m.ID,
 		ConversationId: m.ConversationID,
 		Role:           MessageRole(m.Role),
@@ -763,7 +780,39 @@ func toAPIMessage(m *conversation.Message) Message {
 		Status:         MessageStatus(m.Status),
 		SequenceNo:     m.SequenceNo,
 		CreatedAt:      m.CreatedAt,
+		Citations:      citations,
 	}
+	if m.Grounding != nil {
+		out.Grounding = &struct {
+			Cited       int  `json:"cited"`
+			Refs        int  `json:"refs"`
+			Sentences   int  `json:"sentences"`
+			Unsupported int  `json:"unsupported"`
+			Valid       bool `json:"valid"`
+			ValidRefs   int  `json:"validRefs"`
+		}{
+			Cited:       m.Grounding.Cited,
+			Refs:        m.Grounding.Refs,
+			Sentences:   m.Grounding.Sentences,
+			Unsupported: m.Grounding.Unsupported,
+			Valid:       m.Grounding.Valid,
+			ValidRefs:   m.Grounding.ValidRefs,
+		}
+	}
+	return out
+}
+
+// floatSlice32PtrOrNil 与 floatSlicePtrOrNil 相同，只是目标类型是契约里的
+// float32（bbox 在 JSON 里是精度无关的归一化坐标，float32 足够）。
+func floatSlice32PtrOrNil(v []float64) *[]float32 {
+	if len(v) == 0 {
+		return nil
+	}
+	out := make([]float32, len(v))
+	for i, f := range v {
+		out[i] = float32(f)
+	}
+	return &out
 }
 
 func toAPIMessageList(msgs []*conversation.Message) []Message {

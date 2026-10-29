@@ -4,13 +4,18 @@ import { memo } from 'react'
 import { CitationBadge } from '@/components/conversation/CitationBadge'
 import { CopyButton } from '@/components/conversation/CopyButton'
 import { MarkdownContent } from '@/components/conversation/MarkdownContent'
-import type { DisplayCitation } from '@/hooks/useMessages'
+import type { DisplayCitation, GroundingReport } from '@/hooks/useMessages'
 import { cn } from '@/lib/utils'
 
 type Props = {
   role: 'user' | 'assistant'
   content: string
   citations?: DisplayCitation[]
+  /**
+   * 引用落地检查结果（参赛版）。历史消息从 /messages 的持久化字段里来；
+   * 流式中的消息由对话页单独渲染（还没落库）。
+   */
+  grounding?: GroundingReport | null
   /** 正在流式生成中：内容后面跟一个跳动的光标。 */
   pending?: boolean
 }
@@ -45,7 +50,7 @@ type Props = {
  * MessageBubble.test.tsx 钉住（同一屏上既渲染出 Markdown 的 strong，
  * 又渲染出引用角标）。
  */
-function MessageBubbleImpl({ role, content, citations, pending }: Props) {
+function MessageBubbleImpl({ role, content, citations, grounding, pending }: Props) {
   const isUser = role === 'user'
 
   return (
@@ -89,6 +94,33 @@ function MessageBubbleImpl({ role, content, citations, pending }: Props) {
             ))}
           </div>
         )}
+
+        {/* 引用落地检查徽标（参赛版，migration 0017 持久化）：刷新页面之后
+            仍然能看到这一轮回答的可信度，而不是只在流式当轮闪一下。 */}
+        {!isUser && grounding ? (
+          <span
+            className={
+              'mt-1.5 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ' +
+              (grounding.valid
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400')
+            }
+            title={
+              '共 ' +
+              grounding.sentences +
+              ' 句，' +
+              grounding.unsupported +
+              ' 句没有可对应的引用；引用编号 ' +
+              grounding.validRefs +
+              '/' +
+              grounding.refs +
+              ' 合法'
+            }
+          >
+            引用校验：{grounding.cited}/{grounding.sentences} 句已溯源
+            {grounding.valid ? ' · 通过' : ' · 部分未溯源'}
+          </span>
+        ) : null}
 
         {/* 整条回答的复制入口（issue #89）。工具结果的复制属后续批次，
             这里不碰 components/agent/。

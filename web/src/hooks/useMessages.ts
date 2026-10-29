@@ -240,6 +240,7 @@ export function useSendMessage(conversationId: string) {
             status: 'completed',
             sequenceNo: lastSequenceNo(old) + 1,
             createdAt: new Date().toISOString(),
+            citations: [],
           }
           if (!old || old.pages.length === 0) {
             // 还没有任何一页（首屏还在加载）：造一个只含这条乐观消息的页，

@@ -513,13 +513,25 @@ type KnowledgeSearchResult struct {
 
 // Message defines model for Message.
 type Message struct {
+	// Citations 这一轮回答的引用（总是数组；没有引用时为空）
+	Citations      []MessageCitation  `json:"citations"`
 	Content        string             `json:"content"`
 	ConversationId openapi_types.UUID `json:"conversationId"`
 	CreatedAt      time.Time          `json:"createdAt"`
-	Id             openapi_types.UUID `json:"id"`
-	Role           MessageRole        `json:"role"`
-	SequenceNo     int64              `json:"sequenceNo"`
-	Status         MessageStatus      `json:"status"`
+
+	// Grounding 引用落地检查结果；流式中/失败的消息为 null
+	Grounding *struct {
+		Cited       int  `json:"cited"`
+		Refs        int  `json:"refs"`
+		Sentences   int  `json:"sentences"`
+		Unsupported int  `json:"unsupported"`
+		Valid       bool `json:"valid"`
+		ValidRefs   int  `json:"validRefs"`
+	} `json:"grounding,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
+	Role       MessageRole        `json:"role"`
+	SequenceNo int64              `json:"sequenceNo"`
+	Status     MessageStatus      `json:"status"`
 }
 
 // MessageRole defines model for Message.Role.
@@ -527,6 +539,19 @@ type MessageRole string
 
 // MessageStatus defines model for Message.Status.
 type MessageStatus string
+
+// MessageCitation defines model for MessageCitation.
+type MessageCitation struct {
+	Bbox        *[]float32         `json:"bbox"`
+	ChunkId     openapi_types.UUID `json:"chunkId"`
+	DocumentId  openapi_types.UUID `json:"documentId"`
+	Filename    string             `json:"filename"`
+	Page        *int               `json:"page"`
+	PageEnd     *int               `json:"pageEnd"`
+	Score       float64            `json:"score"`
+	SectionPath *[]string          `json:"sectionPath"`
+	Snippet     string             `json:"snippet"`
+}
 
 // MessagePage defines model for MessagePage.
 type MessagePage struct {

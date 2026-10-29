@@ -707,7 +707,7 @@ func (u *Usecase) send(ctx context.Context, convID uuid.UUID, text, idempotencyK
 	}
 
 	// ⑨ 完成。
-	if err := u.repo.UpdateMessageContent(ctx, u.db, assistantMsgID, content, MsgCompleted); err != nil {
+	if err := u.repo.UpdateMessageContent(ctx, u.db, assistantMsgID, content, MsgCompleted, finalCtx.Citations, &report); err != nil {
 		return fmt.Errorf("mark message %s completed: %w", assistantMsgID, err)
 	}
 	if err := u.emitEvent(ctx, convID, sink, "done", struct{}{}); err != nil {
@@ -744,7 +744,7 @@ func (u *Usecase) streamNoEvidenceAnswer(ctx context.Context, convID, assistantM
 			return fmt.Errorf("emit refusal token: %w", err)
 		}
 	}
-	if err := u.repo.UpdateMessageContent(ctx, u.db, assistantMsgID, noEvidenceAnswer, MsgCompleted); err != nil {
+	if err := u.repo.UpdateMessageContent(ctx, u.db, assistantMsgID, noEvidenceAnswer, MsgCompleted, nil, &report); err != nil {
 		return fmt.Errorf("mark refusal message %s completed: %w", assistantMsgID, err)
 	}
 	if err := u.emitEvent(ctx, convID, sink, "grounding", report); err != nil {
@@ -1077,7 +1077,7 @@ func (u *Usecase) streamToClient(ctx context.Context, convID uuid.UUID, msgID uu
 		}
 
 		if time.Since(lastCheckpoint) >= checkpointInterval {
-			if err := u.repo.UpdateMessageContent(ctx, u.db, msgID, content.String(), MsgStreaming); err != nil {
+			if err := u.repo.UpdateMessageContent(ctx, u.db, msgID, content.String(), MsgStreaming, nil, nil); err != nil {
 				return content.String(), fmt.Errorf("checkpoint message %s: %w", msgID, err)
 			}
 			lastCheckpoint = time.Now()
@@ -1109,7 +1109,7 @@ func (u *Usecase) failMessage(ctx context.Context, msgID uuid.UUID, content stri
 	// 用 context.Background()——原始 ctx 这时可能已经被取消
 	//（比如客户端断开），但"把消息标记失败"这个收尾动作应该总是尝试执行，
 	// 不该因为 ctx 取消就跳过，那样会把消息永远卡在 streaming 状态。
-	_ = u.repo.UpdateMessageContent(context.Background(), u.db, msgID, content, MsgFailed)
+	_ = u.repo.UpdateMessageContent(context.Background(), u.db, msgID, content, MsgFailed, nil, nil)
 	return cause
 }
 

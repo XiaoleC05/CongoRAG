@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
+	"github.com/XiaoleC05/CongoRAG/internal/grounding"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
 
@@ -122,7 +123,8 @@ type Repo interface {
 	// UpdateMessageContent 是流式过程中按批次落库的那次 UPDATE——
 	// 每 500ms 或每 N token 调一次（技术方案 §三），content 是当前已经
 	// 生成的全部内容（不是增量），status 通常是 MsgStreaming 或终态。
-	UpdateMessageContent(ctx context.Context, q platform.Querier, id uuid.UUID, content string, status MessageStatus) error
+	UpdateMessageContent(ctx context.Context, q platform.Querier, id uuid.UUID, content string, status MessageStatus,
+		citations []domain.Citation, groundingReport *grounding.Report) error
 
 	// DeleteConversation 删掉一个会话。消息、SSE 事件、计数器、摘要都由
 	// 外键级联带走（见 migrations/0003 的 ON DELETE CASCADE）。

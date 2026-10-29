@@ -150,6 +150,8 @@ export default function ConversationPage() {
                   <MessageBubble
                     role={m.role === 'user' ? 'user' : 'assistant'}
                     content={m.content}
+                    citations={m.citations}
+                    grounding={m.grounding}
                   />
                   {/* 操作区只给助手消息。缩进对齐气泡（头像 32px + 间距 12px），
                       不然它会挂在头像下面、看起来像另一条消息的一部分。 */}

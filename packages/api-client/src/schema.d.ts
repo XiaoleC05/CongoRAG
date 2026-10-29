@@ -693,6 +693,20 @@ export interface components {
             /** @example ConGoRAG 的默认端口是多少？ */
             text: string;
         };
+        MessageCitation: {
+            /** Format: uuid */
+            chunkId: string;
+            /** Format: uuid */
+            documentId: string;
+            filename: string;
+            snippet: string;
+            /** Format: double */
+            score: number;
+            page: number | null;
+            pageEnd: number | null;
+            bbox: number[] | null;
+            sectionPath: string[] | null;
+        };
         Message: {
             /** Format: uuid */
             id: string;
@@ -707,6 +721,17 @@ export interface components {
             sequenceNo: number;
             /** Format: date-time */
             createdAt: string;
+            /** @description 这一轮回答的引用（总是数组；没有引用时为空） */
+            citations: components["schemas"]["MessageCitation"][];
+            /** @description 引用落地检查结果；流式中/失败的消息为 null */
+            grounding?: {
+                sentences: number;
+                cited: number;
+                unsupported: number;
+                refs: number;
+                validRefs: number;
+                valid: boolean;
+            } | null;
         };
         /**
          * @example {

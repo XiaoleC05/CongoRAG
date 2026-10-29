@@ -36,6 +36,7 @@ const question: Message = {
   content: '向量检索用什么索引？',
   status: 'completed',
   sequenceNo: 1,
+  citations: [],
   createdAt: '2026-09-22T00:00:00Z',
 }
 
@@ -46,6 +47,7 @@ const answer: Message = {
   content: 'HNSW。',
   status: 'completed',
   sequenceNo: 2,
+  citations: [],
   createdAt: '2026-09-22T00:00:01Z',
 }
 
@@ -57,6 +59,7 @@ const failedAnswer: Message = {
   content: 'HNS',
   status: 'failed',
   sequenceNo: 3,
+  citations: [],
   createdAt: '2026-09-22T00:00:02Z',
 }
 
