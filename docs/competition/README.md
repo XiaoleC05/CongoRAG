@@ -99,6 +99,20 @@ ctxmgr 组装（预算裁剪）→ 模型流式生成 → citation/grounding 随
 
 ## 5. 快速开始（比赛评审本地运行）
 
+### 5.0 演示数据一键种子（可选）
+
+按 README 起好实例后，可以把官方 pdf/ 目录（或自己的论文目录）灌成演示库：
+
+```bash
+node scripts/seed-demo.mjs --api http://127.0.0.1:3210 --dir ./pdf
+# 只检查文件匹配、不创建数据：
+node scripts/seed-demo.mjs --api http://127.0.0.1:3210 --dir ./pdf --dry-run
+```
+
+脚本会建「PDF 学术解析验证 / UDL 长文档验证 / 版本去重演示 / 引用图谱演示」
+四个库、上传并等待解析、对重复告警执行保留两者，并创建 arXiv Agent。
+只走公开 API，不包含任何 Key，也不依赖数据库 dump。
+
 ### 5.1 依赖
 
 - Docker（含 compose v2）
