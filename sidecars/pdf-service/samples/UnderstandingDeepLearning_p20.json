@@ -1,0 +1,2517 @@
+{
+ "doc_id": "f8237d393163900fa8e43210e680a3f987b45ccac7750b372e156fae3df0bf32",
+ "filename": "UnderstandingDeepLearning_02_09_26_C.pdf",
+ "page_count": 541,
+ "parser_version": "pdf-service-0.1.0",
+ "pages": [
+  {
+   "page_no": 1,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 2,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 3,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 4,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 5,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 6,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 7,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 8,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 9,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 10,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 11,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 12,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 13,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 14,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 15,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 16,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 17,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 18,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 19,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 20,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  }
+ ],
+ "blocks": [
+  {
+   "id": "p1-b01",
+   "page": 1,
+   "bbox": [
+    0.2579,
+    0.1976,
+    0.6757,
+    0.2194
+   ],
+   "type": "heading",
+   "text": "Understanding Deep Learning",
+   "level": 1,
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b02",
+   "page": 1,
+   "bbox": [
+    0.3954,
+    0.2688,
+    0.5383,
+    0.2825
+   ],
+   "type": "paragraph",
+   "text": "Simon J.D. Prince",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b03",
+   "page": 1,
+   "bbox": [
+    0.3981,
+    0.3038,
+    0.5296,
+    0.3175
+   ],
+   "type": "paragraph",
+   "text": "February 8, 2026",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b04",
+   "page": 1,
+   "bbox": [
+    0.2048,
+    0.6713,
+    0.7289,
+    0.6826
+   ],
+   "type": "paragraph",
+   "text": "The most recent version of this document can be found at http://udlbook.com.",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b05",
+   "page": 1,
+   "bbox": [
+    0.1696,
+    0.7209,
+    0.764,
+    0.7461
+   ],
+   "type": "paragraph",
+   "text": "Copyright in this work has been licensed exclusively to The MIT Press, https://mitpress.mit.edu, which released the final version to the public in December 2023.",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b06",
+   "page": 1,
+   "bbox": [
+    0.1802,
+    0.7486,
+    0.7534,
+    0.7599
+   ],
+   "type": "paragraph",
+   "text": "Inquiries regarding rights should be addressed to the MIT Press, Rights & Permissions",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b07",
+   "page": 1,
+   "bbox": [
+    0.4253,
+    0.7624,
+    0.5084,
+    0.7737
+   ],
+   "type": "paragraph",
+   "text": "Department.",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b08",
+   "page": 1,
+   "bbox": [
+    0.239,
+    0.7834,
+    0.6946,
+    0.7947
+   ],
+   "type": "paragraph",
+   "text": "This work is subject to a Creative Commons CC-BY-NC-ND license.",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b09",
+   "page": 1,
+   "bbox": [
+    0.16,
+    0.8152,
+    0.7737,
+    0.8403
+   ],
+   "type": "paragraph",
+   "text": "I would really appreciate help improving this document. No detail too small! Please contact me with suggestions, factual inaccuracies, ambiguities, questions, and errata via github or by",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b10",
+   "page": 1,
+   "bbox": [
+    0.3528,
+    0.8428,
+    0.5808,
+    0.8541
+   ],
+   "type": "paragraph",
+   "text": "e-mail at udlbookmail@gmail.com.",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p3-b01",
+   "page": 3,
+   "bbox": [
+    0.1551,
+    0.3783,
+    0.7786,
+    0.421
+   ],
+   "type": "paragraph",
+   "text": "This book is dedicated to Blair, Calvert, Coppola, Ellison, Faulkner, Kerpatenko, Morris, Robinson, Sträussler, Wallace, Waymon, Wojnarowicz, and all the others whose work is even more important and interesting than deep learning.",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b01",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.2591,
+    0.2941,
+    0.2852
+   ],
+   "type": "paragraph",
+   "text": "Contents",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b02",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.3533,
+    0.7786,
+    0.3659
+   ],
+   "type": "paragraph",
+   "text": "Preface ix",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b03",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.3863,
+    0.7786,
+    0.3988
+   ],
+   "type": "paragraph",
+   "text": "Acknowledgements xi",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b04",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.4193,
+    0.7786,
+    0.539
+   ],
+   "type": "list",
+   "text": "1 Introduction 1 1.1 Supervised learning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 1 1.2 Unsupervised learning . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7 1.3 Reinforcement learning . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11 1.4 Ethics . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12 1.5 Structure of book . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 1.6 Other books . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 1.7 How to read this book . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b05",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.5594,
+    0.7786,
+    0.6179
+   ],
+   "type": "list",
+   "text": "2 Supervised learning 17 2.1 Supervised learning overview . . . . . . . . . . . . . . . . . . . . . . . . . 17 2.2 Linear regression example . . . . . . . . . . . . . . . . . . . . . . . . . . 18 2.3 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b06",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.6383,
+    0.7786,
+    0.7427
+   ],
+   "type": "list",
+   "text": "3 Shallow neural networks 25 3.1 Neural network example . . . . . . . . . . . . . . . . . . . . . . . . . . . 25 3.2 Universal approximation theorem . . . . . . . . . . . . . . . . . . . . . . 29 3.3 Multivariate inputs and outputs . . . . . . . . . . . . . . . . . . . . . . . 30 3.4 Shallow neural networks: general case . . . . . . . . . . . . . . . . . . . . 33 3.5 Terminology . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 35 3.6 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 36",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b07",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.7631,
+    0.7786,
+    0.8675
+   ],
+   "type": "list",
+   "text": "4 Deep neural networks 41 4.1 Composing neural networks . . . . . . . . . . . . . . . . . . . . . . . . . 41 4.2 From composing networks to deep networks . . . . . . . . . . . . . . . . 43 4.3 Deep neural networks . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 45 4.4 Matrix notation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 48 4.5 Shallow vs. deep neural networks . . . . . . . . . . . . . . . . . . . . . . 49 4.6 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 52",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b01",
+   "page": 6,
+   "bbox": [
+    0.2139,
+    0.1358,
+    0.8421,
+    0.1484
+   ],
+   "type": "paragraph",
+   "text": "iv Contents",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b02",
+   "page": 6,
+   "bbox": [
+    0.2186,
+    0.1756,
+    0.8421,
+    0.3092
+   ],
+   "type": "list",
+   "text": "5 Loss functions 56 5.1 Maximum likelihood . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 56 5.2 Recipe for constructing loss functions . . . . . . . . . . . . . . . . . . . . 60 5.3 Example 1: univariate regression . . . . . . . . . . . . . . . . . . . . . . 61 5.4 Example 2: binary classification . . . . . . . . . . . . . . . . . . . . . . . 64 5.5 Example 3: multiclass classification . . . . . . . . . . . . . . . . . . . . . 67 5.6 Multiple outputs . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 69 5.7 Cross-entropy loss . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 71 5.8 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 72",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b03",
+   "page": 6,
+   "bbox": [
+    0.2186,
+    0.3296,
+    0.8421,
+    0.433
+   ],
+   "type": "list",
+   "text": "6 Fitting models 77 6.1 Gradient descent . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 77 6.2 Stochastic gradient descent . . . . . . . . . . . . . . . . . . . . . . . . . . 83 6.3 Momentum . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 86 6.4 Adam . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 88 6.5 Training algorithm hyperparameters . . . . . . . . . . . . . . . . . . . . 91 6.6 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 91",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b04",
+   "page": 6,
+   "bbox": [
+    0.2186,
+    0.4534,
+    0.8421,
+    0.5718
+   ],
+   "type": "list",
+   "text": "7 Gradients and initialization 96 7.1 Problem definitions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 96 7.2 Computing derivatives . . . . . . . . . . . . . . . . . . . . . . . . . . . . 97 7.3 Toy example . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 100 7.4 Backpropagation algorithm . . . . . . . . . . . . . . . . . . . . . . . . . . 103 7.5 Parameter initialization . . . . . . . . . . . . . . . . . . . . . . . . . . . . 107 7.6 Example training code . . . . . . . . . . . . . . . . . . . . . . . . . . . . 111 7.7 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 111",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b05",
+   "page": 6,
+   "bbox": [
+    0.2186,
+    0.5923,
+    0.8449,
+    0.6956
+   ],
+   "type": "list",
+   "text": "8 Measuring performance 118 8.1 Training a simple model . . . . . . . . . . . . . . . . . . . . . . . . . . . 118 8.2 Sources of error . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 120 8.3 Reducing error . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 124 8.4 Double descent . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 127 8.5 Choosing hyperparameters . . . . . . . . . . . . . . . . . . . . . . . . . . 132 8.6 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 133",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b06",
+   "page": 6,
+   "bbox": [
+    0.2186,
+    0.716,
+    0.8449,
+    0.7891
+   ],
+   "type": "list",
+   "text": "9 Regularization 138 9.1 Explicit regularization . . . . . . . . . . . . . . . . . . . . . . . . . . . . 138 9.2 Implicit regularization . . . . . . . . . . . . . . . . . . . . . . . . . . . . 141 9.3 Heuristics to improve performance . . . . . . . . . . . . . . . . . . . . . . 143 9.4 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 154",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b07",
+   "page": 6,
+   "bbox": [
+    0.2186,
+    0.8095,
+    0.8449,
+    0.8675
+   ],
+   "type": "list",
+   "text": "10 Convolutional networks 161 10.1 Invariance and equivariance . . . . . . . . . . . . . . . . . . . . . . . . . 161 10.2 Convolutional networks for 1D inputs . . . . . . . . . . . . . . . . . . . . 163 10.3 Convolutional networks for 2D inputs . . . . . . . . . . . . . . . . . . . . 170",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p7-b01",
+   "page": 7,
+   "bbox": [
+    0.1795,
+    0.1756,
+    0.7786,
+    0.2185
+   ],
+   "type": "paragraph",
+   "text": "10.4 Downsampling and upsampling . . . . . . . . . . . . . . . . . . . . . . . 171 10.5 Applications . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 174 10.6 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 179",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p7-b02",
+   "page": 7,
+   "bbox": [
+    0.1551,
+    0.2389,
+    0.7814,
+    0.3573
+   ],
+   "type": "list",
+   "text": "11 Residual networks 186 11.1 Sequential processing . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 186 11.2 Residual connections and residual blocks . . . . . . . . . . . . . . . . . . 189 11.3 Exploding gradients in residual networks . . . . . . . . . . . . . . . . . . 192 11.4 Batch normalization . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 192 11.5 Common residual architectures . . . . . . . . . . . . . . . . . . . . . . . 195 11.6 Why do nets with residual connections perform so well? . . . . . . . . . 199 11.7 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 199",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p7-b03",
+   "page": 7,
+   "bbox": [
+    0.1551,
+    0.3777,
+    0.7814,
+    0.5567
+   ],
+   "type": "list",
+   "text": "12 Transformers 207 12.1 Processing text data . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 207 12.2 Dot-product self-attention . . . . . . . . . . . . . . . . . . . . . . . . . . 208 12.3 Extensions to dot-product self-attention . . . . . . . . . . . . . . . . . . 213 12.4 Transformer layers . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 215 12.5 Transformers for natural language processing . . . . . . . . . . . . . . . . 216 12.6 Encoder model example: BERT . . . . . . . . . . . . . . . . . . . . . . . 219 12.7 Decoder model example: GPT3 . . . . . . . . . . . . . . . . . . . . . . . 222 12.8 Encoder-decoder model example: machine translation . . . . . . . . . . . 226 12.9 Transformers for long sequences . . . . . . . . . . . . . . . . . . . . . . . 227 12.10 Transformers for images . . . . . . . . . . . . . . . . . . . . . . . . . . . 228 12.11 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 232",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p7-b04",
+   "page": 7,
+   "bbox": [
+    0.1551,
+    0.5771,
+    0.7814,
+    0.741
+   ],
+   "type": "list",
+   "text": "13 Graph neural networks 240 13.1 What is a graph? . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 240 13.2 Graph representation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 243 13.3 Graph neural networks, tasks, and loss functions . . . . . . . . . . . . . . 245 13.4 Graph convolutional networks . . . . . . . . . . . . . . . . . . . . . . . . 248 13.5 Example: graph classification . . . . . . . . . . . . . . . . . . . . . . . . 251 13.6 Inductive vs. transductive models . . . . . . . . . . . . . . . . . . . . . . 252 13.7 Example: node classification . . . . . . . . . . . . . . . . . . . . . . . . . 253 13.8 Layers for graph convolutional networks . . . . . . . . . . . . . . . . . . 256 13.9 Edge graphs . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 260 13.10 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 261",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p7-b05",
+   "page": 7,
+   "bbox": [
+    0.1551,
+    0.7614,
+    0.7814,
+    0.8345
+   ],
+   "type": "list",
+   "text": "14 Unsupervised learning 269 14.1 Taxonomy of unsupervised learning models . . . . . . . . . . . . . . . . . 269 14.2 What makes a good generative model? . . . . . . . . . . . . . . . . . . . 270 14.3 Quantifying performance . . . . . . . . . . . . . . . . . . . . . . . . . . . 272 14.4 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 274",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p7-b06",
+   "page": 7,
+   "bbox": [
+    0.1551,
+    0.8549,
+    0.7814,
+    0.8675
+   ],
+   "type": "list",
+   "text": "15 Generative adversarial networks 276",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p8-b01",
+   "page": 8,
+   "bbox": [
+    0.2139,
+    0.1358,
+    0.8421,
+    0.1484
+   ],
+   "type": "paragraph",
+   "text": "vi Contents",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p8-b02",
+   "page": 8,
+   "bbox": [
+    0.243,
+    0.1756,
+    0.8421,
+    0.2794
+   ],
+   "type": "paragraph",
+   "text": "15.1 Discrimination as a signal . . . . . . . . . . . . . . . . . . . . . . . . . . 276 15.2 Improving stability . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 281 15.3 Progressive growing, minibatch discrimination, and truncation . . . . . . 287 15.4 Conditional generation . . . . . . . . . . . . . . . . . . . . . . . . . . . . 289 15.5 Image translation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 291 15.6 StyleGAN . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 296 15.7 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 298",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p8-b03",
+   "page": 8,
+   "bbox": [
+    0.2186,
+    0.2998,
+    0.8449,
+    0.4036
+   ],
+   "type": "list",
+   "text": "16 Normalizing flows 304 16.1 1D example . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 304 16.2 General case . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 307 16.3 Invertible network layers . . . . . . . . . . . . . . . . . . . . . . . . . . . 309 16.4 Multi-scale flows . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 317 16.5 Applications . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 318 16.6 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 321",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p8-b04",
+   "page": 8,
+   "bbox": [
+    0.2186,
+    0.424,
+    0.8449,
+    0.5734
+   ],
+   "type": "list",
+   "text": "17 Variational autoencoders 327 17.1 Latent variable models . . . . . . . . . . . . . . . . . . . . . . . . . . . . 327 17.2 Nonlinear latent variable model . . . . . . . . . . . . . . . . . . . . . . . 328 17.3 Training . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 331 17.4 ELBO properties . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 334 17.5 Variational approximation . . . . . . . . . . . . . . . . . . . . . . . . . . 336 17.6 The variational autoencoder . . . . . . . . . . . . . . . . . . . . . . . . . 336 17.7 The reparameterization trick . . . . . . . . . . . . . . . . . . . . . . . . . 339 17.8 Applications . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 340 17.9 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 343",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p8-b05",
+   "page": 8,
+   "bbox": [
+    0.2186,
+    0.5939,
+    0.8449,
+    0.7129
+   ],
+   "type": "list",
+   "text": "18 Diffusion models 349 18.1 Overview . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 349 18.2 Encoder (forward process) . . . . . . . . . . . . . . . . . . . . . . . . . . 350 18.3 Decoder model (reverse process) . . . . . . . . . . . . . . . . . . . . . . . 356 18.4 Training . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 357 18.5 Reparameterization of loss function . . . . . . . . . . . . . . . . . . . . . 361 18.6 Implementation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 363 18.7 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 368",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p8-b06",
+   "page": 8,
+   "bbox": [
+    0.2186,
+    0.7333,
+    0.8449,
+    0.8675
+   ],
+   "type": "list",
+   "text": "19 Reinforcement learning 374 19.1 Markov decision processes, returns, and policies . . . . . . . . . . . . . . 374 19.2 Expected return . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 378 19.3 Tabular reinforcement learning . . . . . . . . . . . . . . . . . . . . . . . . 382 19.4 Fitted Q-learning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 386 19.5 Policy gradient methods . . . . . . . . . . . . . . . . . . . . . . . . . . . 389 19.6 Actor-critic methods . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 394 19.7 Offline reinforcement learning . . . . . . . . . . . . . . . . . . . . . . . . 395 19.8 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 396",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p9-b01",
+   "page": 9,
+   "bbox": [
+    0.1551,
+    0.1756,
+    0.7814,
+    0.2939
+   ],
+   "type": "list",
+   "text": "20 Why does deep learning work? 402 20.1 The case against deep learning . . . . . . . . . . . . . . . . . . . . . . . . 402 20.2 Factors that influence fitting performance . . . . . . . . . . . . . . . . . 403 20.3 Properties of loss functions . . . . . . . . . . . . . . . . . . . . . . . . . . 407 20.4 Factors that determine generalization . . . . . . . . . . . . . . . . . . . . 411 20.5 Do we need so many parameters? . . . . . . . . . . . . . . . . . . . . . . 415 20.6 Do networks have to be deep? . . . . . . . . . . . . . . . . . . . . . . . . 418 20.7 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 419",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p9-b02",
+   "page": 9,
+   "bbox": [
+    0.1551,
+    0.3143,
+    0.7814,
+    0.4476
+   ],
+   "type": "list",
+   "text": "21 Deep learning and ethics 421 21.1 Value alignment . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 421 21.2 Intentional misuse . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 427 21.3 Other social, ethical, and professional issues . . . . . . . . . . . . . . . . 429 21.4 Case study . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 431 21.5 The value-free ideal of science . . . . . . . . . . . . . . . . . . . . . . . . 432 21.6 Responsible AI research as a collective action problem . . . . . . . . . . 433 21.7 Ways forward . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 434 21.8 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 435",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p9-b03",
+   "page": 9,
+   "bbox": [
+    0.1551,
+    0.468,
+    0.7814,
+    0.4806
+   ],
+   "type": "paragraph",
+   "text": "A Notation 437",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p9-b04",
+   "page": 9,
+   "bbox": [
+    0.1551,
+    0.501,
+    0.7814,
+    0.5891
+   ],
+   "type": "paragraph",
+   "text": "B Mathematics 440 B.1 Functions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 440 B.2 Binomial coeﬀicients . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 442 B.3 Vector, matrices, and tensors . . . . . . . . . . . . . . . . . . . . . . . . . 443 B.4 Special types of matrix . . . . . . . . . . . . . . . . . . . . . . . . . . . . 446 B.5 Matrix calculus . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 448",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p9-b05",
+   "page": 9,
+   "bbox": [
+    0.1551,
+    0.6095,
+    0.7814,
+    0.6975
+   ],
+   "type": "paragraph",
+   "text": "C Probability 449 C.1 Random variables and probability distributions . . . . . . . . . . . . . . 449 C.2 Expectation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 453 C.3 Normal probability distribution . . . . . . . . . . . . . . . . . . . . . . . 457 C.4 Sampling . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 460 C.5 Distances between probability distributions . . . . . . . . . . . . . . . . . 460",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p9-b06",
+   "page": 9,
+   "bbox": [
+    0.1551,
+    0.7179,
+    0.7814,
+    0.7305
+   ],
+   "type": "paragraph",
+   "text": "Bibliography 463",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p9-b07",
+   "page": 9,
+   "bbox": [
+    0.1551,
+    0.7509,
+    0.7814,
+    0.7635
+   ],
+   "type": "paragraph",
+   "text": "Index 513",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p11-b01",
+   "page": 11,
+   "bbox": [
+    0.1551,
+    0.2591,
+    0.2715,
+    0.2852
+   ],
+   "type": "heading",
+   "text": "Preface",
+   "level": 1,
+   "section_path": [
+    "Preface"
+   ]
+  },
+  {
+   "id": "p11-b02",
+   "page": 11,
+   "bbox": [
+    0.1551,
+    0.3354,
+    0.7786,
+    0.4385
+   ],
+   "type": "paragraph",
+   "text": "The history of deep learning is unusual in science. The perseverance of a small cabal of scientists, working over twenty-five years in a seemingly unpromising area, has revolutionized a field and dramatically impacted society. Usually, when researchers investigate an esoteric and apparently impractical corner of science or engineering, it remains just that — esoteric and impractical. However, this was a notable exception. Despite widespread skepticism, the systematic efforts of Yoshua Bengio, Geoffrey Hinton, Yann LeCun, and others eventually paid off.",
+   "section_path": [
+    "Preface"
+   ]
+  },
+  {
+   "id": "p11-b03",
+   "page": 11,
+   "bbox": [
+    0.1551,
+    0.441,
+    0.7786,
+    0.5895
+   ],
+   "type": "paragraph",
+   "text": "The title of this book is “Understanding Deep Learning” to distinguish it from volumes that cover coding and other practical aspects. This text is primarily about the ideas that underlie deep learning. The first part of the book introduces deep learning models and discusses how to train them, measure their performance, and improve this performance. The next part considers architectures that are specialized to images, text, and graph data. These chapters require only introductory linear algebra, calculus, and probability and should be accessible to any second-year undergraduate in a quantitative discipline. Subsequent parts of the book tackle generative models and reinforcement learning. These chapters require more knowledge of probability and calculus and target more advanced students.",
+   "section_path": [
+    "Preface"
+   ]
+  },
+  {
+   "id": "p11-b04",
+   "page": 11,
+   "bbox": [
+    0.1551,
+    0.592,
+    0.7786,
+    0.7102
+   ],
+   "type": "paragraph",
+   "text": "The title is also partly a joke — no-one really understands deep learning at the time of writing. Modern deep networks learn piecewise linear functions with more regions than there are atoms in the universe and can be trained with fewer data examples than model parameters. It is neither obvious that we should be able to fit these functions reliably nor that they should generalize well to new data. The penultimate chapter addresses these and other aspects that are not yet fully understood. Regardless, deep learning will change the world for better or worse. The final chapter discusses AI ethics and concludes with an appeal for practitioners to consider the moral implications of their work.",
+   "section_path": [
+    "Preface"
+   ]
+  },
+  {
+   "id": "p11-b05",
+   "page": 11,
+   "bbox": [
+    0.1551,
+    0.7127,
+    0.7786,
+    0.8008
+   ],
+   "type": "paragraph",
+   "text": "Your time is precious, and I have striven to curate and present the material so you can understand it as eﬀiciently as possible. The main body of each chapter comprises a succinct description of only the most essential ideas, together with accompanying illustrations. The appendices review all mathematical prerequisites, and there should be no need to refer to external material. For readers wishing to delve deeper, each chapter has associated problems, Python notebooks, and extensive background notes.",
+   "section_path": [
+    "Preface"
+   ]
+  },
+  {
+   "id": "p11-b06",
+   "page": 11,
+   "bbox": [
+    0.1551,
+    0.8033,
+    0.7786,
+    0.8612
+   ],
+   "type": "paragraph",
+   "text": "Writing a book is a lonely, grinding, multiple-year process and is only worthwhile if the volume is widely adopted. If you enjoy reading this or have suggestions for improving it, please contact me via the accompanying website. I would love to hear your thoughts, which will inform and motivate subsequent editions.",
+   "section_path": [
+    "Preface"
+   ]
+  },
+  {
+   "id": "p13-b01",
+   "page": 13,
+   "bbox": [
+    0.1551,
+    0.2635,
+    0.4316,
+    0.2896
+   ],
+   "type": "heading",
+   "text": "Acknowledgments",
+   "level": 1,
+   "section_path": [
+    "Acknowledgments"
+   ]
+  },
+  {
+   "id": "p13-b02",
+   "page": 13,
+   "bbox": [
+    0.1551,
+    0.3439,
+    0.7786,
+    0.8672
+   ],
+   "type": "paragraph",
+   "text": "Writing this book would not have been possible without the generous help and advice of these individuals: Kathryn Hume, Kevin Murphy, Christopher Bishop, Peng Xu, Yann Dubois, Justin Domke, Chris Fletcher, Yanshuai Cao, Wendy Tay, Corey Toler-Franklin, Dmytro Mishkin, Guy McCusker, Daniel Worrall, Paul McIlroy, Roy Amoyal, Austin Anderson, Romero Barata de Morais, Gabriel Harrison, Peter Ball, Alf Muir, David Bryson, Vedika Parulkar, Patryk Lietzau, Jessica Nicholson, Alexa Huxley, Oisin Mac Aodha, Giuseppe Castiglione, Josh Akylbekov, Alex Gougoulaki, Joshua Omilabu, Alister Guenther, Joe Goodier, Logan Wade, Joshua Guenther, Kylan Tobin, Benedict Ellett, Jad Araj, Andrew Glennerster, Giorgos Sfikas, Diya Vibhakar, Sam Mansat-Bhattacharyya, Ben Ross, Ivor Simpson, Gaurang Aggarwal, Shakeel Sheikh, Jacob Horton, Felix Rammell, Sasha Luccioni, Akshil Patel, Alessandro Gentilini, Kevin Mercier, Krzysztof Lichocki, Chuck Krapf, Brian Ha, Chris Kang, Leonardo Viotti, Kai Li, Himan Abdollahpouri, Ari Pakman, Giuseppe Antonio Di Luna, Dan Oneat,ă, Conrad Whiteley, Joseph Santarcangelo, Brad Shook, Gabriel Brostow, Lei He, Ali Satvaty, Romain Sabathé, Qiang Zhou, Prasanna Vigneswaran, Siqi Zheng, Stephan Grein, Jonas Klesen, Giovanni Stilo, Huang Bokai, Kevin McGuinness, Qiang Sun, Zakaria Lotfi, Yifei Lin, Sylvain Bouix, Alex Pitt, Stephane Chretien, Robin Liu, Bian Li, Adam Jones, Marcin Świerkot, Tommy Löfstedt, Eugen Hotaj, Fernando Flores-Mangas, Tony Polichroniadis, Pietro Monticone, Rohan Deepak Ajwani, Menashe Yarden Einy, Robert Gevorgyan, Thilo Stadelmann, Gui JieMiao, Botao Zhu, Mohamed Elabbas, Satya Krishna Gorti, James Elder, Helio Perroni Filho, Xiaochao Qu, Jaekang Shin, Joshua Evans, Robert Dobson, Shibo Wang, Edoardo Zorzi, Stanisław Jastrzębski, Pieris Kalligeros, Matt Hewitt, Zvika Haramaty, Ted Mavroidis, Nikolaj Kuntner, Amir Yorav, Masoud Mokhtari, Xavier Gabaix, Marco Garosi, Vincent Schönbach, Avishek Mondal, Victor S.C. Lui, Sumit Bhatia, Julian Asilis, Hengchao Chen, Siavash Khallaghi, Csaba Szepesvári, Mike Singer, Mykhailo Shvets, Abdalla Ibrahim, Stefan Hell, Ron Raphaeli, Diogo Tavares, Aristotelis Siozopoulos, Jianrui Wu, Jannik Münz, Penn Mackintosh, Shawn Hoareau, Qianang Zhou, Emma Li, Charlie Groves, Xiang Lingxiao, Trivikram Muralidharan, Rajat Binaykiya, Germán del Cacho Salvador, Alexey Bloudov, Paul Colognese, Bo Yang, Jani Monoses, Adenilson Arcanjo, Matan Golani, Emmanuel Onzon, Shenghui Yan, Kamesh Kompella, Julius Aka, Johannes Brunnemann, Varniethan Ketheeswaran, Alex Ostrovsky, Daniel Burbank, Gavrie Philipson, Roozbeh Ehsani, Len Spek, Christoph Brune, Mohammad Nosrati, Bian Li, Runqi Chen, Qifu Hu, Rasmi Elasmar, Ronaldo Butrus, Carles Mesado, Jeffrey Wolberg, Olivier Koch, Edoardo Lanari, Fanmin Shi, Neel Maniar, Maksym Taran, Falk Langhammer, Reinaldo Lepsch, Max Talberg, Vishal Jain, Christian Arnold, Charles Hill, Nikita Panin, Steven Dillmann, Suhas Mathur, Harris Abdul Majid, Guolong Lin, Charles Elkan, Benedict Kuester, Vladimir Ivanov, Mohammad-Hadi Sotoudeh, Daniel Enériz Orta, Ian Jeffrey, Kwok Chun, Yu Liu, Tom Vettenburg, Aravinda Perera, Daniel Gigliotti, Iftikhar Ramnandan, Adnan Siddiquei, Will Knottenbelt, Valerio Di Stefano, Srikant Jayaraman, Goldie Srulovich, Rafał Rolczyński, Anthony Ip, Andre Coelho, Roberto Martins, Behbudiy Academy, Yun Zheng, David Bissessar,",
+   "section_path": [
+    "Acknowledgments"
+   ]
+  },
+  {
+   "id": "p14-b01",
+   "page": 14,
+   "bbox": [
+    0.2139,
+    0.1358,
+    0.8421,
+    0.1484
+   ],
+   "type": "paragraph",
+   "text": "xii Contents",
+   "section_path": [
+    "Acknowledgments"
+   ]
+  },
+  {
+   "id": "p14-b02",
+   "page": 14,
+   "bbox": [
+    0.2186,
+    0.1766,
+    0.842,
+    0.2987
+   ],
+   "type": "paragraph",
+   "text": "Tom Jacobs, Lei Fang, Fabian Henning, Umesh Rajashekar, Jay Park, Kai Liu, Pablo Renard Guiral, Federico Barbero, Rongjiang Pan, Betin Bilkan Karaman, Leonidas Varveropoulos, William Locke IV, Filip Jasionek, Yuanhang Wang, Stefan Bach, Ivan Yevtushenko, David Gwyer, Bohan Cui, Ali Darijani, Rouhollah Farhang, Li Tang, Aleksandrs Koselevs, Mason Wang, Pablo Fernandez, Angelo Coluccia, Vladyslav Moroshan, Rami Luisto, Peter Zaki, Lucase Curtin, Victor Liu, Giacomo Cirò, Louis Neltner, Ahmet Çeşmeci, Yanzhe Bekkemoen, Judith Katzy, Jannes Bruns, Ondra Jelínek, Yancan Yi, Tamás Szép, Diego Ortega Hernandez, Yancan Yi, Felix Winterhalter, Renato Assunção, Jixin Liu, Benjamin Sambale, Jeremy Mikkelsen, Volodymyr Ivanchenkok, Coco Bögel, Betty Qi, and Joy Kuri.",
+   "section_path": [
+    "Acknowledgments"
+   ]
+  },
+  {
+   "id": "p14-b03",
+   "page": 14,
+   "bbox": [
+    0.2186,
+    0.3012,
+    0.842,
+    0.4093
+   ],
+   "type": "paragraph",
+   "text": "I’m particularly grateful to Daniyar Turmukhambetov, Amedeo Buonanno, Andrea Panizza, Mark Hudson, Bernhard Pfahringer, Alexander Nordin, and Nicholas Lord who provided detailed comments on multiple chapters of the book. I’d like to especially thank Andrew Fitzgibbon, Konstantinos Derpanis, Toshiaki Kurokawa, and Tyler Mills, who read the whole book and whose enthusiasm helped me complete this project. I’d also like to thank Neill Campbell and Özgür Şimşek, who hosted me at the University of Bath, where I taught a course based on this material for the first time. Finally, I’m extremely grateful to my editor Elizabeth Swayze for her frank advice throughout this process.",
+   "section_path": [
+    "Acknowledgments"
+   ]
+  },
+  {
+   "id": "p14-b04",
+   "page": 14,
+   "bbox": [
+    0.2186,
+    0.4119,
+    0.842,
+    0.5062
+   ],
+   "type": "paragraph",
+   "text": "Chapter 12 (transformers) and chapter 17 (variational autoencoders) were first published as blogs for Borealis AI, and adapted versions are reproduced with permission of Royal Bank of Canada along with Borealis AI. I am grateful for their support in this endeavor. Chapter 16 (normalizing flows) is loosely based on the review article by Kobyzev et al. (2020), on which I was a co-author. I was very fortunate to be able to collaborate on Chapter 21 with Travis LaCroix from Dalhousie University, who was both easy and fun to work with, and who did the lion’s share of the work.",
+   "section_path": [
+    "Acknowledgments"
+   ]
+  },
+  {
+   "id": "p14-b05",
+   "page": 14,
+   "bbox": [
+    0.2186,
+    0.5516,
+    0.3169,
+    0.5667
+   ],
+   "type": "heading",
+   "text": "Attribution",
+   "level": 1,
+   "section_path": [
+    "Attribution"
+   ]
+  },
+  {
+   "id": "p14-b06",
+   "page": 14,
+   "bbox": [
+    0.242,
+    0.5803,
+    0.661,
+    0.5879
+   ],
+   "type": "paragraph",
+   "text": "• Chessboard image in figure 1.13 adapted from http://tinyurl.com/yc2d54d4.",
+   "section_path": [
+    "Attribution"
+   ]
+  },
+  {
+   "id": "p14-b07",
+   "page": 14,
+   "bbox": [
+    0.242,
+    0.5942,
+    0.6699,
+    0.6017
+   ],
+   "type": "paragraph",
+   "text": "• Cogs image in figures 1.2, 1.4, 1.10 adapted from http://tinyurl.com/2c7tttr8.",
+   "section_path": [
+    "Attribution"
+   ]
+  },
+  {
+   "id": "p14-b08",
+   "page": 14,
+   "bbox": [
+    0.242,
+    0.608,
+    0.7473,
+    0.6155
+   ],
+   "type": "paragraph",
+   "text": "• Penguin image in figures 19.1–19.5 and 19.6–19.9 adapted from http://tinyurl.com/ycx9je56.",
+   "section_path": [
+    "Attribution"
+   ]
+  },
+  {
+   "id": "p14-b09",
+   "page": 14,
+   "bbox": [
+    0.242,
+    0.6218,
+    0.7502,
+    0.6294
+   ],
+   "type": "paragraph",
+   "text": "• Fish image in figures 19.2–19.5, 19.7, 19.10–19.12 adapted from http://tinyurl.com/4ueyhtsu.",
+   "section_path": [
+    "Attribution"
+   ]
+  },
+  {
+   "id": "p15-b01",
+   "page": 15,
+   "bbox": [
+    0.1551,
+    0.2592,
+    0.2834,
+    0.2809
+   ],
+   "type": "heading",
+   "text": "Chapter 1",
+   "level": 1,
+   "section_path": [
+    "Chapter 1"
+   ]
+  },
+  {
+   "id": "p15-b02",
+   "page": 15,
+   "bbox": [
+    0.1551,
+    0.3127,
+    0.3452,
+    0.3388
+   ],
+   "type": "heading",
+   "text": "Introduction",
+   "level": 1,
+   "section_path": [
+    "Introduction"
+   ]
+  },
+  {
+   "id": "p15-b03",
+   "page": 15,
+   "bbox": [
+    0.1551,
+    0.3858,
+    0.7786,
+    0.4588
+   ],
+   "type": "paragraph",
+   "text": "Artificial intelligence, or AI, is concerned with building systems that simulate intelligent behavior. It encompasses a wide range of approaches, including those based on logic, search, and probabilistic reasoning. Machine learning is a subset of AI that learns to make decisions by fitting mathematical models to observed data. This area has seen explosive growth and is now (incorrectly) almost synonymous with the term AI.",
+   "section_path": [
+    "Introduction"
+   ]
+  },
+  {
+   "id": "p15-b04",
+   "page": 15,
+   "bbox": [
+    0.1551,
+    0.4617,
+    0.7786,
+    0.5648
+   ],
+   "type": "paragraph",
+   "text": "A deep neural network (or deep network for short) is a type of machine learning model, and the process of fitting these models to data is referred to as deep learning. At the time of writing, deep networks are the most powerful and practical machine learning models and are often encountered in day-to-day life. It is commonplace to translate text to another language using a natural language processing algorithm, to search for images of a given object using a computer vision system, or to converse with a digital assistant via a speech recognition interface. All of these applications are powered by deep learning.",
+   "section_path": [
+    "Introduction"
+   ]
+  },
+  {
+   "id": "p15-b05",
+   "page": 15,
+   "bbox": [
+    0.1551,
+    0.5677,
+    0.7786,
+    0.6407
+   ],
+   "type": "paragraph",
+   "text": "As the title suggests, this book aims to help a reader new to this field understand the principles behind deep learning. The book is neither terribly theoretical (there are no proofs) nor extremely practical (there is almost no code). The goal is to explain the underlying ideas; after consuming this volume, the reader will be able to apply deep learning to novel situations where there is no existing recipe for success.",
+   "section_path": [
+    "Introduction"
+   ]
+  },
+  {
+   "id": "p15-b06",
+   "page": 15,
+   "bbox": [
+    0.1551,
+    0.6436,
+    0.7786,
+    0.7468
+   ],
+   "type": "paragraph",
+   "text": "Machine learning methods can coarsely be divided into three areas: supervised, unsupervised, and reinforcement learning. At the time of writing, the cutting-edge methods in all three areas rely on deep learning (figure 1.1). This introductory chapter describes these three areas at a high level, and this taxonomy is also loosely reflected in the book’s organization. Whether we like it or not, deep learning is poised to change our world, and this change will not all be positive. Hence, this chapter also contains a brief primer on AI ethics. We conclude with advice on how to make the most of this book.",
+   "section_path": [
+    "Introduction"
+   ]
+  },
+  {
+   "id": "p15-b07",
+   "page": 15,
+   "bbox": [
+    0.1081,
+    0.7925,
+    0.3275,
+    0.8076
+   ],
+   "type": "heading",
+   "text": "1.1 Supervised learning",
+   "level": 2,
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning"
+   ]
+  },
+  {
+   "id": "p15-b08",
+   "page": 15,
+   "bbox": [
+    0.1551,
+    0.8247,
+    0.7786,
+    0.8675
+   ],
+   "type": "paragraph",
+   "text": "Supervised learning models define a mapping from input data to an output prediction. In the following sections, we discuss the inputs, the outputs, the model itself, and what is meant by “training” a model.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning"
+   ]
+  },
+  {
+   "id": "p16-b01",
+   "page": 16,
+   "bbox": [
+    0.2363,
+    0.1788,
+    0.5012,
+    0.2659
+   ],
+   "type": "caption",
+   "text": "Figure 1.1 Machine learning is an area of artificial intelligence that fits mathematical models to observed data. It can coarsely be divided into supervised learning, unsupervised learning, and reinforcement learning. Deep neural networks contribute to each of these areas.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning"
+   ]
+  },
+  {
+   "id": "p16-b02",
+   "page": 16,
+   "bbox": [
+    0.1604,
+    0.3638,
+    0.529,
+    0.3776
+   ],
+   "type": "heading",
+   "text": "1.1.1 Regression and classification problems",
+   "level": 3,
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.1 Regression and classification problems"
+   ]
+  },
+  {
+   "id": "p16-b03",
+   "page": 16,
+   "bbox": [
+    0.2186,
+    0.395,
+    0.8421,
+    0.483
+   ],
+   "type": "caption",
+   "text": "Figure 1.2 depicts several regression and classification problems. In each case, there is a meaningful real-world input (a sentence, a sound file, an image, etc.), and this is encoded as a vector of numbers. This vector forms the model input. The model maps the input to an output vector which is then “translated” back to a meaningful real-world prediction. For now, we focus on the inputs and outputs and treat the model as a black box that ingests a vector of numbers and returns another vector of numbers.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.1 Regression and classification problems"
+   ]
+  },
+  {
+   "id": "p16-b04",
+   "page": 16,
+   "bbox": [
+    0.2186,
+    0.4868,
+    0.8421,
+    0.5749
+   ],
+   "type": "paragraph",
+   "text": "The model in figure 1.2a predicts the price of a house based on input characteristics such as the square footage and the number of bedrooms. This is a regression problem because the model returns a continuous number (rather than a category assignment). In contrast, the model in figure 1.2b takes the chemical structure of a molecule as an input and predicts both the freezing and boiling points. This is a multivariate regression problem since it predicts more than one number.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.1 Regression and classification problems"
+   ]
+  },
+  {
+   "id": "p16-b05",
+   "page": 16,
+   "bbox": [
+    0.2186,
+    0.5786,
+    0.8421,
+    0.7123
+   ],
+   "type": "paragraph",
+   "text": "The model in figure 1.2c receives a text string containing a restaurant review as input and predicts whether the review is positive or negative. This is a binary classification problem because the model attempts to assign the input to one of two categories. The output vector contains the probabilities that the input belongs to each category. Figures 1.2d and 1.2e depict multiclass classification problems. Here, the model assigns the input to one of N > 2 categories. In the first case, the input is an audio file, and the model predicts which genre of music it contains. In the second case, the input is an image, and the model predicts which object it contains. In each case, the model returns a vector of size N that contains the probabilities of the N categories.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.1 Regression and classification problems"
+   ]
+  },
+  {
+   "id": "p16-b06",
+   "page": 16,
+   "bbox": [
+    0.1604,
+    0.747,
+    0.2692,
+    0.7608
+   ],
+   "type": "heading",
+   "text": "1.1.2 Inputs",
+   "level": 3,
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.2 Inputs"
+   ]
+  },
+  {
+   "id": "p16-b07",
+   "page": 16,
+   "bbox": [
+    0.2186,
+    0.7782,
+    0.8421,
+    0.836
+   ],
+   "type": "paragraph",
+   "text": "The input data in figure 1.2 varies widely. In the house pricing example, the input is a fixed-length vector containing values that characterize the property. This is an example of tabular data because it has no internal structure; if we change the order of the inputs and build a new model, then we expect the model prediction to remain the same.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.2 Inputs"
+   ]
+  },
+  {
+   "id": "p16-b08",
+   "page": 16,
+   "bbox": [
+    0.2186,
+    0.8398,
+    0.8421,
+    0.8675
+   ],
+   "type": "paragraph",
+   "text": "Conversely, the input in the restaurant review example is a body of text. This may be of variable length depending on the number of words in the review, and here input",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.2 Inputs"
+   ]
+  },
+  {
+   "id": "p17-b01",
+   "page": 17,
+   "bbox": [
+    0.2018,
+    0.7319,
+    0.7318,
+    0.832
+   ],
+   "type": "caption",
+   "text": "Figure 1.2 Regression and classification problems. a) This regression model takes a vector of numbers that characterize a property and predicts its price. b) This multivariate regression model takes the structure of a chemical molecule and predicts its freezing and boiling points. c) This binary classification model takes a restaurant review and classifies it as either positive or negative. d) This multiclass classification problem assigns a snippet of audio to one of N genres. e) A second multiclass classification problem in which the model classifies an image according to which of N possible objects it might contain.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.2 Inputs"
+   ]
+  },
+  {
+   "id": "p18-b01",
+   "page": 18,
+   "bbox": [
+    0.2653,
+    0.393,
+    0.7953,
+    0.4675
+   ],
+   "type": "caption",
+   "text": "Figure 1.3 Machine learning model. The model represents a family of relationships that relate the input (age of child) to the output (height of child). The particular relationship is chosen using training data, which consists of input/output pairs (orange points). When we train the model, we search through the possible relationships for one that describes the data well. Here, the trained model is the cyan curve and can be used to compute the height for any age.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.2 Inputs"
+   ]
+  },
+  {
+   "id": "p18-b02",
+   "page": 18,
+   "bbox": [
+    0.2186,
+    0.5273,
+    0.8421,
+    0.5701
+   ],
+   "type": "paragraph",
+   "text": "order is important; my wife ate the chicken is not the same as the chicken ate my wife. The text must be encoded into numerical form before passing it to the model. Here, we use a fixed vocabulary of size 10,000 and simply concatenate the word indices.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.2 Inputs"
+   ]
+  },
+  {
+   "id": "p18-b03",
+   "page": 18,
+   "bbox": [
+    0.2186,
+    0.5754,
+    0.8421,
+    0.6937
+   ],
+   "type": "paragraph",
+   "text": "For the music classification example, the input vector might be of fixed size (perhaps a 10-second clip) but is very high-dimensional (i.e., contains many entries). Digital audio is usually sampled at 44.1 kHz and represented by 16-bit integers, so a ten-second clip consists of 441,000 integers. Clearly, supervised learning models will have to be able to process sizeable inputs. The input in the image classification example (which consists of the concatenated RGB values at every pixel) is also enormous. Moreover, it contains spatial structure; two pixels above and below one another are closely related, even if they are not adjacent in the input vector.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.2 Inputs"
+   ]
+  },
+  {
+   "id": "p18-b04",
+   "page": 18,
+   "bbox": [
+    0.2186,
+    0.6991,
+    0.8421,
+    0.7569
+   ],
+   "type": "paragraph",
+   "text": "Finally, consider the input for the model that predicts the freezing and boiling points of the molecule. A molecule may contain varying numbers of atoms that can be connected in different ways. In this case, the model must ingest both the geometric structure of the molecule and the constituent atoms to the model.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.2 Inputs"
+   ]
+  },
+  {
+   "id": "p18-b05",
+   "page": 18,
+   "bbox": [
+    0.1604,
+    0.7935,
+    0.4213,
+    0.8073
+   ],
+   "type": "heading",
+   "text": "1.1.3 Machine learning models",
+   "level": 3,
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.3 Machine learning models"
+   ]
+  },
+  {
+   "id": "p18-b06",
+   "page": 18,
+   "bbox": [
+    0.2186,
+    0.8247,
+    0.8421,
+    0.8675
+   ],
+   "type": "paragraph",
+   "text": "Until now, we have treated the machine learning model as a black box that takes an input vector and returns an output vector. But what exactly is in this black box? Consider a model to predict the height of a child from their age (figure 1.3). The machine learning",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.3 Machine learning models"
+   ]
+  },
+  {
+   "id": "p19-b01",
+   "page": 19,
+   "bbox": [
+    0.1551,
+    0.1756,
+    0.7786,
+    0.2335
+   ],
+   "type": "paragraph",
+   "text": "model is a mathematical equation that describes how the average height varies as a function of age (cyan curve in figure 1.3). When we run the age through this equation, it returns the height. For example, if the age is 10 years, then we predict that the height will be 139 cm.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.3 Machine learning models"
+   ]
+  },
+  {
+   "id": "p19-b02",
+   "page": 19,
+   "bbox": [
+    0.1551,
+    0.2378,
+    0.7786,
+    0.341
+   ],
+   "type": "paragraph",
+   "text": "More precisely, the model represents a family of equations mapping the input to the output (i.e., a family of different cyan curves). The particular equation (curve) is chosen using training data (examples of input/output pairs). In figure 1.3, these pairs are represented by the orange points, and we can see that the model (cyan line) describes these data reasonably. When we talk about training or fitting a model, we mean that we search through the family of possible equations (possible cyan curves) relating input to output to find the one that describes the training data most accurately.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.3 Machine learning models"
+   ]
+  },
+  {
+   "id": "p19-b03",
+   "page": 19,
+   "bbox": [
+    0.1551,
+    0.3454,
+    0.7786,
+    0.4183
+   ],
+   "type": "paragraph",
+   "text": "It follows that the models in figure 1.2 require labeled input/output pairs for training. For example, the music classification model would require a large number of audio clips where a human expert had identified the genre of each. These input/output pairs take the role of a teacher or supervisor for the training process, and this gives rise to the term supervised learning.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.3 Machine learning models"
+   ]
+  },
+  {
+   "id": "p19-b04",
+   "page": 19,
+   "bbox": [
+    0.0969,
+    0.4539,
+    0.3315,
+    0.4677
+   ],
+   "type": "heading",
+   "text": "1.1.4 Deep neural networks",
+   "level": 3,
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.4 Deep neural networks"
+   ]
+  },
+  {
+   "id": "p19-b05",
+   "page": 19,
+   "bbox": [
+    0.1551,
+    0.4851,
+    0.7786,
+    0.5429
+   ],
+   "type": "paragraph",
+   "text": "This book concerns deep neural networks, which are a particularly useful type of machine learning model. They are equations that can represent an extremely broad family of relationships between input and output, and where it is particularly easy to search through this family to find the relationship that describes the training data.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.4 Deep neural networks"
+   ]
+  },
+  {
+   "id": "p19-b06",
+   "page": 19,
+   "bbox": [
+    0.1551,
+    0.5473,
+    0.7786,
+    0.6504
+   ],
+   "type": "paragraph",
+   "text": "Deep neural networks can process inputs that are very large, of variable length, and contain various kinds of internal structures. They can output single real numbers (regression), multiple numbers (multivariate regression), or probabilities over two or more classes (binary and multiclass classification, respectively). As we shall see in the next section, their outputs may also be very large, of variable length, and contain internal structure. It is probably hard to imagine equations with these properties, and the reader should endeavor to suspend disbelief for now.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.4 Deep neural networks"
+   ]
+  },
+  {
+   "id": "p19-b07",
+   "page": 19,
+   "bbox": [
+    0.0969,
+    0.686,
+    0.3097,
+    0.6998
+   ],
+   "type": "heading",
+   "text": "1.1.5 Structured outputs",
+   "level": 3,
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.5 Structured outputs"
+   ]
+  },
+  {
+   "id": "p19-b08",
+   "page": 19,
+   "bbox": [
+    0.1551,
+    0.7172,
+    0.7786,
+    0.8203
+   ],
+   "type": "caption",
+   "text": "Figure 1.4a depicts a multivariate binary classification model for semantic segmentation. Here, every pixel of an input image is assigned a binary label that indicates whether it belongs to a cow or the background. Figure 1.4b shows a multivariate regression model where the input is an image of a street scene and the output is the depth at each pixel. In both cases, the output is high-dimensional and structured. However, this structure is closely tied to the input, and this can be exploited; if a pixel is labeled as “cow,” then a neighbor with a similar RGB value probably has the same label.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.5 Structured outputs"
+   ]
+  },
+  {
+   "id": "p19-b09",
+   "page": 19,
+   "bbox": [
+    0.1551,
+    0.8247,
+    0.7786,
+    0.8675
+   ],
+   "type": "paragraph",
+   "text": "Figures 1.4c–e depict three models where the output has a complex structure that is not so closely tied to the input. Figure 1.4c shows a model where the input is an audio file and the output is the transcribed words from that file. Figure 1.4d is a translation",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.5 Structured outputs"
+   ]
+  },
+  {
+   "id": "p20-b01",
+   "page": 20,
+   "bbox": [
+    0.2653,
+    0.74,
+    0.7953,
+    0.8778
+   ],
+   "type": "caption",
+   "text": "Figure 1.4 Supervised learning tasks with structured outputs. a) This semantic segmentation model maps an RGB image to a binary image indicating whether each pixel belongs to the background or a cow (adapted from Noh et al., 2015). b) This monocular depth estimation model maps an RGB image to an output image where each pixel represents the depth (adapted from Cordts et al., 2016). c) This audio transcription model maps an audio sample to a transcription of the spoken words in the audio. d) This translation model maps an English text string to its French translation. e) This image synthesis model maps a caption to an image (example from https://openai.com/dall-e-2/). In each case, the output has a complex internal structure or grammar. In some cases, many outputs are compatible with the input.",
+   "section_path": [
+    "Introduction",
+    "1.1 Supervised learning",
+    "1.1.5 Structured outputs"
+   ]
+  }
+ ],
+ "outline": [
+  {
+   "title": "Preface",
+   "level": 1,
+   "page": 5
+  },
+  {
+   "title": "Acknowledgements",
+   "level": 1,
+   "page": 11
+  },
+  {
+   "title": "Introduction",
+   "level": 1,
+   "page": 15
+  },
+  {
+   "title": "Supervised learning",
+   "level": 2,
+   "page": 15
+  },
+  {
+   "title": "Unsupervised learning",
+   "level": 2,
+   "page": 21
+  },
+  {
+   "title": "Reinforcement learning",
+   "level": 2,
+   "page": 25
+  },
+  {
+   "title": "Ethics",
+   "level": 2,
+   "page": 26
+  },
+  {
+   "title": "Structure of book",
+   "level": 2,
+   "page": 29
+  },
+  {
+   "title": "Other books",
+   "level": 2,
+   "page": 29
+  },
+  {
+   "title": "How to read this book",
+   "level": 2,
+   "page": 30
+  },
+  {
+   "title": "Supervised learning",
+   "level": 1,
+   "page": 31
+  },
+  {
+   "title": "Supervised learning overview",
+   "level": 2,
+   "page": 31
+  },
+  {
+   "title": "Linear regression example",
+   "level": 2,
+   "page": 32
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 36
+  },
+  {
+   "title": "Shallow neural networks",
+   "level": 1,
+   "page": 39
+  },
+  {
+   "title": "Neural network example",
+   "level": 2,
+   "page": 39
+  },
+  {
+   "title": "Universal approximation theorem",
+   "level": 2,
+   "page": 43
+  },
+  {
+   "title": "Multivariate inputs and outputs",
+   "level": 2,
+   "page": 44
+  },
+  {
+   "title": "Shallow neural networks: general case",
+   "level": 2,
+   "page": 47
+  },
+  {
+   "title": "Terminology",
+   "level": 2,
+   "page": 49
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 50
+  },
+  {
+   "title": "Deep neural networks",
+   "level": 1,
+   "page": 55
+  },
+  {
+   "title": "Composing neural networks",
+   "level": 2,
+   "page": 55
+  },
+  {
+   "title": "From composing networks to deep networks",
+   "level": 2,
+   "page": 57
+  },
+  {
+   "title": "Deep neural networks",
+   "level": 2,
+   "page": 59
+  },
+  {
+   "title": "Matrix notation",
+   "level": 2,
+   "page": 62
+  },
+  {
+   "title": "Shallow vs. deep neural networks",
+   "level": 2,
+   "page": 63
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 66
+  },
+  {
+   "title": "Loss functions",
+   "level": 1,
+   "page": 70
+  },
+  {
+   "title": "Maximum likelihood",
+   "level": 2,
+   "page": 70
+  },
+  {
+   "title": "Recipe for constructing loss functions",
+   "level": 2,
+   "page": 74
+  },
+  {
+   "title": "Example 1: univariate regression",
+   "level": 2,
+   "page": 75
+  },
+  {
+   "title": "Example 2: binary classification",
+   "level": 2,
+   "page": 78
+  },
+  {
+   "title": "Example 3: multiclass classification",
+   "level": 2,
+   "page": 81
+  },
+  {
+   "title": "Multiple outputs",
+   "level": 2,
+   "page": 83
+  },
+  {
+   "title": "Cross-entropy loss",
+   "level": 2,
+   "page": 85
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 86
+  },
+  {
+   "title": "Fitting models",
+   "level": 1,
+   "page": 91
+  },
+  {
+   "title": "Gradient descent",
+   "level": 2,
+   "page": 91
+  },
+  {
+   "title": "Stochastic gradient descent",
+   "level": 2,
+   "page": 97
+  },
+  {
+   "title": "Momentum",
+   "level": 2,
+   "page": 100
+  },
+  {
+   "title": "Adam",
+   "level": 2,
+   "page": 102
+  },
+  {
+   "title": "Training algorithm hyperparameters",
+   "level": 2,
+   "page": 105
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 105
+  },
+  {
+   "title": "Gradients and initialization",
+   "level": 1,
+   "page": 110
+  },
+  {
+   "title": "Problem definitions",
+   "level": 2,
+   "page": 110
+  },
+  {
+   "title": "Computing derivatives",
+   "level": 2,
+   "page": 111
+  },
+  {
+   "title": "Toy example",
+   "level": 2,
+   "page": 114
+  },
+  {
+   "title": "Backpropagation algorithm",
+   "level": 2,
+   "page": 117
+  },
+  {
+   "title": "Parameter initialization",
+   "level": 2,
+   "page": 121
+  },
+  {
+   "title": "Example training code",
+   "level": 2,
+   "page": 125
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 125
+  },
+  {
+   "title": "Measuring performance",
+   "level": 1,
+   "page": 132
+  },
+  {
+   "title": "Training a simple model",
+   "level": 2,
+   "page": 132
+  },
+  {
+   "title": "Sources of error",
+   "level": 2,
+   "page": 134
+  },
+  {
+   "title": "Reducing error",
+   "level": 2,
+   "page": 138
+  },
+  {
+   "title": "Double descent",
+   "level": 2,
+   "page": 141
+  },
+  {
+   "title": "Choosing hyperparameters",
+   "level": 2,
+   "page": 146
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 147
+  },
+  {
+   "title": "Regularization",
+   "level": 1,
+   "page": 152
+  },
+  {
+   "title": "Explicit regularization",
+   "level": 2,
+   "page": 152
+  },
+  {
+   "title": "Implicit regularization",
+   "level": 2,
+   "page": 155
+  },
+  {
+   "title": "Heuristics to improve performance",
+   "level": 2,
+   "page": 157
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 168
+  },
+  {
+   "title": "Convolutional networks",
+   "level": 1,
+   "page": 175
+  },
+  {
+   "title": "Invariance and equivariance",
+   "level": 2,
+   "page": 175
+  },
+  {
+   "title": "Convolutional networks for 1D inputs",
+   "level": 2,
+   "page": 177
+  },
+  {
+   "title": "Convolutional networks for 2D inputs",
+   "level": 2,
+   "page": 184
+  },
+  {
+   "title": "Downsampling and upsampling",
+   "level": 2,
+   "page": 185
+  },
+  {
+   "title": "Applications",
+   "level": 2,
+   "page": 188
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 193
+  },
+  {
+   "title": "Residual networks",
+   "level": 1,
+   "page": 200
+  },
+  {
+   "title": "Sequential processing",
+   "level": 2,
+   "page": 200
+  },
+  {
+   "title": "Residual connections and residual blocks",
+   "level": 2,
+   "page": 203
+  },
+  {
+   "title": "Exploding gradients in residual networks",
+   "level": 2,
+   "page": 206
+  },
+  {
+   "title": "Batch normalization",
+   "level": 2,
+   "page": 206
+  },
+  {
+   "title": "Common residual architectures",
+   "level": 2,
+   "page": 209
+  },
+  {
+   "title": "Why do nets with residual connections perform so well?",
+   "level": 2,
+   "page": 213
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 213
+  },
+  {
+   "title": "Transformers",
+   "level": 1,
+   "page": 221
+  },
+  {
+   "title": "Processing text data",
+   "level": 2,
+   "page": 221
+  },
+  {
+   "title": "Dot-product self-attention",
+   "level": 2,
+   "page": 222
+  },
+  {
+   "title": "Extensions to dot-product self-attention",
+   "level": 2,
+   "page": 227
+  },
+  {
+   "title": "Transformer layers",
+   "level": 2,
+   "page": 229
+  },
+  {
+   "title": "Transformers for natural language processing",
+   "level": 2,
+   "page": 230
+  },
+  {
+   "title": "Encoder model example: BERT",
+   "level": 2,
+   "page": 233
+  },
+  {
+   "title": "Decoder model example: GPT3",
+   "level": 2,
+   "page": 236
+  },
+  {
+   "title": "Encoder-decoder model example: machine translation",
+   "level": 2,
+   "page": 240
+  },
+  {
+   "title": "Transformers for long sequences",
+   "level": 2,
+   "page": 241
+  },
+  {
+   "title": "Transformers for images",
+   "level": 2,
+   "page": 242
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 246
+  },
+  {
+   "title": "Graph neural networks",
+   "level": 1,
+   "page": 254
+  },
+  {
+   "title": "What is a graph?",
+   "level": 2,
+   "page": 254
+  },
+  {
+   "title": "Graph representation",
+   "level": 2,
+   "page": 257
+  },
+  {
+   "title": "Graph neural networks, tasks, and loss functions",
+   "level": 2,
+   "page": 259
+  },
+  {
+   "title": "Graph convolutional networks",
+   "level": 2,
+   "page": 262
+  },
+  {
+   "title": "Example: graph classification",
+   "level": 2,
+   "page": 265
+  },
+  {
+   "title": "Inductive vs. transductive models",
+   "level": 2,
+   "page": 266
+  },
+  {
+   "title": "Example: node classification",
+   "level": 2,
+   "page": 267
+  },
+  {
+   "title": "Layers for graph convolutional networks",
+   "level": 2,
+   "page": 270
+  },
+  {
+   "title": "Edge graphs",
+   "level": 2,
+   "page": 274
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 275
+  },
+  {
+   "title": "Unsupervised learning",
+   "level": 1,
+   "page": 283
+  },
+  {
+   "title": "Taxonomy of unsupervised learning models",
+   "level": 2,
+   "page": 283
+  },
+  {
+   "title": "What makes a good generative model?",
+   "level": 2,
+   "page": 284
+  },
+  {
+   "title": "Quantifying performance",
+   "level": 2,
+   "page": 286
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 288
+  },
+  {
+   "title": "Generative adversarial networks",
+   "level": 1,
+   "page": 290
+  },
+  {
+   "title": "Discrimination as a signal",
+   "level": 2,
+   "page": 290
+  },
+  {
+   "title": "Improving stability",
+   "level": 2,
+   "page": 295
+  },
+  {
+   "title": "Progressive growing, minibatch discrimination, and truncation",
+   "level": 2,
+   "page": 301
+  },
+  {
+   "title": "Conditional generation",
+   "level": 2,
+   "page": 303
+  },
+  {
+   "title": "Image translation",
+   "level": 2,
+   "page": 305
+  },
+  {
+   "title": "StyleGAN",
+   "level": 2,
+   "page": 310
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 312
+  },
+  {
+   "title": "Normalizing flows",
+   "level": 1,
+   "page": 318
+  },
+  {
+   "title": "1D example",
+   "level": 2,
+   "page": 318
+  },
+  {
+   "title": "General case",
+   "level": 2,
+   "page": 321
+  },
+  {
+   "title": "Invertible network layers",
+   "level": 2,
+   "page": 323
+  },
+  {
+   "title": "Multi-scale flows",
+   "level": 2,
+   "page": 331
+  },
+  {
+   "title": "Applications",
+   "level": 2,
+   "page": 332
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 335
+  },
+  {
+   "title": "Variational autoencoders",
+   "level": 1,
+   "page": 341
+  },
+  {
+   "title": "Latent variable models",
+   "level": 2,
+   "page": 341
+  },
+  {
+   "title": "Nonlinear latent variable model",
+   "level": 2,
+   "page": 342
+  },
+  {
+   "title": "Training",
+   "level": 2,
+   "page": 345
+  },
+  {
+   "title": "ELBO properties",
+   "level": 2,
+   "page": 348
+  },
+  {
+   "title": "Variational approximation",
+   "level": 2,
+   "page": 350
+  },
+  {
+   "title": "The variational autoencoder",
+   "level": 2,
+   "page": 350
+  },
+  {
+   "title": "The reparameterization trick",
+   "level": 2,
+   "page": 353
+  },
+  {
+   "title": "Applications",
+   "level": 2,
+   "page": 354
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 357
+  },
+  {
+   "title": "Diffusion models",
+   "level": 1,
+   "page": 363
+  },
+  {
+   "title": "Overview",
+   "level": 2,
+   "page": 363
+  },
+  {
+   "title": "Encoder (forward process)",
+   "level": 2,
+   "page": 364
+  },
+  {
+   "title": "Decoder model (reverse process)",
+   "level": 2,
+   "page": 370
+  },
+  {
+   "title": "Training",
+   "level": 2,
+   "page": 371
+  },
+  {
+   "title": "Reparameterization of loss function",
+   "level": 2,
+   "page": 375
+  },
+  {
+   "title": "Implementation",
+   "level": 2,
+   "page": 377
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 382
+  },
+  {
+   "title": "Reinforcement learning",
+   "level": 1,
+   "page": 388
+  },
+  {
+   "title": "Markov decision processes, returns, and policies",
+   "level": 2,
+   "page": 388
+  },
+  {
+   "title": "Expected return",
+   "level": 2,
+   "page": 392
+  },
+  {
+   "title": "Tabular reinforcement learning",
+   "level": 2,
+   "page": 396
+  },
+  {
+   "title": "Fitted Q-learning",
+   "level": 2,
+   "page": 400
+  },
+  {
+   "title": "Policy gradient methods",
+   "level": 2,
+   "page": 403
+  },
+  {
+   "title": "Actor-critic methods",
+   "level": 2,
+   "page": 408
+  },
+  {
+   "title": "Offline reinforcement learning",
+   "level": 2,
+   "page": 409
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 410
+  },
+  {
+   "title": "Why does deep learning work?",
+   "level": 1,
+   "page": 416
+  },
+  {
+   "title": "The case against deep learning",
+   "level": 2,
+   "page": 416
+  },
+  {
+   "title": "Factors that influence fitting performance",
+   "level": 2,
+   "page": 417
+  },
+  {
+   "title": "Properties of loss functions",
+   "level": 2,
+   "page": 421
+  },
+  {
+   "title": "Factors that determine generalization",
+   "level": 2,
+   "page": 425
+  },
+  {
+   "title": "Do we need so many parameters?",
+   "level": 2,
+   "page": 429
+  },
+  {
+   "title": "Do networks have to be deep?",
+   "level": 2,
+   "page": 432
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 433
+  },
+  {
+   "title": "Deep learning and ethics",
+   "level": 1,
+   "page": 435
+  },
+  {
+   "title": "Value alignment",
+   "level": 2,
+   "page": 435
+  },
+  {
+   "title": "Intentional misuse",
+   "level": 2,
+   "page": 441
+  },
+  {
+   "title": "Other social, ethical, and professional issues",
+   "level": 2,
+   "page": 443
+  },
+  {
+   "title": "Case study",
+   "level": 2,
+   "page": 445
+  },
+  {
+   "title": "The value-free ideal of science",
+   "level": 2,
+   "page": 446
+  },
+  {
+   "title": "Responsible AI research as a collective action problem",
+   "level": 2,
+   "page": 447
+  },
+  {
+   "title": "Ways forward",
+   "level": 2,
+   "page": 448
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 449
+  },
+  {
+   "title": "Notation",
+   "level": 1,
+   "page": 451
+  },
+  {
+   "title": "Mathematics",
+   "level": 1,
+   "page": 454
+  },
+  {
+   "title": "Functions",
+   "level": 2,
+   "page": 454
+  },
+  {
+   "title": "Binomial coefficients",
+   "level": 2,
+   "page": 456
+  },
+  {
+   "title": "Vector, matrices, and tensors",
+   "level": 2,
+   "page": 457
+  },
+  {
+   "title": "Special types of matrix",
+   "level": 2,
+   "page": 460
+  },
+  {
+   "title": "Matrix calculus",
+   "level": 2,
+   "page": 462
+  },
+  {
+   "title": "Probability",
+   "level": 1,
+   "page": 463
+  },
+  {
+   "title": "Random variables and probability distributions",
+   "level": 2,
+   "page": 463
+  },
+  {
+   "title": "Expectation",
+   "level": 2,
+   "page": 467
+  },
+  {
+   "title": "Normal probability distribution",
+   "level": 2,
+   "page": 471
+  },
+  {
+   "title": "Sampling",
+   "level": 2,
+   "page": 474
+  },
+  {
+   "title": "Distances between probability distributions",
+   "level": 2,
+   "page": 474
+  },
+  {
+   "title": "Bibliography",
+   "level": 1,
+   "page": 477
+  },
+  {
+   "title": "Index",
+   "level": 1,
+   "page": 527
+  }
+ ],
+ "references": [],
+ "stats": {
+  "pages_parsed": 20,
+  "blocks": 94,
+  "ocr_pages": 0,
+  "elapsed_ms": 867
+ }
+}

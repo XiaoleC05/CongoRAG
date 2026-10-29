@@ -1,0 +1,7074 @@
+{
+ "doc_id": "0a9bff1be3575cf9fe26a4a3d3a9175bc791ecec90de8b9deba4cff75d2b9476",
+ "filename": "1706.03762v1.pdf",
+ "page_count": 15,
+ "parser_version": "pdf-service-0.1.0",
+ "pages": [
+  {
+   "page_no": 1,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 2,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 3,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 4,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 5,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 6,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 7,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 8,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 9,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 10,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 11,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 12,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 13,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 14,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 15,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  }
+ ],
+ "blocks": [
+  {
+   "id": "p1-b01",
+   "page": 1,
+   "bbox": [
+    0.3456,
+    0.1261,
+    0.6534,
+    0.1478
+   ],
+   "type": "heading",
+   "text": "Attention Is All You Need",
+   "level": 1,
+   "section_path": [
+    "Attention Is All You Need"
+   ]
+  },
+  {
+   "id": "p1-b02",
+   "page": 1,
+   "bbox": [
+    0.2172,
+    0.233,
+    0.3331,
+    0.2475
+   ],
+   "type": "paragraph",
+   "text": "Ashish Vaswani∗",
+   "section_path": [
+    "Attention Is All You Need"
+   ]
+  },
+  {
+   "id": "p1-b03",
+   "page": 1,
+   "bbox": [
+    0.3906,
+    0.233,
+    0.4981,
+    0.2475
+   ],
+   "type": "paragraph",
+   "text": "Noam Shazeer∗",
+   "section_path": [
+    "Attention Is All You Need"
+   ]
+  },
+  {
+   "id": "p1-b04",
+   "page": 1,
+   "bbox": [
+    0.5291,
+    0.233,
+    0.6658,
+    0.2755
+   ],
+   "type": "paragraph",
+   "text": "Niki Parmar∗ Google Research nikip@google.com",
+   "section_path": [
+    "Attention Is All You Need"
+   ]
+  },
+  {
+   "id": "p1-b05",
+   "page": 1,
+   "bbox": [
+    0.6897,
+    0.233,
+    0.8124,
+    0.2755
+   ],
+   "type": "paragraph",
+   "text": "Jakob Uszkoreit∗ Google Research usz@google.com",
+   "section_path": [
+    "Attention Is All You Need"
+   ]
+  },
+  {
+   "id": "p1-b06",
+   "page": 1,
+   "bbox": [
+    0.1907,
+    0.2488,
+    0.353,
+    0.2755
+   ],
+   "type": "paragraph",
+   "text": "Google Brain avaswani@google.com",
+   "section_path": [
+    "Attention Is All You Need"
+   ]
+  },
+  {
+   "id": "p1-b07",
+   "page": 1,
+   "bbox": [
+    0.3769,
+    0.2488,
+    0.5051,
+    0.2755
+   ],
+   "type": "paragraph",
+   "text": "Google Brain noam@google.com",
+   "section_path": [
+    "Attention Is All You Need"
+   ]
+  },
+  {
+   "id": "p1-b08",
+   "page": 1,
+   "bbox": [
+    0.2073,
+    0.2961,
+    0.3441,
+    0.3386
+   ],
+   "type": "paragraph",
+   "text": "Llion Jones∗ Google Research llion@google.com",
+   "section_path": [
+    "Attention Is All You Need"
+   ]
+  },
+  {
+   "id": "p1-b09",
+   "page": 1,
+   "bbox": [
+    0.3847,
+    0.2961,
+    0.5556,
+    0.3386
+   ],
+   "type": "paragraph",
+   "text": "Aidan N. Gomez∗† University of Toronto aidan@cs.toronto.edu",
+   "section_path": [
+    "Attention Is All You Need"
+   ]
+  },
+  {
+   "id": "p1-b10",
+   "page": 1,
+   "bbox": [
+    0.644,
+    0.2961,
+    0.7515,
+    0.3106
+   ],
+   "type": "paragraph",
+   "text": "Łukasz Kaiser∗",
+   "section_path": [
+    "Attention Is All You Need"
+   ]
+  },
+  {
+   "id": "p1-b11",
+   "page": 1,
+   "bbox": [
+    0.5962,
+    0.3119,
+    0.7927,
+    0.3386
+   ],
+   "type": "paragraph",
+   "text": "Google Brain lukaszkaiser@google.com",
+   "section_path": [
+    "Attention Is All You Need"
+   ]
+  },
+  {
+   "id": "p1-b12",
+   "page": 1,
+   "bbox": [
+    0.3889,
+    0.3593,
+    0.6111,
+    0.388
+   ],
+   "type": "paragraph",
+   "text": "Illia Polosukhin∗ illia.polosukhin@gmail.com",
+   "section_path": [
+    "Attention Is All You Need"
+   ]
+  },
+  {
+   "id": "p1-b13",
+   "page": 1,
+   "bbox": [
+    0.4637,
+    0.425,
+    0.5363,
+    0.4401
+   ],
+   "type": "heading",
+   "text": "Abstract",
+   "level": 1,
+   "section_path": [
+    "Abstract"
+   ]
+  },
+  {
+   "id": "p1-b14",
+   "page": 1,
+   "bbox": [
+    0.2351,
+    0.456,
+    0.7676,
+    0.6616
+   ],
+   "type": "paragraph",
+   "text": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder conﬁguration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely. Experiments on two machine translation tasks show these models to be superior in quality while being more parallelizable and requiring signiﬁcantly less time to train. Our model achieves 28.4 BLEU on the WMT 2014 Englishto-German translation task, improving over the existing best results, including ensembles by over 2 BLEU. On the WMT 2014 English-to-French translation task, our model establishes a new single-model state-of-the-art BLEU score of 41.0 after training for 3.5 days on eight GPUs, a small fraction of the training costs of the best models from the literature. We show that the Transformer generalizes well to other tasks by applying it successfully to English constituency parsing both with large and limited training data.",
+   "section_path": [
+    "Abstract"
+   ]
+  },
+  {
+   "id": "p1-b15",
+   "page": 1,
+   "bbox": [
+    0.1765,
+    0.6881,
+    0.3118,
+    0.7032
+   ],
+   "type": "heading",
+   "text": "1 Introduction",
+   "level": 1,
+   "section_path": [
+    "1 Introduction"
+   ]
+  },
+  {
+   "id": "p1-b16",
+   "page": 1,
+   "bbox": [
+    0.1765,
+    0.7189,
+    0.8238,
+    0.7867
+   ],
+   "type": "paragraph",
+   "text": "Recurrent neural networks, long short-term memory [12] and gated recurrent [7] neural networks in particular, have been ﬁrmly established as state of the art approaches in sequence modeling and transduction problems such as language modeling and machine translation [31, 2, 5]. Numerous efforts have since continued to push the boundaries of recurrent language models and encoder-decoder architectures [34, 22, 14].",
+   "section_path": [
+    "1 Introduction"
+   ]
+  },
+  {
+   "id": "p1-b17",
+   "page": 1,
+   "bbox": [
+    0.1765,
+    0.7947,
+    0.8241,
+    0.8763
+   ],
+   "type": "paragraph",
+   "text": "Recurrent models typically factor computation along the symbol positions of the input and output sequences. Aligning the positions to steps in computation time, they generate a sequence of hidden states ht, as a function of the previous hidden state ht−1 and the input for position t. This inherently sequential nature precludes parallelization within training examples, which becomes critical at longer sequence lengths, as memory constraints limit batching across examples. Recent work has achieved signiﬁcant improvements in computational efﬁciency through factorization tricks [19] and conditional",
+   "section_path": [
+    "1 Introduction"
+   ]
+  },
+  {
+   "id": "p1-b18",
+   "page": 1,
+   "bbox": [
+    0.1958,
+    0.8843,
+    0.4618,
+    0.9116
+   ],
+   "type": "paragraph",
+   "text": "∗Equal contribution. Listing order is random. †Work performed while at Google Brain.",
+   "section_path": [
+    "1 Introduction"
+   ]
+  },
+  {
+   "id": "p2-b01",
+   "page": 2,
+   "bbox": [
+    0.1765,
+    0.0939,
+    0.8235,
+    0.1203
+   ],
+   "type": "paragraph",
+   "text": "computation [29], while also improving model performance in case of the latter. The fundamental constraint of sequential computation, however, remains.",
+   "section_path": [
+    "1 Introduction"
+   ]
+  },
+  {
+   "id": "p2-b02",
+   "page": 2,
+   "bbox": [
+    0.1759,
+    0.1284,
+    0.8262,
+    0.1823
+   ],
+   "type": "paragraph",
+   "text": "Attention mechanisms have become an integral part of compelling sequence modeling and transduction models in various tasks, allowing modeling of dependencies without regard to their distance in the input or output sequences [2, 17]. In all but a few cases [25], however, such attention mechanisms are used in conjunction with a recurrent network.",
+   "section_path": [
+    "1 Introduction"
+   ]
+  },
+  {
+   "id": "p2-b03",
+   "page": 2,
+   "bbox": [
+    0.176,
+    0.1903,
+    0.8264,
+    0.2443
+   ],
+   "type": "paragraph",
+   "text": "In this work we propose the Transformer, a model architecture eschewing recurrence and instead relying entirely on an attention mechanism to draw global dependencies between input and output. The Transformer allows for signiﬁcantly more parallelization and can reach a new state of the art in translation quality after being trained for as little as twelve hours on eight P100 GPUs.",
+   "section_path": [
+    "1 Introduction"
+   ]
+  },
+  {
+   "id": "p2-b04",
+   "page": 2,
+   "bbox": [
+    0.1765,
+    0.2664,
+    0.3085,
+    0.2815
+   ],
+   "type": "heading",
+   "text": "2 Background",
+   "level": 1,
+   "section_path": [
+    "2 Background"
+   ]
+  },
+  {
+   "id": "p2-b05",
+   "page": 2,
+   "bbox": [
+    0.176,
+    0.2982,
+    0.8256,
+    0.4209
+   ],
+   "type": "paragraph",
+   "text": "The goal of reducing sequential computation also forms the foundation of the Extended Neural GPU [21], ByteNet [16] and ConvS2S [9], all of which use convolutional neural networks as basic building block, computing hidden representations in parallel for all input and output positions. In these models, the number of operations required to relate signals from two arbitrary input or output positions grows in the distance between positions, linearly for ConvS2S and logarithmically for ByteNet. This makes it more difﬁcult to learn dependencies between distant positions [11]. In the Transformer this is reduced to a constant number of operations, albeit at the cost of reduced effective resolution due to averaging attention-weighted positions, an effect we counteract with Multi-Head Attention as described in section 3.2.",
+   "section_path": [
+    "2 Background"
+   ]
+  },
+  {
+   "id": "p2-b06",
+   "page": 2,
+   "bbox": [
+    0.1765,
+    0.4291,
+    0.8256,
+    0.4829
+   ],
+   "type": "paragraph",
+   "text": "Self-attention, sometimes called intra-attention is an attention mechanism relating different positions of a single sequence in order to compute a representation of the sequence. Self-attention has been used successfully in a variety of tasks including reading comprehension, abstractive summarization, textual entailment and learning task-independent sentence representations [4, 25, 26, 20].",
+   "section_path": [
+    "2 Background"
+   ]
+  },
+  {
+   "id": "p2-b07",
+   "page": 2,
+   "bbox": [
+    0.176,
+    0.4909,
+    0.8238,
+    0.5449
+   ],
+   "type": "paragraph",
+   "text": "To the best of our knowledge, however, the Transformer is the ﬁrst transduction model relying entirely on self-attention to compute representations of its input and output without using RNNs or convolution. In the following sections, we will describe the Transformer, motivate self-attention and discuss its advantages over models such as [15, 16] and [9].",
+   "section_path": [
+    "2 Background"
+   ]
+  },
+  {
+   "id": "p2-b08",
+   "page": 2,
+   "bbox": [
+    0.1765,
+    0.567,
+    0.3694,
+    0.5821
+   ],
+   "type": "heading",
+   "text": "3 Model Architecture",
+   "level": 1,
+   "section_path": [
+    "3 Model Architecture"
+   ]
+  },
+  {
+   "id": "p2-b09",
+   "page": 2,
+   "bbox": [
+    0.1765,
+    0.5987,
+    0.8264,
+    0.6664
+   ],
+   "type": "paragraph",
+   "text": "Most competitive neural sequence transduction models have an encoder-decoder structure [5, 2, 31]. Here, the encoder maps an input sequence of symbol representations (x1, ..., xn) to a sequence of continuous representations z = (z1, ..., zn). Given z, the decoder then generates an output sequence (y1, ..., ym) of symbols one element at a time. At each step the model is auto-regressive [10], consuming the previously generated symbols as additional input when generating the next.",
+   "section_path": [
+    "3 Model Architecture"
+   ]
+  },
+  {
+   "id": "p2-b10",
+   "page": 2,
+   "bbox": [
+    0.176,
+    0.6745,
+    0.8256,
+    0.7146
+   ],
+   "type": "paragraph",
+   "text": "The Transformer follows this overall architecture using stacked self-attention and point-wise, fully connected layers for both the encoder and decoder, shown in the left and right halves of Figure 1, respectively.",
+   "section_path": [
+    "3 Model Architecture"
+   ]
+  },
+  {
+   "id": "p2-b11",
+   "page": 2,
+   "bbox": [
+    0.1765,
+    0.7337,
+    0.4134,
+    0.7462
+   ],
+   "type": "heading",
+   "text": "3.1 Encoder and Decoder Stacks",
+   "level": 2,
+   "section_path": [
+    "3 Model Architecture",
+    "3.1 Encoder and Decoder Stacks"
+   ]
+  },
+  {
+   "id": "p2-b12",
+   "page": 2,
+   "bbox": [
+    0.1759,
+    0.759,
+    0.8262,
+    0.8562
+   ],
+   "type": "paragraph",
+   "text": "Encoder: The encoder is composed of a stack of N = 6 identical layers. Each layer has two sub-layers. The ﬁrst is a multi-head self-attention mechanism, and the second is a simple, positionwise fully connected feed-forward network. We employ a residual connection around each of the two sub-layers, followed by layer normalization [1]. That is, the output of each sub-layer is LayerNorm(x + Sublayer(x)), where Sublayer(x) is the function implemented by the sub-layer itself. To facilitate these residual connections, all sub-layers in the model, as well as the embedding layers, produce outputs of dimension dmodel = 512.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.1 Encoder and Decoder Stacks"
+   ]
+  },
+  {
+   "id": "p2-b13",
+   "page": 2,
+   "bbox": [
+    0.1765,
+    0.8717,
+    0.8235,
+    0.9121
+   ],
+   "type": "paragraph",
+   "text": "Decoder: The decoder is also composed of a stack of N = 6 identical layers. In addition to the two sub-layers in each encoder layer, the decoder inserts a third sub-layer, which performs multi-head attention over the output of the encoder stack. Similar to the encoder, we employ residual connections",
+   "section_path": [
+    "3 Model Architecture",
+    "3.1 Encoder and Decoder Stacks"
+   ]
+  },
+  {
+   "id": "p3-b01",
+   "page": 3,
+   "bbox": [
+    0.3432,
+    0.511,
+    0.6568,
+    0.5236
+   ],
+   "type": "caption",
+   "text": "Figure 1: The Transformer - model architecture.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.1 Encoder and Decoder Stacks"
+   ]
+  },
+  {
+   "id": "p3-b02",
+   "page": 3,
+   "bbox": [
+    0.1765,
+    0.5551,
+    0.8235,
+    0.609
+   ],
+   "type": "paragraph",
+   "text": "around each of the sub-layers, followed by layer normalization. We also modify the self-attention sub-layer in the decoder stack to prevent positions from attending to subsequent positions. This masking, combined with fact that the output embeddings are offset by one position, ensures that the predictions for position i can depend only on the known outputs at positions less than i.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.1 Encoder and Decoder Stacks"
+   ]
+  },
+  {
+   "id": "p3-b03",
+   "page": 3,
+   "bbox": [
+    0.1765,
+    0.6313,
+    0.2791,
+    0.6439
+   ],
+   "type": "heading",
+   "text": "3.2 Attention",
+   "level": 2,
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention"
+   ]
+  },
+  {
+   "id": "p3-b04",
+   "page": 3,
+   "bbox": [
+    0.1759,
+    0.6583,
+    0.8256,
+    0.7122
+   ],
+   "type": "paragraph",
+   "text": "An attention function can be described as mapping a query and a set of key-value pairs to an output, where the query, keys, values, and output are all vectors. The output is computed as a weighted sum of the values, where the weight assigned to each value is computed by a compatibility function of the query with the corresponding key.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention"
+   ]
+  },
+  {
+   "id": "p3-b05",
+   "page": 3,
+   "bbox": [
+    0.1765,
+    0.7328,
+    0.4312,
+    0.7454
+   ],
+   "type": "heading",
+   "text": "3.2.1 Scaled Dot-Product Attention",
+   "level": 3,
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.1 Scaled Dot-Product Attention"
+   ]
+  },
+  {
+   "id": "p3-b06",
+   "page": 3,
+   "bbox": [
+    0.1757,
+    0.758,
+    0.8235,
+    0.799
+   ],
+   "type": "paragraph",
+   "text": "We call our particular attention \"Scaled Dot-Product Attention\" (Figure 2). The input consists of queries and keys of dimensionquery with all keys, divide each by dk, and values of dimension √dk, and apply a softmax function to obtain the weights on the dv. We compute the dot products of the",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.1 Scaled Dot-Product Attention"
+   ]
+  },
+  {
+   "id": "p3-b07",
+   "page": 3,
+   "bbox": [
+    0.1761,
+    0.7994,
+    0.2213,
+    0.812
+   ],
+   "type": "paragraph",
+   "text": "values.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.1 Scaled Dot-Product Attention"
+   ]
+  },
+  {
+   "id": "p3-b08",
+   "page": 3,
+   "bbox": [
+    0.1765,
+    0.82,
+    0.8238,
+    0.8602
+   ],
+   "type": "paragraph",
+   "text": "In practice, we compute the attention function on a set of queries simultaneously, packed together into a matrix Q. The keys and values are also packed together into matrices K and V . We compute the matrix of outputs as:",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.1 Scaled Dot-Product Attention"
+   ]
+  },
+  {
+   "id": "p3-b09",
+   "page": 3,
+   "bbox": [
+    0.3594,
+    0.8837,
+    0.6166,
+    0.9169
+   ],
+   "type": "formula",
+   "text": "Attention(Q, K, V ) = softmax(QKT √dk",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.1 Scaled Dot-Product Attention"
+   ],
+   "latex": "Attention(Q, K, V ) = softmax(QK^{T} \\\\ \\sqrt{}d_{k}"
+  },
+  {
+   "id": "p3-b10",
+   "page": 3,
+   "bbox": [
+    0.6211,
+    0.8939,
+    0.8235,
+    0.9067
+   ],
+   "type": "paragraph",
+   "text": ")V (1)",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.1 Scaled Dot-Product Attention"
+   ]
+  },
+  {
+   "id": "p4-b01",
+   "page": 4,
+   "bbox": [
+    0.2415,
+    0.0899,
+    0.435,
+    0.1025
+   ],
+   "type": "paragraph",
+   "text": "Scaled Dot-Product Attention",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.1 Scaled Dot-Product Attention"
+   ]
+  },
+  {
+   "id": "p4-b02",
+   "page": 4,
+   "bbox": [
+    0.5941,
+    0.0899,
+    0.7356,
+    0.1025
+   ],
+   "type": "paragraph",
+   "text": "Multi-Head Attention",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.1 Scaled Dot-Product Attention"
+   ]
+  },
+  {
+   "id": "p4-b03",
+   "page": 4,
+   "bbox": [
+    0.1765,
+    0.3181,
+    0.8235,
+    0.3445
+   ],
+   "type": "caption",
+   "text": "Figure 2: (left) Scaled Dot-Product Attention. (right) Multi-Head Attention consists of several attention layers running in parallel.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.1 Scaled Dot-Product Attention"
+   ]
+  },
+  {
+   "id": "p4-b04",
+   "page": 4,
+   "bbox": [
+    0.176,
+    0.3685,
+    0.8262,
+    0.4095
+   ],
+   "type": "paragraph",
+   "text": "The two most commonly used attention functions are additive attention [2], and dot-product (multiplicative) attention.of √dk. Additive attention computes the compatibility function using a feed-forward network with Dot-product attention is identical to our algorithm, except for the scaling factor",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.1 Scaled Dot-Product Attention"
+   ]
+  },
+  {
+   "id": "p4-b05",
+   "page": 4,
+   "bbox": [
+    0.1765,
+    0.4098,
+    0.8235,
+    0.45
+   ],
+   "type": "paragraph",
+   "text": "a single hidden layer. While the two are similar in theoretical complexity, dot-product attention is much faster and more space-efﬁcient in practice, since it can be implemented using highly optimized matrix multiplication code.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.1 Scaled Dot-Product Attention"
+   ]
+  },
+  {
+   "id": "p4-b06",
+   "page": 4,
+   "bbox": [
+    0.1757,
+    0.4578,
+    0.8239,
+    0.5128
+   ],
+   "type": "paragraph",
+   "text": "While for small values of dk the two mechanisms perform similarly, additive attention outperforms dot product attention without scaling for larger values of dk [3]. We suspect this to be caused by the dot products growing too large in magnitude to result in useful gradients after applying the softmaxfunction. To counteract this, we scale the dot product by 1/√dk.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.1 Scaled Dot-Product Attention"
+   ]
+  },
+  {
+   "id": "p4-b07",
+   "page": 4,
+   "bbox": [
+    0.1765,
+    0.5277,
+    0.3768,
+    0.5402
+   ],
+   "type": "heading",
+   "text": "3.2.2 Multi-Head Attention",
+   "level": 3,
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.2 Multi-Head Attention"
+   ]
+  },
+  {
+   "id": "p4-b08",
+   "page": 4,
+   "bbox": [
+    0.1759,
+    0.551,
+    0.8256,
+    0.619
+   ],
+   "type": "paragraph",
+   "text": "Instead of performing a single attention function with dmodel-dimensional keys, values and queries, we found it beneﬁcial to linearly project the queries, keys and values h times with different, learned linear projections to dk, dk and dv dimensions, respectively. On each of these projected versions of queries, keys and values we then perform the attention function in parallel, yielding dv-dimensional output values. These are concatenated, resulting in the ﬁnal values, as depicted in Figure 2",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.2 Multi-Head Attention"
+   ]
+  },
+  {
+   "id": "p4-b09",
+   "page": 4,
+   "bbox": [
+    0.1765,
+    0.6271,
+    0.8235,
+    0.6534
+   ],
+   "type": "paragraph",
+   "text": "Multi-head attention allows the model to jointly attend to information from different representation subspaces at different positions. With a single attention head, averaging inhibits this.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.2 Multi-Head Attention"
+   ]
+  },
+  {
+   "id": "p4-b10",
+   "page": 4,
+   "bbox": [
+    0.3055,
+    0.679,
+    0.6945,
+    0.7163
+   ],
+   "type": "formula",
+   "text": "MultiHead(Q, K, V ) = Concat(head1, ..., headh) where headi = Attention(QW Q i , KW K i , V W V i )",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.2 Multi-Head Attention"
+   ],
+   "latex": "MultiHead(Q, K, V ) = Concat(head_{1}, ..., head_{h}) \\\\ where head_{i} = Attention(QW ^{Q} \\\\ _{i} , KW^{K} \\\\ _{i} , V W^{V} \\\\ _{i} )"
+  },
+  {
+   "id": "p4-b11",
+   "page": 4,
+   "bbox": [
+    0.1757,
+    0.7431,
+    0.5189,
+    0.7591
+   ],
+   "type": "paragraph",
+   "text": "Where the projections are parameter matrices W Q",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.2 Multi-Head Attention"
+   ]
+  },
+  {
+   "id": "p4-b12",
+   "page": 4,
+   "bbox": [
+    0.5064,
+    0.7431,
+    0.8235,
+    0.7614
+   ],
+   "type": "formula",
+   "text": "i ∈ Rdmodel×dk, W K i ∈ Rdmodel×dk and W V i ∈",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.2 Multi-Head Attention"
+   ],
+   "latex": "_{i} \\in R^{d}^{model}^{\\times}^{d}^{k}, W ^{K} \\\\ _{i} \\in R^{d}^{model}^{\\times}^{d}^{k} and W ^{V} \\\\ _{i} \\in"
+  },
+  {
+   "id": "p4-b13",
+   "page": 4,
+   "bbox": [
+    0.1765,
+    0.7589,
+    0.245,
+    0.7745
+   ],
+   "type": "paragraph",
+   "text": "Rdmodel×dv.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.2 Multi-Head Attention"
+   ]
+  },
+  {
+   "id": "p4-b14",
+   "page": 4,
+   "bbox": [
+    0.1765,
+    0.7823,
+    0.8235,
+    0.8227
+   ],
+   "type": "paragraph",
+   "text": "In this work we employ h = 8 parallel attention layers, or heads. For each of these we use dk = dv = dmodel/h = 64. Due to the reduced dimension of each head, the total computational cost is similar to that of single-head attention with full dimensionality.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.2 Multi-Head Attention"
+   ]
+  },
+  {
+   "id": "p4-b15",
+   "page": 4,
+   "bbox": [
+    0.1765,
+    0.8383,
+    0.4949,
+    0.8509
+   ],
+   "type": "heading",
+   "text": "3.2.3 Applications of Attention in our Model",
+   "level": 3,
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.3 Applications of Attention in our Model"
+   ]
+  },
+  {
+   "id": "p4-b16",
+   "page": 4,
+   "bbox": [
+    0.176,
+    0.862,
+    0.6088,
+    0.8746
+   ],
+   "type": "paragraph",
+   "text": "The Transformer uses multi-head attention in three different ways:",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.3 Applications of Attention in our Model"
+   ]
+  },
+  {
+   "id": "p4-b17",
+   "page": 4,
+   "bbox": [
+    0.2188,
+    0.8853,
+    0.8256,
+    0.9122
+   ],
+   "type": "paragraph",
+   "text": "• In the encoder-decoder attention layers, the queries come from the previous decoder layer, and the memory keys and values come from the output of the encoder. This allows every",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.3 Applications of Attention in our Model"
+   ]
+  },
+  {
+   "id": "p5-b01",
+   "page": 5,
+   "bbox": [
+    0.2188,
+    0.0939,
+    0.8235,
+    0.2669
+   ],
+   "type": "paragraph",
+   "text": "position in the decoder to attend over all positions in the input sequence. This mimics the typical encoder-decoder attention mechanisms in sequence-to-sequence models such as [34, 2, 9]. • The encoder contains self-attention layers. In a self-attention layer all of the keys, values and queries come from the same place, in this case, the output of the previous layer in the encoder. Each position in the encoder can attend to all positions in the previous layer of the encoder. • Similarly, self-attention layers in the decoder allow each position in the decoder to attend to all positions in the decoder up to and including that position. We need to prevent leftward information ﬂow in the decoder to preserve the auto-regressive property. We implement this inside of scaled dot-product attention by masking out (setting to −∞) all values in the input of the softmax which correspond to illegal connections. See Figure 2.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.2 Attention",
+    "3.2.3 Applications of Attention in our Model"
+   ]
+  },
+  {
+   "id": "p5-b02",
+   "page": 5,
+   "bbox": [
+    0.1765,
+    0.2845,
+    0.4785,
+    0.2971
+   ],
+   "type": "heading",
+   "text": "3.3 Position-wise Feed-Forward Networks",
+   "level": 2,
+   "section_path": [
+    "3 Model Architecture",
+    "3.3 Position-wise Feed-Forward Networks"
+   ]
+  },
+  {
+   "id": "p5-b03",
+   "page": 5,
+   "bbox": [
+    0.1765,
+    0.3097,
+    0.8241,
+    0.3499
+   ],
+   "type": "paragraph",
+   "text": "In addition to attention sub-layers, each of the layers in our encoder and decoder contains a fully connected feed-forward network, which is applied to each position separately and identically. This consists of two linear transformations with a ReLU activation in between.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.3 Position-wise Feed-Forward Networks"
+   ]
+  },
+  {
+   "id": "p5-b04",
+   "page": 5,
+   "bbox": [
+    0.3708,
+    0.3715,
+    0.8235,
+    0.386
+   ],
+   "type": "formula",
+   "text": "FFN(x) = max(0, xW1 + b1)W2 + b2 (2)",
+   "section_path": [
+    "3 Model Architecture",
+    "3.3 Position-wise Feed-Forward Networks"
+   ],
+   "latex": "FFN(x) = max(0, xW_{1} + b_{1})W_{2} + b_{2} (2)"
+  },
+  {
+   "id": "p5-b05",
+   "page": 5,
+   "bbox": [
+    0.1757,
+    0.3958,
+    0.8235,
+    0.4358
+   ],
+   "type": "paragraph",
+   "text": "While the linear transformations are the same across different positions, they use different parameters from layer to layer. The dimension of input and output is dmodel, and the inner-layer has dimension 2048.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.3 Position-wise Feed-Forward Networks"
+   ]
+  },
+  {
+   "id": "p5-b06",
+   "page": 5,
+   "bbox": [
+    0.1765,
+    0.4534,
+    0.3922,
+    0.466
+   ],
+   "type": "heading",
+   "text": "3.4 Embeddings and Softmax",
+   "level": 2,
+   "section_path": [
+    "3 Model Architecture",
+    "3.4 Embeddings and Softmax"
+   ]
+  },
+  {
+   "id": "p5-b07",
+   "page": 5,
+   "bbox": [
+    0.1765,
+    0.4787,
+    0.8262,
+    0.5474
+   ],
+   "type": "paragraph",
+   "text": "Similarly to other sequence transduction models, we use learned embeddings to convert the input tokens and output tokens to vectors of dimension dmodel. We also use the usual learned linear transformation and softmax function to convert the decoder output to predicted next-token probabilities. In our model, we share the same weight matrix between the two embedding layers and the pre-softmaxlinear transformation. In the embedding layers, we multiply those weights by √dmodel.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.4 Embeddings and Softmax"
+   ]
+  },
+  {
+   "id": "p5-b08",
+   "page": 5,
+   "bbox": [
+    0.1765,
+    0.5641,
+    0.3516,
+    0.5766
+   ],
+   "type": "heading",
+   "text": "3.5 Positional Encoding",
+   "level": 2,
+   "section_path": [
+    "3 Model Architecture",
+    "3.5 Positional Encoding"
+   ]
+  },
+  {
+   "id": "p5-b09",
+   "page": 5,
+   "bbox": [
+    0.1765,
+    0.5895,
+    0.8256,
+    0.6708
+   ],
+   "type": "paragraph",
+   "text": "Since our model contains no recurrence and no convolution, in order for the model to make use of the order of the sequence, we must inject some information about the relative or absolute position of the tokens in the sequence. To this end, we add \"positional encodings\" to the input embeddings at the bottoms of the encoder and decoder stacks. The positional encodings have the same dimension dmodel as the embeddings, so that the two can be summed. There are many choices of positional encodings, learned and ﬁxed [9].",
+   "section_path": [
+    "3 Model Architecture",
+    "3.5 Positional Encoding"
+   ]
+  },
+  {
+   "id": "p5-b10",
+   "page": 5,
+   "bbox": [
+    0.1765,
+    0.679,
+    0.637,
+    0.6915
+   ],
+   "type": "paragraph",
+   "text": "In this work, we use sine and cosine functions of different frequencies:",
+   "section_path": [
+    "3 Model Architecture",
+    "3.5 Positional Encoding"
+   ]
+  },
+  {
+   "id": "p5-b11",
+   "page": 5,
+   "bbox": [
+    0.3688,
+    0.7166,
+    0.6312,
+    0.755
+   ],
+   "type": "formula",
+   "text": "PE(pos,2i) = sin(pos/100002i/dmodel) PE(pos,2i+1) = cos(pos/100002i/dmodel)",
+   "section_path": [
+    "3 Model Architecture",
+    "3.5 Positional Encoding"
+   ],
+   "latex": "PE_{(}_{pos,}_{2}_{i}_{)} = sin(pos/10000^{2}^{i/d}^{model}) \\\\ PE_{(}_{pos,}_{2}_{i}_{+1)} = cos(pos/10000^{2}^{i/d}^{model})"
+  },
+  {
+   "id": "p5-b12",
+   "page": 5,
+   "bbox": [
+    0.1759,
+    0.7665,
+    0.8241,
+    0.8352
+   ],
+   "type": "paragraph",
+   "text": "where pos is the position and i is the dimension. That is, each dimension of the positional encoding corresponds to a sinusoid. The wavelengths form a geometric progression from 2π to 10000 · 2π. We chose this function because we hypothesized it would allow the model to easily learn to attend by relative positions, since for any ﬁxed offset k, PEpos+k can be represented as a linear function of PEpos.",
+   "section_path": [
+    "3 Model Architecture",
+    "3.5 Positional Encoding"
+   ]
+  },
+  {
+   "id": "p5-b13",
+   "page": 5,
+   "bbox": [
+    0.1765,
+    0.8551,
+    0.3677,
+    0.8702
+   ],
+   "type": "heading",
+   "text": "4 Why Self-Attention",
+   "level": 1,
+   "section_path": [
+    "4 Why Self-Attention"
+   ]
+  },
+  {
+   "id": "p5-b14",
+   "page": 5,
+   "bbox": [
+    0.1765,
+    0.8857,
+    0.8262,
+    0.9122
+   ],
+   "type": "paragraph",
+   "text": "In this section we compare various aspects of self-attention layers to the recurrent and convolutional layers commonly used for mapping one variable-length sequence of symbol representations",
+   "section_path": [
+    "4 Why Self-Attention"
+   ]
+  },
+  {
+   "id": "p6-b01",
+   "page": 6,
+   "bbox": [
+    0.176,
+    0.09,
+    0.8235,
+    0.13
+   ],
+   "type": "caption",
+   "text": "Table 1: Maximum path lengths, per-layer complexity and minimum number of sequential operations for different layer types. n is the sequence length, d is the representation dimension, k is the kernel size of convolutions and r the size of the neighborhood in restricted self-attention.",
+   "section_path": [
+    "4 Why Self-Attention"
+   ]
+  },
+  {
+   "id": "p6-b02",
+   "page": 6,
+   "bbox": [
+    0.2035,
+    0.1471,
+    0.7965,
+    0.1735
+   ],
+   "type": "paragraph",
+   "text": "Layer Type Complexity per Layer Sequential Maximum Path Length Operations",
+   "section_path": [
+    "4 Why Self-Attention"
+   ]
+  },
+  {
+   "id": "p6-b03",
+   "page": 6,
+   "bbox": [
+    0.2035,
+    0.1718,
+    0.7595,
+    0.2189
+   ],
+   "type": "formula",
+   "text": "Self-Attention O(n2 · d) O(1) O(1) Recurrent O(n · d2) O(n) O(n) Convolutional O(k · n · d2) O(1) O(logk(n))",
+   "section_path": [
+    "4 Why Self-Attention"
+   ],
+   "latex": "Self-Attention O(n^{2} · d) O(1) O(1) \\\\ Recurrent O(n · d^{2}) O(n) O(n) \\\\ Convolutional O(k · n · d^{2}) O(1) O(log_{k}(n))"
+  },
+  {
+   "id": "p6-b04",
+   "page": 6,
+   "bbox": [
+    0.2035,
+    0.2189,
+    0.7467,
+    0.2319
+   ],
+   "type": "paragraph",
+   "text": "Self-Attention (restricted) O(r · n · d) O(1) O(n/r)",
+   "section_path": [
+    "4 Why Self-Attention"
+   ]
+  },
+  {
+   "id": "p6-b05",
+   "page": 6,
+   "bbox": [
+    0.1746,
+    0.2688,
+    0.8235,
+    0.2858
+   ],
+   "type": "paragraph",
+   "text": "(x1, ..., xn) to another sequence of equal length (z1, ..., zn), with xi, zi ∈ Rd, such as a hidden",
+   "section_path": [
+    "4 Why Self-Attention"
+   ]
+  },
+  {
+   "id": "p6-b06",
+   "page": 6,
+   "bbox": [
+    0.1765,
+    0.2856,
+    0.8235,
+    0.3119
+   ],
+   "type": "paragraph",
+   "text": "layer in a typical sequence transduction encoder or decoder. Motivating our use of self-attention we consider three desiderata.",
+   "section_path": [
+    "4 Why Self-Attention"
+   ]
+  },
+  {
+   "id": "p6-b07",
+   "page": 6,
+   "bbox": [
+    0.1765,
+    0.32,
+    0.8235,
+    0.3464
+   ],
+   "type": "paragraph",
+   "text": "One is the total computational complexity per layer. Another is the amount of computation that can be parallelized, as measured by the minimum number of sequential operations required.",
+   "section_path": [
+    "4 Why Self-Attention"
+   ]
+  },
+  {
+   "id": "p6-b08",
+   "page": 6,
+   "bbox": [
+    0.176,
+    0.3544,
+    0.8235,
+    0.4497
+   ],
+   "type": "paragraph",
+   "text": "The third is the path length between long-range dependencies in the network. Learning long-range dependencies is a key challenge in many sequence transduction tasks. One key factor affecting the ability to learn such dependencies is the length of the paths forward and backward signals have to traverse in the network. The shorter these paths between any combination of positions in the input and output sequences, the easier it is to learn long-range dependencies [11]. Hence we also compare the maximum path length between any two input and output positions in networks composed of the different layer types.",
+   "section_path": [
+    "4 Why Self-Attention"
+   ]
+  },
+  {
+   "id": "p6-b09",
+   "page": 6,
+   "bbox": [
+    0.1759,
+    0.4579,
+    0.8241,
+    0.5806
+   ],
+   "type": "paragraph",
+   "text": "As noted in Table 1, a self-attention layer connects all positions with a constant number of sequentially executed operations, whereas a recurrent layer requires O(n) sequential operations. In terms of computational complexity, self-attention layers are faster than recurrent layers when the sequence length n is smaller than the representation dimensionality d, which is most often the case with sentence representations used by state-of-the-art models in machine translations, such as word-piece [34] and byte-pair [28] representations. To improve computational performance for tasks involving very long sequences, self-attention could be restricted to considering only a neighborhood of size r in the input sequence centered around the respective output position. This would increase the maximum path length to O(n/r). We plan to investigate this approach further in future work.",
+   "section_path": [
+    "4 Why Self-Attention"
+   ]
+  },
+  {
+   "id": "p6-b10",
+   "page": 6,
+   "bbox": [
+    0.1759,
+    0.5884,
+    0.8256,
+    0.6977
+   ],
+   "type": "paragraph",
+   "text": "A single convolutional layer with kernel width k < n does not connect all pairs of input and output positions. Doing so requires a stack of O(n/k) convolutional layers in the case of contiguous kernels, or O(logk(n)) in the case of dilated convolutions [16], increasing the length of the longest paths between any two positions in the network. Convolutional layers are generally more expensive than recurrent layers, by a factor of k. Separable convolutions [6], however, decrease the complexity considerably, to O(k · n · d + n · d2). Even with k = n, however, the complexity of a separable convolution is equal to the combination of a self-attention layer and a point-wise feed-forward layer, the approach we take in our model.",
+   "section_path": [
+    "4 Why Self-Attention"
+   ]
+  },
+  {
+   "id": "p6-b11",
+   "page": 6,
+   "bbox": [
+    0.1759,
+    0.7059,
+    0.8235,
+    0.7597
+   ],
+   "type": "paragraph",
+   "text": "As side beneﬁt, self-attention could yield more interpretable models. We inspect attention distributions from our models and present and discuss examples in the appendix. Not only do individual attention heads clearly learn to perform different tasks, many appear to exhibit behavior related to the syntactic and semantic structure of the sentences.",
+   "section_path": [
+    "4 Why Self-Attention"
+   ]
+  },
+  {
+   "id": "p6-b12",
+   "page": 6,
+   "bbox": [
+    0.1765,
+    0.7822,
+    0.2781,
+    0.7973
+   ],
+   "type": "heading",
+   "text": "5 Training",
+   "level": 1,
+   "section_path": [
+    "5 Training"
+   ]
+  },
+  {
+   "id": "p6-b13",
+   "page": 6,
+   "bbox": [
+    0.176,
+    0.8142,
+    0.5514,
+    0.8267
+   ],
+   "type": "paragraph",
+   "text": "This section describes the training regime for our models.",
+   "section_path": [
+    "5 Training"
+   ]
+  },
+  {
+   "id": "p6-b14",
+   "page": 6,
+   "bbox": [
+    0.1765,
+    0.8462,
+    0.4077,
+    0.8588
+   ],
+   "type": "heading",
+   "text": "5.1 Training Data and Batching",
+   "level": 2,
+   "section_path": [
+    "5 Training",
+    "5.1 Training Data and Batching"
+   ]
+  },
+  {
+   "id": "p6-b15",
+   "page": 6,
+   "bbox": [
+    0.1757,
+    0.8719,
+    0.8262,
+    0.9121
+   ],
+   "type": "paragraph",
+   "text": "We trained on the standard WMT 2014 English-German dataset consisting of about 4.5 million sentence pairs. Sentences were encoded using byte-pair encoding [3], which has a shared sourcetarget vocabulary of about 37000 tokens. For English-French, we used the signiﬁcantly larger WMT",
+   "section_path": [
+    "5 Training",
+    "5.1 Training Data and Batching"
+   ]
+  },
+  {
+   "id": "p7-b01",
+   "page": 7,
+   "bbox": [
+    0.1761,
+    0.0939,
+    0.8235,
+    0.1478
+   ],
+   "type": "paragraph",
+   "text": "2014 English-French dataset consisting of 36M sentences and split tokens into a 32000 word-piece vocabulary [34]. Sentence pairs were batched together by approximate sequence length. Each training batch contained a set of sentence pairs containing approximately 25000 source tokens and 25000 target tokens.",
+   "section_path": [
+    "5 Training",
+    "5.1 Training Data and Batching"
+   ]
+  },
+  {
+   "id": "p7-b02",
+   "page": 7,
+   "bbox": [
+    0.1765,
+    0.1675,
+    0.3808,
+    0.1801
+   ],
+   "type": "heading",
+   "text": "5.2 Hardware and Schedule",
+   "level": 2,
+   "section_path": [
+    "5 Training",
+    "5.2 Hardware and Schedule"
+   ]
+  },
+  {
+   "id": "p7-b03",
+   "page": 7,
+   "bbox": [
+    0.1757,
+    0.1934,
+    0.8238,
+    0.2611
+   ],
+   "type": "paragraph",
+   "text": "We trained our models on one machine with 8 NVIDIA P100 GPUs. For our base models using the hyperparameters described throughout the paper, each training step took about 0.4 seconds. We trained the base models for a total of 100,000 steps or 12 hours. For our big models,(described on the bottom line of table 3), step time was 1.0 seconds, and the models were trained for 300,000 steps or 3.5 days.",
+   "section_path": [
+    "5 Training",
+    "5.2 Hardware and Schedule"
+   ]
+  },
+  {
+   "id": "p7-b04",
+   "page": 7,
+   "bbox": [
+    0.1765,
+    0.2808,
+    0.2845,
+    0.2934
+   ],
+   "type": "heading",
+   "text": "5.3 Optimizer",
+   "level": 2,
+   "section_path": [
+    "5 Training",
+    "5.3 Optimizer"
+   ]
+  },
+  {
+   "id": "p7-b05",
+   "page": 7,
+   "bbox": [
+    0.1757,
+    0.3047,
+    0.8235,
+    0.3331
+   ],
+   "type": "paragraph",
+   "text": "We used the Adam optimizer [18] with β1 = 0.9, β2 = 0.98 and ϵ = 10−9. We varied the learning rate over the course of training, according to the formula:",
+   "section_path": [
+    "5 Training",
+    "5.3 Optimizer"
+   ]
+  },
+  {
+   "id": "p7-b06",
+   "page": 7,
+   "bbox": [
+    0.2662,
+    0.3541,
+    0.8235,
+    0.3727
+   ],
+   "type": "formula",
+   "text": "lrate = d−0.5 model · min(step_num−0.5, step_num · warmup_steps−1.5) (3)",
+   "section_path": [
+    "5 Training",
+    "5.3 Optimizer"
+   ],
+   "latex": "lrate = d^{-}^{0}^{.}^{5} \\\\ _{model} · min(step_num^{-}^{0}^{.}^{5}, step_num · warmup_steps^{-}^{1}^{.}^{5}) (3)"
+  },
+  {
+   "id": "p7-b07",
+   "page": 7,
+   "bbox": [
+    0.176,
+    0.3844,
+    0.8256,
+    0.4248
+   ],
+   "type": "paragraph",
+   "text": "This corresponds to increasing the learning rate linearly for the ﬁrst warmup_steps training steps, and decreasing it thereafter proportionally to the inverse square root of the step number. We used warmup_steps = 4000.",
+   "section_path": [
+    "5 Training",
+    "5.3 Optimizer"
+   ]
+  },
+  {
+   "id": "p7-b08",
+   "page": 7,
+   "bbox": [
+    0.1765,
+    0.4445,
+    0.3162,
+    0.4571
+   ],
+   "type": "heading",
+   "text": "5.4 Regularization",
+   "level": 2,
+   "section_path": [
+    "5 Training",
+    "5.4 Regularization"
+   ]
+  },
+  {
+   "id": "p7-b09",
+   "page": 7,
+   "bbox": [
+    0.1757,
+    0.4704,
+    0.5425,
+    0.483
+   ],
+   "type": "paragraph",
+   "text": "We employ three types of regularization during training:",
+   "section_path": [
+    "5 Training",
+    "5.4 Regularization"
+   ]
+  },
+  {
+   "id": "p7-b10",
+   "page": 7,
+   "bbox": [
+    0.1765,
+    0.501,
+    0.8235,
+    0.5566
+   ],
+   "type": "paragraph",
+   "text": "Residual Dropout We apply dropout [30] to the output of each sub-layer, before it is added to the sub-layer input and normalized. In addition, we apply dropout to the sums of the embeddings and the positional encodings in both the encoder and decoder stacks. For the base model, we use a rate of Pdrop = 0.1.",
+   "section_path": [
+    "5 Training",
+    "5.4 Regularization"
+   ]
+  },
+  {
+   "id": "p7-b11",
+   "page": 7,
+   "bbox": [
+    0.1765,
+    0.573,
+    0.8235,
+    0.627
+   ],
+   "type": "paragraph",
+   "text": "Attention Dropout Query to key attentions are structurally similar to hidden-to-hidden weights in a feed-forward network, albeit across positions. The softmax activations yielding attention weights can then be seen as the analogue of hidden layer activations. A natural possibility is to extend dropout [30] to attention. We implement attention dropout by dropping out attention weights as,",
+   "section_path": [
+    "5 Training",
+    "5.4 Regularization"
+   ]
+  },
+  {
+   "id": "p7-b12",
+   "page": 7,
+   "bbox": [
+    0.3248,
+    0.6372,
+    0.6449,
+    0.6599
+   ],
+   "type": "formula",
+   "text": "Attention(Q, K, V ) = dropout(softmax(QKT",
+   "section_path": [
+    "5 Training",
+    "5.4 Regularization"
+   ],
+   "latex": "Attention(Q, K, V ) = dropout(softmax(QK^{T}"
+  },
+  {
+   "id": "p7-b13",
+   "page": 7,
+   "bbox": [
+    0.6174,
+    0.6468,
+    0.6309,
+    0.6594
+   ],
+   "type": "paragraph",
+   "text": "√",
+   "section_path": [
+    "5 Training",
+    "5.4 Regularization"
+   ]
+  },
+  {
+   "id": "p7-b14",
+   "page": 7,
+   "bbox": [
+    0.6494,
+    0.6473,
+    0.6716,
+    0.6599
+   ],
+   "type": "paragraph",
+   "text": "))V",
+   "section_path": [
+    "5 Training",
+    "5.4 Regularization"
+   ]
+  },
+  {
+   "id": "p7-b15",
+   "page": 7,
+   "bbox": [
+    0.6309,
+    0.6577,
+    0.6394,
+    0.6702
+   ],
+   "type": "paragraph",
+   "text": "d",
+   "section_path": [
+    "5 Training",
+    "5.4 Regularization"
+   ]
+  },
+  {
+   "id": "p7-b16",
+   "page": 7,
+   "bbox": [
+    0.1765,
+    0.6791,
+    0.8262,
+    0.7056
+   ],
+   "type": "paragraph",
+   "text": "In addition to residual dropout, we found attention dropout to be beneﬁcial for our parsing experiments.",
+   "section_path": [
+    "5 Training",
+    "5.4 Regularization"
+   ]
+  },
+  {
+   "id": "p7-b17",
+   "page": 7,
+   "bbox": [
+    0.1765,
+    0.7234,
+    0.8235,
+    0.75
+   ],
+   "type": "paragraph",
+   "text": "Label Smoothing During training, we employed label smoothing of value ϵls = 0.1 [32]. This hurts perplexity, as the model learns to be more unsure, but improves accuracy and BLEU score.",
+   "section_path": [
+    "5 Training",
+    "5.4 Regularization"
+   ]
+  },
+  {
+   "id": "p7-b18",
+   "page": 7,
+   "bbox": [
+    0.1765,
+    0.7727,
+    0.2665,
+    0.7878
+   ],
+   "type": "heading",
+   "text": "6 Results",
+   "level": 1,
+   "section_path": [
+    "6 Results"
+   ]
+  },
+  {
+   "id": "p7-b19",
+   "page": 7,
+   "bbox": [
+    0.1765,
+    0.8047,
+    0.358,
+    0.8173
+   ],
+   "type": "heading",
+   "text": "6.1 Machine Translation",
+   "level": 2,
+   "section_path": [
+    "6 Results",
+    "6.1 Machine Translation"
+   ]
+  },
+  {
+   "id": "p7-b20",
+   "page": 7,
+   "bbox": [
+    0.1759,
+    0.8306,
+    0.8238,
+    0.9121
+   ],
+   "type": "paragraph",
+   "text": "On the WMT 2014 English-to-German translation task, Our big transformer model (Transformer (big) in Table 2) outperforms the best previously reported models (including ensembles) by more than 2.0 BLEU, establishing a new state-of-the-art BLEU score of 28.4. The conﬁguration of this model is listed in the bottom line of Table 3. Training took 3.5 days on 8 P100 GPUs. Even our base model surpasses all previously published models and ensembles, at a fraction of the training cost of any of the previous best models.",
+   "section_path": [
+    "6 Results",
+    "6.1 Machine Translation"
+   ]
+  },
+  {
+   "id": "p8-b01",
+   "page": 8,
+   "bbox": [
+    0.176,
+    0.0899,
+    0.8235,
+    0.1163
+   ],
+   "type": "caption",
+   "text": "Table 2: The Transformer achieves better BLEU scores than previous state-of-the-art models on the English-to-German and English-to-French newstest2014 tests at a fraction of the training cost.",
+   "section_path": [
+    "6 Results",
+    "6.1 Machine Translation"
+   ]
+  },
+  {
+   "id": "p8-b02",
+   "page": 8,
+   "bbox": [
+    0.5082,
+    0.1235,
+    0.7767,
+    0.136
+   ],
+   "type": "paragraph",
+   "text": "BLEU Training Cost (FLOPs)",
+   "section_path": [
+    "6 Results",
+    "6.1 Machine Translation"
+   ]
+  },
+  {
+   "id": "p8-b03",
+   "page": 8,
+   "bbox": [
+    0.2233,
+    0.1339,
+    0.2658,
+    0.1465
+   ],
+   "type": "paragraph",
+   "text": "Model",
+   "section_path": [
+    "6 Results",
+    "6.1 Machine Translation"
+   ]
+  },
+  {
+   "id": "p8-b04",
+   "page": 8,
+   "bbox": [
+    0.2233,
+    0.1433,
+    0.7661,
+    0.1702
+   ],
+   "type": "paragraph",
+   "text": "EN-DE EN-FR EN-DE EN-FR ByteNet [16] 23.75",
+   "section_path": [
+    "6 Results",
+    "6.1 Machine Translation"
+   ]
+  },
+  {
+   "id": "p8-b05",
+   "page": 8,
+   "bbox": [
+    0.2233,
+    0.17,
+    0.773,
+    0.3033
+   ],
+   "type": "formula",
+   "text": "Deep-Att + PosUnk [35] 39.2 1.0 · 1020 GNMT + RL [34] 24.6 39.92 2.3 · 1019 1.4 · 1020 ConvS2S [9] 25.16 40.46 9.6 · 1018 1.5 · 1020 MoE [29] 26.03 40.56 2.0 · 1019 1.2 · 1020 Deep-Att + PosUnk Ensemble [35] 40.4 8.0 · 1020 GNMT + RL Ensemble [34] 26.30 41.16 1.8 · 1020 1.1 · 1021 ConvS2S Ensemble [9] 26.36 41.29 7.7 · 1019 1.2 · 1021 Transformer (base model) 27.3 38.1 3.3 · 1018 Transformer (big) 28.4 41.0 2.3 · 1019",
+   "section_path": [
+    "6 Results",
+    "6.1 Machine Translation"
+   ],
+   "latex": "Deep-Att + PosUnk [35] 39.2 1.0 · 10^{20} \\\\ GNMT + RL [34] 24.6 39.92 2.3 · 10^{19} 1.4 · 10^{20} \\\\ ConvS2S [9] 25.16 40.46 9.6 · 10^{18} 1.5 · 10^{20} \\\\ MoE [29] 26.03 40.56 2.0 · 10^{19} 1.2 · 10^{20} \\\\ Deep-Att + PosUnk Ensemble [35] 40.4 8.0 · 10^{20} \\\\ GNMT + RL Ensemble [34] 26.30 41.16 1.8 · 10^{20} 1.1 · 10^{21} \\\\ ConvS2S Ensemble [9] 26.36 41.29 7.7 · 10^{19} 1.2 · 10^{21} \\\\ Transformer (base model) 27.3 38.1 3.3 · 10^{18} \\\\ Transformer (big) 28.4 41.0 2.3 · 10^{19}"
+  },
+  {
+   "id": "p8-b06",
+   "page": 8,
+   "bbox": [
+    0.1765,
+    0.3419,
+    0.8256,
+    0.3977
+   ],
+   "type": "paragraph",
+   "text": "On the WMT 2014 English-to-French translation task, our big model achieves a BLEU score of 41.0, outperforming all of the previously published single models, at less than 1/4 the training cost of the previous state-of-the-art model. The Transformer (big) model trained for English-to-French used dropout rate Pdrop = 0.1, instead of 0.3.",
+   "section_path": [
+    "6 Results",
+    "6.1 Machine Translation"
+   ]
+  },
+  {
+   "id": "p8-b07",
+   "page": 8,
+   "bbox": [
+    0.1759,
+    0.4041,
+    0.8235,
+    0.4719
+   ],
+   "type": "paragraph",
+   "text": "For the base models, we used a single model obtained by averaging the last 5 checkpoints, which were written at 10-minute intervals. For the big models, we averaged the last 20 checkpoints. We used beam search with a beam size of 4 and length penalty α = 0.6 [34]. These hyperparameters were chosen after experimentation on the development set. We set the maximum output length during inference to input length + 50, but terminate early when possible [34].",
+   "section_path": [
+    "6 Results",
+    "6.1 Machine Translation"
+   ]
+  },
+  {
+   "id": "p8-b08",
+   "page": 8,
+   "bbox": [
+    0.176,
+    0.4801,
+    0.8235,
+    0.5339
+   ],
+   "type": "caption",
+   "text": "Table 2 summarizes our results and compares our translation quality and training costs to other model architectures from the literature. We estimate the number of ﬂoating point operations used to train a model by multiplying the training time, the number of GPUs used, and an estimate of the sustained single-precision ﬂoating-point capacity of each GPU 3.",
+   "section_path": [
+    "6 Results",
+    "6.1 Machine Translation"
+   ]
+  },
+  {
+   "id": "p8-b09",
+   "page": 8,
+   "bbox": [
+    0.1765,
+    0.5523,
+    0.3332,
+    0.5649
+   ],
+   "type": "heading",
+   "text": "6.2 Model Variations",
+   "level": 2,
+   "section_path": [
+    "6 Results",
+    "6.2 Model Variations"
+   ]
+  },
+  {
+   "id": "p8-b10",
+   "page": 8,
+   "bbox": [
+    0.176,
+    0.5776,
+    0.8235,
+    0.6316
+   ],
+   "type": "paragraph",
+   "text": "To evaluate the importance of different components of the Transformer, we varied our base model in different ways, measuring the change in performance on English-to-German translation on the development set, newstest2013. We used beam search as described in the previous section, but no checkpoint averaging. We present these results in Table 3.",
+   "section_path": [
+    "6 Results",
+    "6.2 Model Variations"
+   ]
+  },
+  {
+   "id": "p8-b11",
+   "page": 8,
+   "bbox": [
+    0.1765,
+    0.6398,
+    0.8256,
+    0.6799
+   ],
+   "type": "paragraph",
+   "text": "In Table 3 rows (A), we vary the number of attention heads and the attention key and value dimensions, keeping the amount of computation constant, as described in Section 3.2.2. While single-head attention is 0.9 BLEU worse than the best setting, quality also drops off with too many heads.",
+   "section_path": [
+    "6 Results",
+    "6.2 Model Variations"
+   ]
+  },
+  {
+   "id": "p8-b12",
+   "page": 8,
+   "bbox": [
+    0.1765,
+    0.6877,
+    0.8256,
+    0.7419
+   ],
+   "type": "paragraph",
+   "text": "In Table 3 rows (B), we observe that reducing the attention key size dk hurts model quality. This suggests that determining compatibility is not easy and that a more sophisticated compatibility function than dot product may be beneﬁcial. We further observe in rows (C) and (D) that, as expected, bigger models are better, and dropout is very helpful in avoiding over-ﬁtting.",
+   "section_path": [
+    "6 Results",
+    "6.2 Model Variations"
+   ]
+  },
+  {
+   "id": "p8-b13",
+   "page": 8,
+   "bbox": [
+    0.1765,
+    0.7603,
+    0.4183,
+    0.7728
+   ],
+   "type": "heading",
+   "text": "6.3 English Constituency Parsing",
+   "level": 2,
+   "section_path": [
+    "6 Results",
+    "6.3 English Constituency Parsing"
+   ]
+  },
+  {
+   "id": "p8-b14",
+   "page": 8,
+   "bbox": [
+    0.176,
+    0.7856,
+    0.8235,
+    0.8396
+   ],
+   "type": "paragraph",
+   "text": "To evaluate if the Transformer can generalize to other tasks we performed experiments on English constituency parsing. This task presents speciﬁc challenges: the output is subject to strong structural constraints and is signiﬁcantly longer than the input. Furthermore, RNN sequence-to-sequence models have not been able to attain state-of-the-art results in small-data regimes [33].",
+   "section_path": [
+    "6 Results",
+    "6.3 English Constituency Parsing"
+   ]
+  },
+  {
+   "id": "p8-b15",
+   "page": 8,
+   "bbox": [
+    0.1757,
+    0.8474,
+    0.8256,
+    0.8878
+   ],
+   "type": "paragraph",
+   "text": "We trained a 4-layer transformer with dmodel = 1024 on the Wall Street Journal (WSJ) portion of the Penn Treebank [23], about 40K training sentences. We also trained it in a semi-supervised setting, using the larger high-conﬁdence and BerkleyParser corpora from with approximately 17M sentences",
+   "section_path": [
+    "6 Results",
+    "6.3 English Constituency Parsing"
+   ]
+  },
+  {
+   "id": "p8-b16",
+   "page": 8,
+   "bbox": [
+    0.1971,
+    0.8986,
+    0.7418,
+    0.9118
+   ],
+   "type": "paragraph",
+   "text": "3We used values of 2.8, 3.7, 6.0 and 9.5 TFLOPS for K80, K40, M40 and P100, respectively.",
+   "section_path": [
+    "6 Results",
+    "6.3 English Constituency Parsing"
+   ]
+  },
+  {
+   "id": "p9-b01",
+   "page": 9,
+   "bbox": [
+    0.176,
+    0.0898,
+    0.8256,
+    0.1438
+   ],
+   "type": "caption",
+   "text": "Table 3: Variations on the Transformer architecture. Unlisted hyperparameter values are identical to those of the base model. All metrics are on the English-to-German translation development set, newstest2013. Listed perplexities are per-wordpiece, according to our byte-pair encoding, and should not be compared to per-word perplexities.",
+   "section_path": [
+    "6 Results",
+    "6.3 English Constituency Parsing"
+   ]
+  },
+  {
+   "id": "p9-b02",
+   "page": 9,
+   "bbox": [
+    0.1765,
+    0.164,
+    0.8313,
+    0.4691
+   ],
+   "type": "table",
+   "text": "train\nN d d h d d P ϵ\nmodel ff k v drop ls steps PPL BLEU params\n(dev) (dev) ×106\nbase 6 512 1024 8 64 64 0.1 0.1 100K 4.92 25.8 65\n(A) 1 512 512\n4 128 128\n16 32 32\n32 16 16 5.29 24.9 65\n5.00 25.5 65\n4.91 25.8 65\n5.01 25.4 65\n(B) 16\n32 5.16 25.1 58\n5.01 25.4 60\n(C) 2\n4\n8\n256 32 32\n1024 128 128\n1024\n4096 6.11 23.7 36\n5.19 25.3 50\n4.88 25.5 80\n5.75 24.5 28\n4.66 26.0 168\n5.12 25.4 53\n4.75 26.2 90\n(D) 0.0\n0.2\n0.0\n0.2 5.77 24.6 65\n4.95 25.5 65\n4.67 25.3 65\n5.47 25.7 65\nbig 6 1024 4096 16 0.3 300K 4.33 26.4 213",
+   "section_path": [
+    "6 Results",
+    "6.3 English Constituency Parsing"
+   ],
+   "table_md": "|  | train N d d h d d P ϵ model ff k v drop ls steps | PPL BLEU params (dev) (dev) ×106 |\n| --- | --- | --- |\n| base | 6 512 1024 8 64 64 0.1 0.1 100K | 4.92 25.8 65 |\n| (A) | 1 512 512 4 128 128 16 32 32 32 16 16 | 5.29 24.9 65 5.00 25.5 65 4.91 25.8 65 5.01 25.4 65 |\n| (B) | 16 32 | 5.16 25.1 58 5.01 25.4 60 |\n| (C) | 2 4 8 256 32 32 1024 128 128 1024 4096 | 6.11 23.7 36 5.19 25.3 50 4.88 25.5 80 5.75 24.5 28 4.66 26.0 168 5.12 25.4 53 4.75 26.2 90 |\n| (D) | 0.0 0.2 0.0 0.2 | 5.77 24.6 65 4.95 25.5 65 4.67 25.3 65 5.47 25.7 65 |\n| big | 6 1024 4096 16 0.3 300K | 4.33 26.4 213 |\n"
+  },
+  {
+   "id": "p9-b03",
+   "page": 9,
+   "bbox": [
+    0.176,
+    0.4937,
+    0.8235,
+    0.52
+   ],
+   "type": "caption",
+   "text": "Table 4: The Transformer generalizes well to English constituency parsing (Results are on Section 23 of WSJ)",
+   "section_path": [
+    "6 Results",
+    "6.3 English Constituency Parsing"
+   ]
+  },
+  {
+   "id": "p9-b04",
+   "page": 9,
+   "bbox": [
+    0.237,
+    0.5224,
+    0.763,
+    0.6886
+   ],
+   "type": "table",
+   "text": "Parser Training WSJ 23 F1\nVinyals & Kaiser el al. (2014) [33]\nPetrov et al. (2006) [27]\nZhu et al. (2013) [36]\nDyer et al. (2016) [8] WSJ only, discriminative\nWSJ only, discriminative\nWSJ only, discriminative\nWSJ only, discriminative 88.3\n90.4\n90.4\n91.7\nTransformer (4 layers) WSJ only, discriminative 91.3\nZhu et al. (2013) [36]\nHuang & Harper (2009) [13]\nMcClosky et al. (2006) [24]\nVinyals & Kaiser el al. (2014) [33] semi-supervised\nsemi-supervised\nsemi-supervised\nsemi-supervised 91.3\n91.3\n92.1\n92.1\nTransformer (4 layers) semi-supervised 92.7\nDyer et al. (2016) [8] generative 93.3",
+   "section_path": [
+    "6 Results",
+    "6.3 English Constituency Parsing"
+   ],
+   "table_md": "| Parser | Training | WSJ 23 F1 |\n| --- | --- | --- |\n| Vinyals & Kaiser el al. (2014) [33] Petrov et al. (2006) [27] Zhu et al. (2013) [36] Dyer et al. (2016) [8] | WSJ only, discriminative WSJ only, discriminative WSJ only, discriminative WSJ only, discriminative | 88.3 90.4 90.4 91.7 |\n| Transformer (4 layers) | WSJ only, discriminative | 91.3 |\n| Zhu et al. (2013) [36] Huang & Harper (2009) [13] McClosky et al. (2006) [24] Vinyals & Kaiser el al. (2014) [33] | semi-supervised semi-supervised semi-supervised semi-supervised | 91.3 91.3 92.1 92.1 |\n| Transformer (4 layers) | semi-supervised | 92.7 |\n| Dyer et al. (2016) [8] | generative | 93.3 |\n"
+  },
+  {
+   "id": "p9-b05",
+   "page": 9,
+   "bbox": [
+    0.1765,
+    0.7273,
+    0.8235,
+    0.7536
+   ],
+   "type": "paragraph",
+   "text": "[33]. We used a vocabulary of 16K tokens for the WSJ only setting and a vocabulary of 32K tokens for the semi-supervised setting.",
+   "section_path": [
+    "6 Results",
+    "6.3 English Constituency Parsing"
+   ]
+  },
+  {
+   "id": "p9-b06",
+   "page": 9,
+   "bbox": [
+    0.1757,
+    0.7618,
+    0.8239,
+    0.8294
+   ],
+   "type": "paragraph",
+   "text": "We performed only a small number of experiments to select the dropout, both attention and residual (section 5.4), learning rates and beam size on the Section 22 development set, all other parameters remained unchanged from the English-to-German base translation model. During inference, we increased the maximum output length to input length + 300. We used a beam size of 21 and α = 0.3 for both WSJ only and the semi-supervised setting.",
+   "section_path": [
+    "6 Results",
+    "6.3 English Constituency Parsing"
+   ]
+  },
+  {
+   "id": "p9-b07",
+   "page": 9,
+   "bbox": [
+    0.1765,
+    0.8374,
+    0.8262,
+    0.8777
+   ],
+   "type": "paragraph",
+   "text": "Our results in Table 4 show that despite the lack of task-speciﬁc tuning our model performs surprisingly well, yielding better results than all previously reported models with the exception of the Recurrent Neural Network Grammar [8].",
+   "section_path": [
+    "6 Results",
+    "6.3 English Constituency Parsing"
+   ]
+  },
+  {
+   "id": "p9-b08",
+   "page": 9,
+   "bbox": [
+    0.1765,
+    0.8857,
+    0.8262,
+    0.9121
+   ],
+   "type": "paragraph",
+   "text": "In contrast to RNN sequence-to-sequence models [33], the Transformer outperforms the Berkeley- Parser [27] even when training only on the WSJ training set of 40K sentences.",
+   "section_path": [
+    "6 Results",
+    "6.3 English Constituency Parsing"
+   ]
+  },
+  {
+   "id": "p10-b01",
+   "page": 10,
+   "bbox": [
+    0.1765,
+    0.0919,
+    0.2991,
+    0.107
+   ],
+   "type": "heading",
+   "text": "7 Conclusion",
+   "level": 1,
+   "section_path": [
+    "7 Conclusion"
+   ]
+  },
+  {
+   "id": "p10-b02",
+   "page": 10,
+   "bbox": [
+    0.1765,
+    0.1232,
+    0.8235,
+    0.1633
+   ],
+   "type": "paragraph",
+   "text": "In this work, we presented the Transformer, the ﬁrst sequence transduction model based entirely on attention, replacing the recurrent layers most commonly used in encoder-decoder architectures with multi-headed self-attention.",
+   "section_path": [
+    "7 Conclusion"
+   ]
+  },
+  {
+   "id": "p10-b03",
+   "page": 10,
+   "bbox": [
+    0.1765,
+    0.1713,
+    0.8235,
+    0.2391
+   ],
+   "type": "paragraph",
+   "text": "For translation tasks, the Transformer can be trained signiﬁcantly faster than architectures based on recurrent or convolutional layers. On both WMT 2014 English-to-German and WMT 2014 English-to-French translation tasks, we achieve a new state of the art. In the former task our best model outperforms even all previously reported ensembles. We also provide an indication of the broader applicability of our models through experiments on English constituency parsing.",
+   "section_path": [
+    "7 Conclusion"
+   ]
+  },
+  {
+   "id": "p10-b04",
+   "page": 10,
+   "bbox": [
+    0.1757,
+    0.2472,
+    0.8262,
+    0.3011
+   ],
+   "type": "paragraph",
+   "text": "We are excited about the future of attention-based models and plan to apply them to other tasks. We plan to extend the Transformer to problems involving input and output modalities other than text and to investigate local, restricted attention mechanisms to efﬁciently handle large inputs and outputs such as images, audio and video. Making generation less sequential is another research goals of ours.",
+   "section_path": [
+    "7 Conclusion"
+   ]
+  },
+  {
+   "id": "p10-b05",
+   "page": 10,
+   "bbox": [
+    0.1757,
+    0.3092,
+    0.727,
+    0.3218
+   ],
+   "type": "paragraph",
+   "text": "We intend to make the code we used to train and evaluate our models available soon.",
+   "section_path": [
+    "7 Conclusion"
+   ]
+  },
+  {
+   "id": "p10-b06",
+   "page": 10,
+   "bbox": [
+    0.1765,
+    0.3431,
+    0.2672,
+    0.3582
+   ],
+   "type": "heading",
+   "text": "References",
+   "level": 1,
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b07",
+   "page": 10,
+   "bbox": [
+    0.1846,
+    0.3673,
+    0.8235,
+    0.38
+   ],
+   "type": "reference",
+   "text": "[1] Jimmy Lei Ba, Jamie Ryan Kiros, and Geoffrey E Hinton. Layer normalization. arXiv preprint",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b08",
+   "page": 10,
+   "bbox": [
+    0.2117,
+    0.381,
+    0.3754,
+    0.3938
+   ],
+   "type": "reference",
+   "text": "arXiv:1607.06450, 2016.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b09",
+   "page": 10,
+   "bbox": [
+    0.1846,
+    0.4052,
+    0.8241,
+    0.4178
+   ],
+   "type": "reference",
+   "text": "[2] Dzmitry Bahdanau, Kyunghyun Cho, and Yoshua Bengio. Neural machine translation by jointly",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b10",
+   "page": 10,
+   "bbox": [
+    0.2117,
+    0.4188,
+    0.6024,
+    0.4316
+   ],
+   "type": "reference",
+   "text": "learning to align and translate. CoRR, abs/1409.0473, 2014.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b11",
+   "page": 10,
+   "bbox": [
+    0.1846,
+    0.443,
+    0.8235,
+    0.4555
+   ],
+   "type": "reference",
+   "text": "[3] Denny Britz, Anna Goldie, Minh-Thang Luong, and Quoc V. Le. Massive exploration of neural",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b12",
+   "page": 10,
+   "bbox": [
+    0.2117,
+    0.4565,
+    0.6322,
+    0.4693
+   ],
+   "type": "reference",
+   "text": "machine translation architectures. CoRR, abs/1703.03906, 2017.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b13",
+   "page": 10,
+   "bbox": [
+    0.1846,
+    0.4807,
+    0.8235,
+    0.4933
+   ],
+   "type": "reference",
+   "text": "[4] Jianpeng Cheng, Li Dong, and Mirella Lapata. Long short-term memory-networks for machine",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b14",
+   "page": 10,
+   "bbox": [
+    0.2117,
+    0.4943,
+    0.5312,
+    0.5071
+   ],
+   "type": "reference",
+   "text": "reading. arXiv preprint arXiv:1601.06733, 2016.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b15",
+   "page": 10,
+   "bbox": [
+    0.1846,
+    0.5184,
+    0.8256,
+    0.5311
+   ],
+   "type": "reference",
+   "text": "[5] Kyunghyun Cho, Bart van Merrienboer, Caglar Gulcehre, Fethi Bougares, Holger Schwenk,",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b16",
+   "page": 10,
+   "bbox": [
+    0.2117,
+    0.5322,
+    0.8235,
+    0.5586
+   ],
+   "type": "reference",
+   "text": "and Yoshua Bengio. Learning phrase representations using rnn encoder-decoder for statistical machine translation. CoRR, abs/1406.1078, 2014.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b17",
+   "page": 10,
+   "bbox": [
+    0.1846,
+    0.5697,
+    0.8235,
+    0.5826
+   ],
+   "type": "reference",
+   "text": "[6] Francois Chollet. Xception: Deep learning with depthwise separable convolutions. arXiv",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b18",
+   "page": 10,
+   "bbox": [
+    0.2117,
+    0.5835,
+    0.4322,
+    0.5963
+   ],
+   "type": "reference",
+   "text": "preprint arXiv:1610.02357, 2016.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b19",
+   "page": 10,
+   "bbox": [
+    0.1846,
+    0.6077,
+    0.8235,
+    0.6203
+   ],
+   "type": "reference",
+   "text": "[7] Junyoung Chung, Çaglar Gülçehre, Kyunghyun Cho, and Yoshua Bengio. Empirical evaluation",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b20",
+   "page": 10,
+   "bbox": [
+    0.2117,
+    0.6213,
+    0.7825,
+    0.6341
+   ],
+   "type": "reference",
+   "text": "of gated recurrent neural networks on sequence modeling. CoRR, abs/1412.3555, 2014.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b21",
+   "page": 10,
+   "bbox": [
+    0.1846,
+    0.6454,
+    0.8235,
+    0.6581
+   ],
+   "type": "reference",
+   "text": "[8] Chris Dyer, Adhiguna Kuncoro, Miguel Ballesteros, and Noah A. Smith. Recurrent neural",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b22",
+   "page": 10,
+   "bbox": [
+    0.2117,
+    0.659,
+    0.5119,
+    0.6718
+   ],
+   "type": "reference",
+   "text": "network grammars. In Proc. of NAACL, 2016.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b23",
+   "page": 10,
+   "bbox": [
+    0.1846,
+    0.6832,
+    0.8262,
+    0.6958
+   ],
+   "type": "reference",
+   "text": "[9] Jonas Gehring, Michael Auli, David Grangier, Denis Yarats, and Yann N. Dauphin. Convolu-",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b24",
+   "page": 10,
+   "bbox": [
+    0.2117,
+    0.6968,
+    0.7365,
+    0.7096
+   ],
+   "type": "reference",
+   "text": "tional sequence to sequence learning. arXiv preprint arXiv:1705.03122v2, 2017.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b25",
+   "page": 10,
+   "bbox": [
+    0.1765,
+    0.7207,
+    0.8235,
+    0.7474
+   ],
+   "type": "reference",
+   "text": "[10] Alex Graves. Generating sequences with recurrent neural networks. arXiv preprint arXiv:1308.0850, 2013.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b26",
+   "page": 10,
+   "bbox": [
+    0.1765,
+    0.7587,
+    0.8235,
+    0.7714
+   ],
+   "type": "reference",
+   "text": "[11] Sepp Hochreiter, Yoshua Bengio, Paolo Frasconi, and Jürgen Schmidhuber. Gradient ﬂow in",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b27",
+   "page": 10,
+   "bbox": [
+    0.2117,
+    0.7725,
+    0.6734,
+    0.7851
+   ],
+   "type": "reference",
+   "text": "recurrent nets: the difﬁculty of learning long-term dependencies, 2001.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b28",
+   "page": 10,
+   "bbox": [
+    0.1765,
+    0.7962,
+    0.8256,
+    0.8091
+   ],
+   "type": "reference",
+   "text": "[12] Sepp Hochreiter and Jürgen Schmidhuber. Long short-term memory. Neural computation,",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b29",
+   "page": 10,
+   "bbox": [
+    0.2117,
+    0.8103,
+    0.3614,
+    0.8229
+   ],
+   "type": "reference",
+   "text": "9(8):1735–1780, 1997.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b30",
+   "page": 10,
+   "bbox": [
+    0.1765,
+    0.8342,
+    0.8235,
+    0.8469
+   ],
+   "type": "reference",
+   "text": "[13] Zhongqiang Huang and Mary Harper. Self-training PCFG grammars with latent annotations",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b31",
+   "page": 10,
+   "bbox": [
+    0.2113,
+    0.8477,
+    0.8235,
+    0.8744
+   ],
+   "type": "reference",
+   "text": "across languages. In Proceedings of the 2009 Conference on Empirical Methods in Natural Language Processing, pages 832–841. ACL, August 2009.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p10-b32",
+   "page": 10,
+   "bbox": [
+    0.1765,
+    0.8857,
+    0.8235,
+    0.8984
+   ],
+   "type": "reference",
+   "text": "[14] Rafal Jozefowicz, Oriol Vinyals, Mike Schuster, Noam Shazeer, and Yonghui Wu. Exploring",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b01",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.0938,
+    0.8235,
+    0.1065
+   ],
+   "type": "reference",
+   "text": "[15] Łukasz Kaiser and Ilya Sutskever. Neural GPUs learn algorithms. In International Conference",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b02",
+   "page": 11,
+   "bbox": [
+    0.2117,
+    0.1075,
+    0.4951,
+    0.1203
+   ],
+   "type": "reference",
+   "text": "on Learning Representations (ICLR), 2016.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b03",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.1333,
+    0.8262,
+    0.1459
+   ],
+   "type": "reference",
+   "text": "[16] Nal Kalchbrenner, Lasse Espeholt, Karen Simonyan, Aaron van den Oord, Alex Graves, and Ko-",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b04",
+   "page": 11,
+   "bbox": [
+    0.2117,
+    0.147,
+    0.8256,
+    0.1735
+   ],
+   "type": "reference",
+   "text": "ray Kavukcuoglu. Neural machine translation in linear time. arXiv preprint arXiv:1610.10099v2, 2017.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b05",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.1865,
+    0.8264,
+    0.1991
+   ],
+   "type": "reference",
+   "text": "[17] Yoon Kim, Carl Denton, Luong Hoang, and Alexander M. Rush. Structured attention networks.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b06",
+   "page": 11,
+   "bbox": [
+    0.2117,
+    0.2001,
+    0.631,
+    0.2129
+   ],
+   "type": "reference",
+   "text": "In International Conference on Learning Representations, 2017.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b07",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.2258,
+    0.8264,
+    0.2385
+   ],
+   "type": "reference",
+   "text": "[18] Diederik Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In ICLR, 2015.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b08",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.2514,
+    0.8235,
+    0.2641
+   ],
+   "type": "reference",
+   "text": "[19] Oleksii Kuchaiev and Boris Ginsburg. Factorization tricks for LSTM networks. arXiv preprint",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b09",
+   "page": 11,
+   "bbox": [
+    0.2117,
+    0.2651,
+    0.3754,
+    0.2779
+   ],
+   "type": "reference",
+   "text": "arXiv:1703.10722, 2017.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b10",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.2908,
+    0.8235,
+    0.3036
+   ],
+   "type": "reference",
+   "text": "[20] Zhouhan Lin, Minwei Feng, Cicero Nogueira dos Santos, Mo Yu, Bing Xiang, Bowen",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b11",
+   "page": 11,
+   "bbox": [
+    0.2117,
+    0.3044,
+    0.8235,
+    0.3311
+   ],
+   "type": "reference",
+   "text": "Zhou, and Yoshua Bengio. A structured self-attentive sentence embedding. arXiv preprint arXiv:1703.03130, 2017.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b12",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.3438,
+    0.8235,
+    0.3567
+   ],
+   "type": "reference",
+   "text": "[21] Samy Bengio Łukasz Kaiser. Can active memory replace attention? In Advances in Neural",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b13",
+   "page": 11,
+   "bbox": [
+    0.2115,
+    0.3577,
+    0.5186,
+    0.3705
+   ],
+   "type": "reference",
+   "text": "Information Processing Systems, (NIPS), 2016.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b14",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.3835,
+    0.8262,
+    0.3961
+   ],
+   "type": "reference",
+   "text": "[22] Minh-Thang Luong, Hieu Pham, and Christopher D Manning. Effective approaches to attention-",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b15",
+   "page": 11,
+   "bbox": [
+    0.2117,
+    0.3971,
+    0.6962,
+    0.4099
+   ],
+   "type": "reference",
+   "text": "based neural machine translation. arXiv preprint arXiv:1508.04025, 2015.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b16",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.4229,
+    0.8235,
+    0.4355
+   ],
+   "type": "reference",
+   "text": "[23] Mitchell P Marcus, Mary Ann Marcinkiewicz, and Beatrice Santorini. Building a large annotated",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b17",
+   "page": 11,
+   "bbox": [
+    0.2117,
+    0.4365,
+    0.7829,
+    0.4493
+   ],
+   "type": "reference",
+   "text": "corpus of english: The penn treebank. Computational linguistics, 19(2):313–330, 1993.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b18",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.4623,
+    0.8235,
+    0.4749
+   ],
+   "type": "reference",
+   "text": "[24] David McClosky, Eugene Charniak, and Mark Johnson. Effective self-training for parsing. In",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b19",
+   "page": 11,
+   "bbox": [
+    0.2112,
+    0.4759,
+    0.8256,
+    0.5024
+   ],
+   "type": "reference",
+   "text": "Proceedings of the Human Language Technology Conference of the NAACL, Main Conference, pages 152–159. ACL, June 2006.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b20",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.5155,
+    0.8235,
+    0.5281
+   ],
+   "type": "reference",
+   "text": "[25] Ankur Parikh, Oscar Täckström, Dipanjan Das, and Jakob Uszkoreit. A decomposable attention",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b21",
+   "page": 11,
+   "bbox": [
+    0.2117,
+    0.529,
+    0.6658,
+    0.5418
+   ],
+   "type": "reference",
+   "text": "model. In Empirical Methods in Natural Language Processing, 2016.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b22",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.5549,
+    0.8235,
+    0.5675
+   ],
+   "type": "reference",
+   "text": "[26] Romain Paulus, Caiming Xiong, and Richard Socher. A deep reinforced model for abstractive",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b23",
+   "page": 11,
+   "bbox": [
+    0.2117,
+    0.5684,
+    0.5792,
+    0.5812
+   ],
+   "type": "reference",
+   "text": "summarization. arXiv preprint arXiv:1705.04304, 2017.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b24",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.5942,
+    0.8256,
+    0.6069
+   ],
+   "type": "reference",
+   "text": "[27] Slav Petrov, Leon Barrett, Romain Thibaux, and Dan Klein. Learning accurate, compact,",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b25",
+   "page": 11,
+   "bbox": [
+    0.2112,
+    0.6077,
+    0.8241,
+    0.6482
+   ],
+   "type": "reference",
+   "text": "and interpretable tree annotation. In Proceedings of the 21st International Conference on Computational Linguistics and 44th Annual Meeting of the ACL, pages 433–440. ACL, July 2006.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b26",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.6612,
+    0.8235,
+    0.6738
+   ],
+   "type": "reference",
+   "text": "[28] Rico Sennrich, Barry Haddow, and Alexandra Birch. Neural machine translation of rare words",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b27",
+   "page": 11,
+   "bbox": [
+    0.2111,
+    0.6748,
+    0.6065,
+    0.6876
+   ],
+   "type": "reference",
+   "text": "with subword units. arXiv preprint arXiv:1508.07909, 2015.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b28",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.7006,
+    0.8256,
+    0.7132
+   ],
+   "type": "reference",
+   "text": "[29] Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, Andy Davis, Quoc Le, Geoffrey Hinton,",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b29",
+   "page": 11,
+   "bbox": [
+    0.2117,
+    0.7143,
+    0.8235,
+    0.7408
+   ],
+   "type": "reference",
+   "text": "and Jeff Dean. Outrageously large neural networks: The sparsely-gated mixture-of-experts layer. arXiv preprint arXiv:1701.06538, 2017.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b30",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.7538,
+    0.8262,
+    0.7664
+   ],
+   "type": "reference",
+   "text": "[30] Nitish Srivastava, Geoffrey E Hinton, Alex Krizhevsky, Ilya Sutskever, and Ruslan Salakhutdi-",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b31",
+   "page": 11,
+   "bbox": [
+    0.2113,
+    0.7673,
+    0.8235,
+    0.7939
+   ],
+   "type": "reference",
+   "text": "nov. Dropout: a simple way to prevent neural networks from overﬁtting. Journal of Machine Learning Research, 15(1):1929–1958, 2014.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b32",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.8069,
+    0.8235,
+    0.8196
+   ],
+   "type": "reference",
+   "text": "[31] Ilya Sutskever, Oriol Vinyals, and Quoc VV Le. Sequence to sequence learning with neural",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b33",
+   "page": 11,
+   "bbox": [
+    0.2117,
+    0.8205,
+    0.8074,
+    0.8333
+   ],
+   "type": "reference",
+   "text": "networks. In Advances in Neural Information Processing Systems, pages 3104–3112, 2014.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b34",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.8463,
+    0.8264,
+    0.859
+   ],
+   "type": "reference",
+   "text": "[32] Christian Szegedy, Vincent Vanhoucke, Sergey Ioffe, Jonathon Shlens, and Zbigniew Wojna.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b35",
+   "page": 11,
+   "bbox": [
+    0.2117,
+    0.8599,
+    0.7914,
+    0.8727
+   ],
+   "type": "reference",
+   "text": "Rethinking the inception architecture for computer vision. CoRR, abs/1512.00567, 2015.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b36",
+   "page": 11,
+   "bbox": [
+    0.1765,
+    0.8857,
+    0.8235,
+    0.8984
+   ],
+   "type": "reference",
+   "text": "[33] Vinyals & Kaiser, Koo, Petrov, Sutskever, and Hinton. Grammar as a foreign language. In",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p11-b37",
+   "page": 11,
+   "bbox": [
+    0.2107,
+    0.8993,
+    0.5968,
+    0.9121
+   ],
+   "type": "reference",
+   "text": "Advances in Neural Information Processing Systems, 2015.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p12-b01",
+   "page": 12,
+   "bbox": [
+    0.1765,
+    0.0939,
+    0.8235,
+    0.1066
+   ],
+   "type": "reference",
+   "text": "[34] Yonghui Wu, Mike Schuster, Zhifeng Chen, Quoc V Le, Mohammad Norouzi, Wolfgang",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p12-b02",
+   "page": 12,
+   "bbox": [
+    0.2117,
+    0.1078,
+    0.8235,
+    0.1478
+   ],
+   "type": "reference",
+   "text": "Macherey, Maxim Krikun, Yuan Cao, Qin Gao, Klaus Macherey, et al. Google’s neural machine translation system: Bridging the gap between human and machine translation. arXiv preprint arXiv:1609.08144, 2016.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p12-b03",
+   "page": 12,
+   "bbox": [
+    0.1765,
+    0.4953,
+    0.8235,
+    0.508
+   ],
+   "type": "reference",
+   "text": "[35] Jie Zhou, Ying Cao, Xuguang Wang, Peng Li, and Wei Xu. Deep recurrent models with",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p12-b04",
+   "page": 12,
+   "bbox": [
+    0.2117,
+    0.5089,
+    0.7788,
+    0.5217
+   ],
+   "type": "reference",
+   "text": "fast-forward connections for neural machine translation. CoRR, abs/1606.04199, 2016.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p12-b05",
+   "page": 12,
+   "bbox": [
+    0.1765,
+    0.8692,
+    0.8235,
+    0.8819
+   ],
+   "type": "reference",
+   "text": "[36] Muhua Zhu, Yue Zhang, Wenliang Chen, Min Zhang, and Jingbo Zhu. Fast and accurate",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p12-b06",
+   "page": 12,
+   "bbox": [
+    0.2105,
+    0.8829,
+    0.8235,
+    0.9094
+   ],
+   "type": "reference",
+   "text": "shift-reduce constituent parsing. In Proceedings of the 51st Annual Meeting of the ACL (Volume 1: Long Papers), pages 434–443. ACL, August 2013.",
+   "section_path": [
+    "References"
+   ]
+  },
+  {
+   "id": "p13-b01",
+   "page": 13,
+   "bbox": [
+    0.1765,
+    0.0919,
+    0.3771,
+    0.107
+   ],
+   "type": "heading",
+   "text": "Attention Visualizations",
+   "level": 1,
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p13-b02",
+   "page": 13,
+   "bbox": [
+    0.3289,
+    0.1459,
+    0.4984,
+    0.2026
+   ],
+   "type": "formula",
+   "text": "majority of American governments have passed new laws since",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "majority \\\\ of \\\\ American \\\\ governments \\\\ have \\\\ passed \\\\ new \\\\ laws \\\\ since"
+  },
+  {
+   "id": "p13-b03",
+   "page": 13,
+   "bbox": [
+    0.2145,
+    0.1819,
+    0.3077,
+    0.2026
+   ],
+   "type": "formula",
+   "text": "is in this spirit that",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "is \\\\ in \\\\ this \\\\ spirit \\\\ that"
+  },
+  {
+   "id": "p13-b04",
+   "page": 13,
+   "bbox": [
+    0.3099,
+    0.1972,
+    0.3268,
+    0.2026
+   ],
+   "type": "paragraph",
+   "text": "a",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p13-b05",
+   "page": 13,
+   "bbox": [
+    0.1955,
+    0.1972,
+    0.2124,
+    0.2026
+   ],
+   "type": "paragraph",
+   "text": "It",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p13-b06",
+   "page": 13,
+   "bbox": [
+    0.1955,
+    0.3048,
+    0.2124,
+    0.3102
+   ],
+   "type": "paragraph",
+   "text": "It",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p13-b07",
+   "page": 13,
+   "bbox": [
+    0.2145,
+    0.3048,
+    0.3077,
+    0.3255
+   ],
+   "type": "formula",
+   "text": "is in this spirit that",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "is \\\\ in \\\\ this \\\\ spirit \\\\ that"
+  },
+  {
+   "id": "p13-b08",
+   "page": 13,
+   "bbox": [
+    0.3289,
+    0.3048,
+    0.4984,
+    0.3616
+   ],
+   "type": "formula",
+   "text": "majority of American governments have passed new laws since",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "majority \\\\ of \\\\ American \\\\ governments \\\\ have \\\\ passed \\\\ new \\\\ laws \\\\ since"
+  },
+  {
+   "id": "p13-b09",
+   "page": 13,
+   "bbox": [
+    0.3099,
+    0.3048,
+    0.3268,
+    0.3102
+   ],
+   "type": "paragraph",
+   "text": "a",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p13-b10",
+   "page": 13,
+   "bbox": [
+    0.5196,
+    0.1541,
+    0.67,
+    0.2026
+   ],
+   "type": "formula",
+   "text": "making the registration or voting process more difficult",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "making \\\\ the \\\\ registration \\\\ or \\\\ voting \\\\ process \\\\ more \\\\ difficult"
+  },
+  {
+   "id": "p13-b11",
+   "page": 13,
+   "bbox": [
+    0.6912,
+    0.1704,
+    0.8225,
+    0.2026
+   ],
+   "type": "formula",
+   "text": "<EOS> <pad> <pad> <pad> <pad> <pad> <pad>",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "<EOS> \\\\ <pad> \\\\ <pad> \\\\ <pad> \\\\ <pad> \\\\ <pad> \\\\ <pad>"
+  },
+  {
+   "id": "p13-b12",
+   "page": 13,
+   "bbox": [
+    0.5005,
+    0.1808,
+    0.5174,
+    0.2026
+   ],
+   "type": "paragraph",
+   "text": "2009",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p13-b13",
+   "page": 13,
+   "bbox": [
+    0.6721,
+    0.1999,
+    0.689,
+    0.2026
+   ],
+   "type": "paragraph",
+   "text": ".",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p13-b14",
+   "page": 13,
+   "bbox": [
+    0.6721,
+    0.3048,
+    0.689,
+    0.3075
+   ],
+   "type": "paragraph",
+   "text": ".",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p13-b15",
+   "page": 13,
+   "bbox": [
+    0.6912,
+    0.3048,
+    0.8225,
+    0.337
+   ],
+   "type": "formula",
+   "text": "<EOS> <pad> <pad> <pad> <pad> <pad> <pad>",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "<EOS> \\\\ <pad> \\\\ <pad> \\\\ <pad> \\\\ <pad> \\\\ <pad> \\\\ <pad>"
+  },
+  {
+   "id": "p13-b16",
+   "page": 13,
+   "bbox": [
+    0.5196,
+    0.3048,
+    0.67,
+    0.3534
+   ],
+   "type": "formula",
+   "text": "making the registration or voting process more difficult",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "making \\\\ the \\\\ registration \\\\ or \\\\ voting \\\\ process \\\\ more \\\\ difficult"
+  },
+  {
+   "id": "p13-b17",
+   "page": 13,
+   "bbox": [
+    0.5005,
+    0.3048,
+    0.5174,
+    0.3266
+   ],
+   "type": "paragraph",
+   "text": "2009",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p13-b18",
+   "page": 13,
+   "bbox": [
+    0.1765,
+    0.3943,
+    0.8238,
+    0.4483
+   ],
+   "type": "caption",
+   "text": "Figure 3: An example of the attention mechanism following long-distance dependencies in the encoder self-attention in layer 5 of 6. Many of the attention heads attend to a distant dependency of the verb ‘making’, completing the phrase ‘making...more difﬁcult’. Attentions here shown only for the word ‘making’. Different colors represent different heads. Best viewed in color.",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b01",
+   "page": 14,
+   "bbox": [
+    0.4048,
+    0.2155,
+    0.425,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "application",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b02",
+   "page": 14,
+   "bbox": [
+    0.3134,
+    0.2358,
+    0.3337,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "perfect",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b03",
+   "page": 14,
+   "bbox": [
+    0.4276,
+    0.2371,
+    0.4479,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "should",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b04",
+   "page": 14,
+   "bbox": [
+    0.2677,
+    0.2423,
+    0.288,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "never",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b05",
+   "page": 14,
+   "bbox": [
+    0.2221,
+    0.2502,
+    0.2423,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "Law",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b06",
+   "page": 14,
+   "bbox": [
+    0.1992,
+    0.2515,
+    0.2195,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "The",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b07",
+   "page": 14,
+   "bbox": [
+    0.4733,
+    0.2534,
+    0.4935,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "just",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b08",
+   "page": 14,
+   "bbox": [
+    0.3591,
+    0.2554,
+    0.3793,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "but",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b09",
+   "page": 14,
+   "bbox": [
+    0.2449,
+    0.2554,
+    0.2652,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "will",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b10",
+   "page": 14,
+   "bbox": [
+    0.2906,
+    0.2587,
+    0.3108,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b11",
+   "page": 14,
+   "bbox": [
+    0.4504,
+    0.2587,
+    0.4707,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b12",
+   "page": 14,
+   "bbox": [
+    0.3819,
+    0.26,
+    0.4022,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "its",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b13",
+   "page": 14,
+   "bbox": [
+    0.4961,
+    0.2678,
+    0.5164,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "-",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b14",
+   "page": 14,
+   "bbox": [
+    0.3362,
+    0.2685,
+    0.3565,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b15",
+   "page": 14,
+   "bbox": [
+    0.3362,
+    0.3941,
+    0.3565,
+    0.3974
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b16",
+   "page": 14,
+   "bbox": [
+    0.3819,
+    0.3941,
+    0.4022,
+    0.4059
+   ],
+   "type": "paragraph",
+   "text": "its",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b17",
+   "page": 14,
+   "bbox": [
+    0.4961,
+    0.3941,
+    0.5164,
+    0.398
+   ],
+   "type": "paragraph",
+   "text": "-",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b18",
+   "page": 14,
+   "bbox": [
+    0.1992,
+    0.3941,
+    0.2195,
+    0.4144
+   ],
+   "type": "paragraph",
+   "text": "The",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b19",
+   "page": 14,
+   "bbox": [
+    0.3134,
+    0.3941,
+    0.3337,
+    0.4301
+   ],
+   "type": "paragraph",
+   "text": "perfect",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b20",
+   "page": 14,
+   "bbox": [
+    0.3591,
+    0.3941,
+    0.3793,
+    0.4104
+   ],
+   "type": "paragraph",
+   "text": "but",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b21",
+   "page": 14,
+   "bbox": [
+    0.4733,
+    0.3941,
+    0.4935,
+    0.4124
+   ],
+   "type": "paragraph",
+   "text": "just",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b22",
+   "page": 14,
+   "bbox": [
+    0.2906,
+    0.3941,
+    0.3108,
+    0.4072
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b23",
+   "page": 14,
+   "bbox": [
+    0.4504,
+    0.3941,
+    0.4707,
+    0.4072
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b24",
+   "page": 14,
+   "bbox": [
+    0.2221,
+    0.3941,
+    0.2423,
+    0.4157
+   ],
+   "type": "paragraph",
+   "text": "Law",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b25",
+   "page": 14,
+   "bbox": [
+    0.2677,
+    0.3941,
+    0.288,
+    0.4235
+   ],
+   "type": "paragraph",
+   "text": "never",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b26",
+   "page": 14,
+   "bbox": [
+    0.4276,
+    0.3941,
+    0.4479,
+    0.4288
+   ],
+   "type": "paragraph",
+   "text": "should",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b27",
+   "page": 14,
+   "bbox": [
+    0.2449,
+    0.3941,
+    0.2652,
+    0.4104
+   ],
+   "type": "paragraph",
+   "text": "will",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b28",
+   "page": 14,
+   "bbox": [
+    0.4048,
+    0.3941,
+    0.425,
+    0.4503
+   ],
+   "type": "paragraph",
+   "text": "application",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b29",
+   "page": 14,
+   "bbox": [
+    0.4073,
+    0.4892,
+    0.4278,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "application",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b30",
+   "page": 14,
+   "bbox": [
+    0.3149,
+    0.5097,
+    0.3354,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "perfect",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b31",
+   "page": 14,
+   "bbox": [
+    0.4304,
+    0.511,
+    0.4509,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "should",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b32",
+   "page": 14,
+   "bbox": [
+    0.2688,
+    0.5163,
+    0.2892,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "never",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b33",
+   "page": 14,
+   "bbox": [
+    0.2226,
+    0.5242,
+    0.2431,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "Law",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b34",
+   "page": 14,
+   "bbox": [
+    0.1995,
+    0.5255,
+    0.22,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "The",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b35",
+   "page": 14,
+   "bbox": [
+    0.4766,
+    0.5275,
+    0.4971,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "just",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b36",
+   "page": 14,
+   "bbox": [
+    0.3611,
+    0.5295,
+    0.3816,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "but",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b37",
+   "page": 14,
+   "bbox": [
+    0.2457,
+    0.5295,
+    0.2662,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "will",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b38",
+   "page": 14,
+   "bbox": [
+    0.2918,
+    0.5328,
+    0.3123,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b39",
+   "page": 14,
+   "bbox": [
+    0.4535,
+    0.5328,
+    0.474,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b40",
+   "page": 14,
+   "bbox": [
+    0.3842,
+    0.5341,
+    0.4047,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "its",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b41",
+   "page": 14,
+   "bbox": [
+    0.4997,
+    0.5421,
+    0.5202,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "-",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b42",
+   "page": 14,
+   "bbox": [
+    0.338,
+    0.5427,
+    0.3585,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b43",
+   "page": 14,
+   "bbox": [
+    0.338,
+    0.6698,
+    0.3585,
+    0.6731
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b44",
+   "page": 14,
+   "bbox": [
+    0.3842,
+    0.6698,
+    0.4047,
+    0.6817
+   ],
+   "type": "paragraph",
+   "text": "its",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b45",
+   "page": 14,
+   "bbox": [
+    0.4997,
+    0.6698,
+    0.5202,
+    0.6737
+   ],
+   "type": "paragraph",
+   "text": "-",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b46",
+   "page": 14,
+   "bbox": [
+    0.1995,
+    0.6698,
+    0.22,
+    0.6903
+   ],
+   "type": "paragraph",
+   "text": "The",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b47",
+   "page": 14,
+   "bbox": [
+    0.3149,
+    0.6698,
+    0.3354,
+    0.7061
+   ],
+   "type": "paragraph",
+   "text": "perfect",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b48",
+   "page": 14,
+   "bbox": [
+    0.3611,
+    0.6698,
+    0.3816,
+    0.6863
+   ],
+   "type": "paragraph",
+   "text": "but",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b49",
+   "page": 14,
+   "bbox": [
+    0.4766,
+    0.6698,
+    0.4971,
+    0.6883
+   ],
+   "type": "paragraph",
+   "text": "just",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b50",
+   "page": 14,
+   "bbox": [
+    0.2918,
+    0.6698,
+    0.3123,
+    0.683
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b51",
+   "page": 14,
+   "bbox": [
+    0.4535,
+    0.6698,
+    0.474,
+    0.683
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b52",
+   "page": 14,
+   "bbox": [
+    0.2226,
+    0.6698,
+    0.2431,
+    0.6916
+   ],
+   "type": "paragraph",
+   "text": "Law",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b53",
+   "page": 14,
+   "bbox": [
+    0.2688,
+    0.6698,
+    0.2892,
+    0.6995
+   ],
+   "type": "paragraph",
+   "text": "never",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b54",
+   "page": 14,
+   "bbox": [
+    0.4304,
+    0.6698,
+    0.4509,
+    0.7048
+   ],
+   "type": "paragraph",
+   "text": "should",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b55",
+   "page": 14,
+   "bbox": [
+    0.2457,
+    0.6698,
+    0.2662,
+    0.6863
+   ],
+   "type": "paragraph",
+   "text": "will",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b56",
+   "page": 14,
+   "bbox": [
+    0.4073,
+    0.6698,
+    0.4278,
+    0.7267
+   ],
+   "type": "paragraph",
+   "text": "application",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b57",
+   "page": 14,
+   "bbox": [
+    0.6331,
+    0.2319,
+    0.6534,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "missing",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b58",
+   "page": 14,
+   "bbox": [
+    0.7702,
+    0.2331,
+    0.8133,
+    0.2717
+   ],
+   "type": "formula",
+   "text": "<EOS> <pad>",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "<EOS> \\\\ <pad>"
+  },
+  {
+   "id": "p14-b59",
+   "page": 14,
+   "bbox": [
+    0.7245,
+    0.2338,
+    0.7447,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "opinion",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b60",
+   "page": 14,
+   "bbox": [
+    0.5646,
+    0.2469,
+    0.5849,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "what",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b61",
+   "page": 14,
+   "bbox": [
+    0.5189,
+    0.2534,
+    0.5392,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "this",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b62",
+   "page": 14,
+   "bbox": [
+    0.6103,
+    0.2547,
+    0.6306,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "are",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b63",
+   "page": 14,
+   "bbox": [
+    0.7016,
+    0.2561,
+    0.7219,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "my",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b64",
+   "page": 14,
+   "bbox": [
+    0.5875,
+    0.2567,
+    0.6077,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "we",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b65",
+   "page": 14,
+   "bbox": [
+    0.6788,
+    0.2626,
+    0.6991,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "in",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b66",
+   "page": 14,
+   "bbox": [
+    0.5418,
+    0.2632,
+    0.562,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": "is",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b67",
+   "page": 14,
+   "bbox": [
+    0.656,
+    0.2685,
+    0.6762,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b68",
+   "page": 14,
+   "bbox": [
+    0.7473,
+    0.2685,
+    0.7676,
+    0.2717
+   ],
+   "type": "paragraph",
+   "text": ".",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b69",
+   "page": 14,
+   "bbox": [
+    0.7473,
+    0.3941,
+    0.7676,
+    0.3974
+   ],
+   "type": "paragraph",
+   "text": ".",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b70",
+   "page": 14,
+   "bbox": [
+    0.7702,
+    0.3941,
+    0.8133,
+    0.4327
+   ],
+   "type": "formula",
+   "text": "<EOS> <pad>",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "<EOS> \\\\ <pad>"
+  },
+  {
+   "id": "p14-b71",
+   "page": 14,
+   "bbox": [
+    0.656,
+    0.3941,
+    0.6762,
+    0.3974
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b72",
+   "page": 14,
+   "bbox": [
+    0.5189,
+    0.3941,
+    0.5392,
+    0.4124
+   ],
+   "type": "paragraph",
+   "text": "this",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b73",
+   "page": 14,
+   "bbox": [
+    0.7016,
+    0.3941,
+    0.7219,
+    0.4098
+   ],
+   "type": "paragraph",
+   "text": "my",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b74",
+   "page": 14,
+   "bbox": [
+    0.5418,
+    0.3941,
+    0.562,
+    0.4026
+   ],
+   "type": "paragraph",
+   "text": "is",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b75",
+   "page": 14,
+   "bbox": [
+    0.6788,
+    0.3941,
+    0.6991,
+    0.4032
+   ],
+   "type": "paragraph",
+   "text": "in",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b76",
+   "page": 14,
+   "bbox": [
+    0.5646,
+    0.3941,
+    0.5849,
+    0.4189
+   ],
+   "type": "paragraph",
+   "text": "what",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b77",
+   "page": 14,
+   "bbox": [
+    0.6103,
+    0.3941,
+    0.6306,
+    0.4111
+   ],
+   "type": "paragraph",
+   "text": "are",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b78",
+   "page": 14,
+   "bbox": [
+    0.5875,
+    0.3941,
+    0.6077,
+    0.4091
+   ],
+   "type": "paragraph",
+   "text": "we",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b79",
+   "page": 14,
+   "bbox": [
+    0.6331,
+    0.3941,
+    0.6534,
+    0.434
+   ],
+   "type": "paragraph",
+   "text": "missing",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b80",
+   "page": 14,
+   "bbox": [
+    0.7245,
+    0.3941,
+    0.7447,
+    0.432
+   ],
+   "type": "paragraph",
+   "text": "opinion",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b81",
+   "page": 14,
+   "bbox": [
+    0.6383,
+    0.5057,
+    0.6588,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "missing",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b82",
+   "page": 14,
+   "bbox": [
+    0.7768,
+    0.507,
+    0.8204,
+    0.546
+   ],
+   "type": "formula",
+   "text": "<EOS> <pad>",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "<EOS> \\\\ <pad>"
+  },
+  {
+   "id": "p14-b83",
+   "page": 14,
+   "bbox": [
+    0.7306,
+    0.5077,
+    0.7511,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "opinion",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b84",
+   "page": 14,
+   "bbox": [
+    0.569,
+    0.5209,
+    0.5895,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "what",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b85",
+   "page": 14,
+   "bbox": [
+    0.5228,
+    0.5275,
+    0.5433,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "this",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b86",
+   "page": 14,
+   "bbox": [
+    0.6152,
+    0.5289,
+    0.6357,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "are",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b87",
+   "page": 14,
+   "bbox": [
+    0.7075,
+    0.5302,
+    0.728,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "my",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b88",
+   "page": 14,
+   "bbox": [
+    0.5921,
+    0.5308,
+    0.6126,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "we",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b89",
+   "page": 14,
+   "bbox": [
+    0.6844,
+    0.5368,
+    0.7049,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "in",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b90",
+   "page": 14,
+   "bbox": [
+    0.5459,
+    0.5375,
+    0.5664,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": "is",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b91",
+   "page": 14,
+   "bbox": [
+    0.6614,
+    0.5427,
+    0.6818,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b92",
+   "page": 14,
+   "bbox": [
+    0.7537,
+    0.5427,
+    0.7742,
+    0.546
+   ],
+   "type": "paragraph",
+   "text": ".",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b93",
+   "page": 14,
+   "bbox": [
+    0.7537,
+    0.6698,
+    0.7742,
+    0.6731
+   ],
+   "type": "paragraph",
+   "text": ".",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b94",
+   "page": 14,
+   "bbox": [
+    0.7768,
+    0.6698,
+    0.8204,
+    0.7088
+   ],
+   "type": "formula",
+   "text": "<EOS> <pad>",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "<EOS> \\\\ <pad>"
+  },
+  {
+   "id": "p14-b95",
+   "page": 14,
+   "bbox": [
+    0.6614,
+    0.6698,
+    0.6818,
+    0.6731
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b96",
+   "page": 14,
+   "bbox": [
+    0.5228,
+    0.6698,
+    0.5433,
+    0.6883
+   ],
+   "type": "paragraph",
+   "text": "this",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b97",
+   "page": 14,
+   "bbox": [
+    0.7075,
+    0.6698,
+    0.728,
+    0.6856
+   ],
+   "type": "paragraph",
+   "text": "my",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b98",
+   "page": 14,
+   "bbox": [
+    0.5459,
+    0.6698,
+    0.5664,
+    0.6784
+   ],
+   "type": "paragraph",
+   "text": "is",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b99",
+   "page": 14,
+   "bbox": [
+    0.6844,
+    0.6698,
+    0.7049,
+    0.679
+   ],
+   "type": "paragraph",
+   "text": "in",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b100",
+   "page": 14,
+   "bbox": [
+    0.6152,
+    0.6698,
+    0.6357,
+    0.687
+   ],
+   "type": "paragraph",
+   "text": "are",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b101",
+   "page": 14,
+   "bbox": [
+    0.569,
+    0.6698,
+    0.5895,
+    0.6949
+   ],
+   "type": "paragraph",
+   "text": "what",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b102",
+   "page": 14,
+   "bbox": [
+    0.5921,
+    0.6698,
+    0.6126,
+    0.685
+   ],
+   "type": "paragraph",
+   "text": "we",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b103",
+   "page": 14,
+   "bbox": [
+    0.6383,
+    0.6698,
+    0.6588,
+    0.7101
+   ],
+   "type": "paragraph",
+   "text": "missing",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b104",
+   "page": 14,
+   "bbox": [
+    0.7306,
+    0.6698,
+    0.7511,
+    0.7081
+   ],
+   "type": "paragraph",
+   "text": "opinion",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p14-b105",
+   "page": 14,
+   "bbox": [
+    0.1765,
+    0.7756,
+    0.8258,
+    0.8157
+   ],
+   "type": "caption",
+   "text": "Figure 4: Two attention heads, also in layer 5 of 6, apparently involved in anaphora resolution. Top: Full attentions for head 5. Bottom: Isolated attentions from just the word ‘its’ for attention heads 5 and 6. Note that the attentions are very sharp for this word.",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b01",
+   "page": 15,
+   "bbox": [
+    0.4037,
+    0.2337,
+    0.424,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "application",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b02",
+   "page": 15,
+   "bbox": [
+    0.3121,
+    0.254,
+    0.3324,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "perfect",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b03",
+   "page": 15,
+   "bbox": [
+    0.4266,
+    0.2554,
+    0.4469,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "should",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b04",
+   "page": 15,
+   "bbox": [
+    0.2663,
+    0.2606,
+    0.2866,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "never",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b05",
+   "page": 15,
+   "bbox": [
+    0.2205,
+    0.2685,
+    0.2408,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "Law",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b06",
+   "page": 15,
+   "bbox": [
+    0.1976,
+    0.2698,
+    0.2179,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "The",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b07",
+   "page": 15,
+   "bbox": [
+    0.4724,
+    0.2718,
+    0.4927,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "just",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b08",
+   "page": 15,
+   "bbox": [
+    0.3579,
+    0.2737,
+    0.3782,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "but",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b09",
+   "page": 15,
+   "bbox": [
+    0.2434,
+    0.2737,
+    0.2637,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "will",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b10",
+   "page": 15,
+   "bbox": [
+    0.2892,
+    0.277,
+    0.3095,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b11",
+   "page": 15,
+   "bbox": [
+    0.4495,
+    0.277,
+    0.4698,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b12",
+   "page": 15,
+   "bbox": [
+    0.3808,
+    0.2783,
+    0.4011,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "its",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b13",
+   "page": 15,
+   "bbox": [
+    0.4953,
+    0.2862,
+    0.5156,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "-",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b14",
+   "page": 15,
+   "bbox": [
+    0.335,
+    0.2868,
+    0.3553,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b15",
+   "page": 15,
+   "bbox": [
+    0.335,
+    0.4128,
+    0.3553,
+    0.4161
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b16",
+   "page": 15,
+   "bbox": [
+    0.3808,
+    0.4128,
+    0.4011,
+    0.4246
+   ],
+   "type": "paragraph",
+   "text": "its",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b17",
+   "page": 15,
+   "bbox": [
+    0.4953,
+    0.4128,
+    0.5156,
+    0.4167
+   ],
+   "type": "paragraph",
+   "text": "-",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b18",
+   "page": 15,
+   "bbox": [
+    0.1976,
+    0.4128,
+    0.2179,
+    0.4331
+   ],
+   "type": "paragraph",
+   "text": "The",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b19",
+   "page": 15,
+   "bbox": [
+    0.3121,
+    0.4128,
+    0.3324,
+    0.4488
+   ],
+   "type": "paragraph",
+   "text": "perfect",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b20",
+   "page": 15,
+   "bbox": [
+    0.3579,
+    0.4128,
+    0.3782,
+    0.4292
+   ],
+   "type": "paragraph",
+   "text": "but",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b21",
+   "page": 15,
+   "bbox": [
+    0.4724,
+    0.4128,
+    0.4927,
+    0.4311
+   ],
+   "type": "paragraph",
+   "text": "just",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b22",
+   "page": 15,
+   "bbox": [
+    0.2892,
+    0.4128,
+    0.3095,
+    0.4259
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b23",
+   "page": 15,
+   "bbox": [
+    0.4495,
+    0.4128,
+    0.4698,
+    0.4259
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b24",
+   "page": 15,
+   "bbox": [
+    0.2663,
+    0.4128,
+    0.2866,
+    0.4423
+   ],
+   "type": "paragraph",
+   "text": "never",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b25",
+   "page": 15,
+   "bbox": [
+    0.2205,
+    0.4128,
+    0.2408,
+    0.4344
+   ],
+   "type": "paragraph",
+   "text": "Law",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b26",
+   "page": 15,
+   "bbox": [
+    0.4266,
+    0.4128,
+    0.4469,
+    0.4475
+   ],
+   "type": "paragraph",
+   "text": "should",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b27",
+   "page": 15,
+   "bbox": [
+    0.2434,
+    0.4128,
+    0.2637,
+    0.4292
+   ],
+   "type": "paragraph",
+   "text": "will",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b28",
+   "page": 15,
+   "bbox": [
+    0.4037,
+    0.4128,
+    0.424,
+    0.4692
+   ],
+   "type": "paragraph",
+   "text": "application",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b29",
+   "page": 15,
+   "bbox": [
+    0.4035,
+    0.5093,
+    0.4238,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "application",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b30",
+   "page": 15,
+   "bbox": [
+    0.3118,
+    0.5297,
+    0.3321,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "perfect",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b31",
+   "page": 15,
+   "bbox": [
+    0.4264,
+    0.531,
+    0.4467,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "should",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b32",
+   "page": 15,
+   "bbox": [
+    0.266,
+    0.5362,
+    0.2863,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "never",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b33",
+   "page": 15,
+   "bbox": [
+    0.2202,
+    0.5441,
+    0.2405,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "Law",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b34",
+   "page": 15,
+   "bbox": [
+    0.1973,
+    0.5454,
+    0.2176,
+    0.5658
+   ],
+   "type": "paragraph",
+   "text": "The",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b35",
+   "page": 15,
+   "bbox": [
+    0.4722,
+    0.5474,
+    0.4925,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "just",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b36",
+   "page": 15,
+   "bbox": [
+    0.3576,
+    0.5493,
+    0.378,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "but",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b37",
+   "page": 15,
+   "bbox": [
+    0.2431,
+    0.5494,
+    0.2634,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "will",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b38",
+   "page": 15,
+   "bbox": [
+    0.2889,
+    0.5526,
+    0.3092,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b39",
+   "page": 15,
+   "bbox": [
+    0.4493,
+    0.5526,
+    0.4696,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b40",
+   "page": 15,
+   "bbox": [
+    0.3805,
+    0.5539,
+    0.4009,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "its",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b41",
+   "page": 15,
+   "bbox": [
+    0.4951,
+    0.5618,
+    0.5154,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "-",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b42",
+   "page": 15,
+   "bbox": [
+    0.3347,
+    0.5625,
+    0.3551,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b43",
+   "page": 15,
+   "bbox": [
+    0.3347,
+    0.6885,
+    0.3551,
+    0.6918
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b44",
+   "page": 15,
+   "bbox": [
+    0.3805,
+    0.6885,
+    0.4009,
+    0.7003
+   ],
+   "type": "paragraph",
+   "text": "its",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b45",
+   "page": 15,
+   "bbox": [
+    0.4951,
+    0.6885,
+    0.5154,
+    0.6924
+   ],
+   "type": "paragraph",
+   "text": "-",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b46",
+   "page": 15,
+   "bbox": [
+    0.1973,
+    0.6885,
+    0.2176,
+    0.7088
+   ],
+   "type": "paragraph",
+   "text": "The",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b47",
+   "page": 15,
+   "bbox": [
+    0.3118,
+    0.6885,
+    0.3321,
+    0.7246
+   ],
+   "type": "paragraph",
+   "text": "perfect",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b48",
+   "page": 15,
+   "bbox": [
+    0.3576,
+    0.6885,
+    0.378,
+    0.7049
+   ],
+   "type": "paragraph",
+   "text": "but",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b49",
+   "page": 15,
+   "bbox": [
+    0.4722,
+    0.6885,
+    0.4925,
+    0.7069
+   ],
+   "type": "paragraph",
+   "text": "just",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b50",
+   "page": 15,
+   "bbox": [
+    0.2889,
+    0.6885,
+    0.3092,
+    0.7016
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b51",
+   "page": 15,
+   "bbox": [
+    0.4493,
+    0.6885,
+    0.4696,
+    0.7016
+   ],
+   "type": "paragraph",
+   "text": "be",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b52",
+   "page": 15,
+   "bbox": [
+    0.2202,
+    0.6885,
+    0.2405,
+    0.7101
+   ],
+   "type": "paragraph",
+   "text": "Law",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b53",
+   "page": 15,
+   "bbox": [
+    0.266,
+    0.6885,
+    0.2863,
+    0.718
+   ],
+   "type": "paragraph",
+   "text": "never",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b54",
+   "page": 15,
+   "bbox": [
+    0.4264,
+    0.6885,
+    0.4467,
+    0.7233
+   ],
+   "type": "paragraph",
+   "text": "should",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b55",
+   "page": 15,
+   "bbox": [
+    0.2431,
+    0.6885,
+    0.2634,
+    0.7049
+   ],
+   "type": "paragraph",
+   "text": "will",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b56",
+   "page": 15,
+   "bbox": [
+    0.4035,
+    0.6885,
+    0.4238,
+    0.7449
+   ],
+   "type": "paragraph",
+   "text": "application",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b57",
+   "page": 15,
+   "bbox": [
+    0.6327,
+    0.2501,
+    0.653,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "missing",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b58",
+   "page": 15,
+   "bbox": [
+    0.77,
+    0.2514,
+    0.8133,
+    0.2901
+   ],
+   "type": "formula",
+   "text": "<EOS> <pad>",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "<EOS> \\\\ <pad>"
+  },
+  {
+   "id": "p15-b59",
+   "page": 15,
+   "bbox": [
+    0.7243,
+    0.2521,
+    0.7446,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "opinion",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b60",
+   "page": 15,
+   "bbox": [
+    0.564,
+    0.2652,
+    0.5843,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "what",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b61",
+   "page": 15,
+   "bbox": [
+    0.5182,
+    0.2718,
+    0.5385,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "this",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b62",
+   "page": 15,
+   "bbox": [
+    0.6098,
+    0.2731,
+    0.6301,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "are",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b63",
+   "page": 15,
+   "bbox": [
+    0.7014,
+    0.2744,
+    0.7217,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "my",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b64",
+   "page": 15,
+   "bbox": [
+    0.5869,
+    0.275,
+    0.6072,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "we",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b65",
+   "page": 15,
+   "bbox": [
+    0.6785,
+    0.2809,
+    0.6988,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "in",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b66",
+   "page": 15,
+   "bbox": [
+    0.5411,
+    0.2816,
+    0.5614,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": "is",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b67",
+   "page": 15,
+   "bbox": [
+    0.6556,
+    0.2868,
+    0.6759,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b68",
+   "page": 15,
+   "bbox": [
+    0.7471,
+    0.2868,
+    0.7675,
+    0.2901
+   ],
+   "type": "paragraph",
+   "text": ".",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b69",
+   "page": 15,
+   "bbox": [
+    0.7471,
+    0.4128,
+    0.7675,
+    0.4161
+   ],
+   "type": "paragraph",
+   "text": ".",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b70",
+   "page": 15,
+   "bbox": [
+    0.77,
+    0.4128,
+    0.8133,
+    0.4515
+   ],
+   "type": "formula",
+   "text": "<EOS> <pad>",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "<EOS> \\\\ <pad>"
+  },
+  {
+   "id": "p15-b71",
+   "page": 15,
+   "bbox": [
+    0.6556,
+    0.4128,
+    0.6759,
+    0.4161
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b72",
+   "page": 15,
+   "bbox": [
+    0.5182,
+    0.4128,
+    0.5385,
+    0.4311
+   ],
+   "type": "paragraph",
+   "text": "this",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b73",
+   "page": 15,
+   "bbox": [
+    0.7014,
+    0.4128,
+    0.7217,
+    0.4285
+   ],
+   "type": "paragraph",
+   "text": "my",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b74",
+   "page": 15,
+   "bbox": [
+    0.5411,
+    0.4128,
+    0.5614,
+    0.4213
+   ],
+   "type": "paragraph",
+   "text": "is",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b75",
+   "page": 15,
+   "bbox": [
+    0.6785,
+    0.4128,
+    0.6988,
+    0.422
+   ],
+   "type": "paragraph",
+   "text": "in",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b76",
+   "page": 15,
+   "bbox": [
+    0.6098,
+    0.4128,
+    0.6301,
+    0.4298
+   ],
+   "type": "paragraph",
+   "text": "are",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b77",
+   "page": 15,
+   "bbox": [
+    0.564,
+    0.4128,
+    0.5843,
+    0.4377
+   ],
+   "type": "paragraph",
+   "text": "what",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b78",
+   "page": 15,
+   "bbox": [
+    0.5869,
+    0.4128,
+    0.6072,
+    0.4279
+   ],
+   "type": "paragraph",
+   "text": "we",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b79",
+   "page": 15,
+   "bbox": [
+    0.6327,
+    0.4128,
+    0.653,
+    0.4528
+   ],
+   "type": "paragraph",
+   "text": "missing",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b80",
+   "page": 15,
+   "bbox": [
+    0.7243,
+    0.4128,
+    0.7446,
+    0.4508
+   ],
+   "type": "paragraph",
+   "text": "opinion",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b81",
+   "page": 15,
+   "bbox": [
+    0.6325,
+    0.5258,
+    0.6529,
+    0.5658
+   ],
+   "type": "paragraph",
+   "text": "missing",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b82",
+   "page": 15,
+   "bbox": [
+    0.77,
+    0.527,
+    0.8132,
+    0.5657
+   ],
+   "type": "formula",
+   "text": "<EOS> <pad>",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "<EOS> \\\\ <pad>"
+  },
+  {
+   "id": "p15-b83",
+   "page": 15,
+   "bbox": [
+    0.7242,
+    0.5277,
+    0.7445,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "opinion",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b84",
+   "page": 15,
+   "bbox": [
+    0.5638,
+    0.5408,
+    0.5841,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "what",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b85",
+   "page": 15,
+   "bbox": [
+    0.518,
+    0.5474,
+    0.5383,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "this",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b86",
+   "page": 15,
+   "bbox": [
+    0.6096,
+    0.5487,
+    0.63,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "are",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b87",
+   "page": 15,
+   "bbox": [
+    0.7013,
+    0.55,
+    0.7216,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "my",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b88",
+   "page": 15,
+   "bbox": [
+    0.5867,
+    0.5507,
+    0.6071,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "we",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b89",
+   "page": 15,
+   "bbox": [
+    0.6784,
+    0.5566,
+    0.6987,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "in",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b90",
+   "page": 15,
+   "bbox": [
+    0.5409,
+    0.5572,
+    0.5612,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": "is",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b91",
+   "page": 15,
+   "bbox": [
+    0.6555,
+    0.5625,
+    0.6758,
+    0.5657
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b92",
+   "page": 15,
+   "bbox": [
+    0.7471,
+    0.5625,
+    0.7674,
+    0.5658
+   ],
+   "type": "paragraph",
+   "text": ".",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b93",
+   "page": 15,
+   "bbox": [
+    0.7471,
+    0.6885,
+    0.7674,
+    0.6918
+   ],
+   "type": "paragraph",
+   "text": ".",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b94",
+   "page": 15,
+   "bbox": [
+    0.77,
+    0.6885,
+    0.8132,
+    0.7272
+   ],
+   "type": "formula",
+   "text": "<EOS> <pad>",
+   "section_path": [
+    "Attention Visualizations"
+   ],
+   "latex": "<EOS> \\\\ <pad>"
+  },
+  {
+   "id": "p15-b95",
+   "page": 15,
+   "bbox": [
+    0.6555,
+    0.6885,
+    0.6758,
+    0.6918
+   ],
+   "type": "paragraph",
+   "text": ",",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b96",
+   "page": 15,
+   "bbox": [
+    0.518,
+    0.6885,
+    0.5383,
+    0.7069
+   ],
+   "type": "paragraph",
+   "text": "this",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b97",
+   "page": 15,
+   "bbox": [
+    0.7013,
+    0.6885,
+    0.7216,
+    0.7042
+   ],
+   "type": "paragraph",
+   "text": "my",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b98",
+   "page": 15,
+   "bbox": [
+    0.5409,
+    0.6885,
+    0.5612,
+    0.697
+   ],
+   "type": "paragraph",
+   "text": "is",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b99",
+   "page": 15,
+   "bbox": [
+    0.6784,
+    0.6885,
+    0.6987,
+    0.6977
+   ],
+   "type": "paragraph",
+   "text": "in",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b100",
+   "page": 15,
+   "bbox": [
+    0.6096,
+    0.6885,
+    0.63,
+    0.7055
+   ],
+   "type": "paragraph",
+   "text": "are",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b101",
+   "page": 15,
+   "bbox": [
+    0.5638,
+    0.6885,
+    0.5841,
+    0.7134
+   ],
+   "type": "paragraph",
+   "text": "what",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b102",
+   "page": 15,
+   "bbox": [
+    0.5867,
+    0.6885,
+    0.6071,
+    0.7036
+   ],
+   "type": "paragraph",
+   "text": "we",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b103",
+   "page": 15,
+   "bbox": [
+    0.6325,
+    0.6885,
+    0.6529,
+    0.7285
+   ],
+   "type": "paragraph",
+   "text": "missing",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b104",
+   "page": 15,
+   "bbox": [
+    0.7242,
+    0.6885,
+    0.7445,
+    0.7265
+   ],
+   "type": "paragraph",
+   "text": "opinion",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  },
+  {
+   "id": "p15-b105",
+   "page": 15,
+   "bbox": [
+    0.1765,
+    0.7605,
+    0.8235,
+    0.8007
+   ],
+   "type": "caption",
+   "text": "Figure 5: Many of the attention heads exhibit behaviour that seems related to the structure of the sentence. We give two such examples above, from two different heads from the encoder self-attention at layer 5 of 6. The heads clearly learned to perform different tasks.",
+   "section_path": [
+    "Attention Visualizations"
+   ]
+  }
+ ],
+ "outline": [
+  {
+   "title": "1 Introduction",
+   "level": 1,
+   "page": 1
+  },
+  {
+   "title": "2 Background",
+   "level": 1,
+   "page": 2
+  },
+  {
+   "title": "3 Model Architecture",
+   "level": 1,
+   "page": 2
+  },
+  {
+   "title": "3.1 Encoder and Decoder Stacks",
+   "level": 2,
+   "page": 2
+  },
+  {
+   "title": "3.2 Attention",
+   "level": 2,
+   "page": 3
+  },
+  {
+   "title": "3.2.1 Scaled Dot-Product Attention",
+   "level": 3,
+   "page": 3
+  },
+  {
+   "title": "3.2.2 Multi-Head Attention",
+   "level": 3,
+   "page": 4
+  },
+  {
+   "title": "3.2.3 Applications of Attention in our Model",
+   "level": 3,
+   "page": 4
+  },
+  {
+   "title": "3.3 Position-wise Feed-Forward Networks",
+   "level": 2,
+   "page": 5
+  },
+  {
+   "title": "3.4 Embeddings and Softmax",
+   "level": 2,
+   "page": 5
+  },
+  {
+   "title": "3.5 Positional Encoding",
+   "level": 2,
+   "page": 5
+  },
+  {
+   "title": "4 Why Self-Attention",
+   "level": 1,
+   "page": 5
+  },
+  {
+   "title": "5 Training",
+   "level": 1,
+   "page": 6
+  },
+  {
+   "title": "5.1 Training Data and Batching",
+   "level": 2,
+   "page": 6
+  },
+  {
+   "title": "5.2 Hardware and Schedule",
+   "level": 2,
+   "page": 7
+  },
+  {
+   "title": "5.3 Optimizer",
+   "level": 2,
+   "page": 7
+  },
+  {
+   "title": "5.4 Regularization",
+   "level": 2,
+   "page": 7
+  },
+  {
+   "title": "6 Results",
+   "level": 1,
+   "page": 7
+  },
+  {
+   "title": "6.1 Machine Translation",
+   "level": 2,
+   "page": 7
+  },
+  {
+   "title": "6.2 Model Variations",
+   "level": 2,
+   "page": 8
+  },
+  {
+   "title": "6.3 English Constituency Parsing",
+   "level": 2,
+   "page": 8
+  },
+  {
+   "title": "7 Conclusion",
+   "level": 1,
+   "page": 10
+  }
+ ],
+ "references": [
+  {
+   "ref_no": 1,
+   "raw": "[1] Jimmy Lei Ba, Jamie Ryan Kiros, and Geoffrey E Hinton. Layer normalization. arXiv preprint arXiv:1607.06450, 2016.",
+   "page": 10
+  },
+  {
+   "ref_no": 2,
+   "raw": "[2] Dzmitry Bahdanau, Kyunghyun Cho, and Yoshua Bengio. Neural machine translation by jointly learning to align and translate. CoRR, abs/1409.0473, 2014.",
+   "page": 10
+  },
+  {
+   "ref_no": 3,
+   "raw": "[3] Denny Britz, Anna Goldie, Minh-Thang Luong, and Quoc V. Le. Massive exploration of neural machine translation architectures. CoRR, abs/1703.03906, 2017.",
+   "page": 10
+  },
+  {
+   "ref_no": 4,
+   "raw": "[4] Jianpeng Cheng, Li Dong, and Mirella Lapata. Long short-term memory-networks for machine reading. arXiv preprint arXiv:1601.06733, 2016.",
+   "page": 10
+  },
+  {
+   "ref_no": 5,
+   "raw": "[5] Kyunghyun Cho, Bart van Merrienboer, Caglar Gulcehre, Fethi Bougares, Holger Schwenk, and Yoshua Bengio. Learning phrase representations using rnn encoder-decoder for statistical machine translation. CoRR, abs/1406.1078, 2014.",
+   "page": 10
+  },
+  {
+   "ref_no": 6,
+   "raw": "[6] Francois Chollet. Xception: Deep learning with depthwise separable convolutions. arXiv preprint arXiv:1610.02357, 2016.",
+   "page": 10
+  },
+  {
+   "ref_no": 7,
+   "raw": "[7] Junyoung Chung, Çaglar Gülçehre, Kyunghyun Cho, and Yoshua Bengio. Empirical evaluation of gated recurrent neural networks on sequence modeling. CoRR, abs/1412.3555, 2014.",
+   "page": 10
+  },
+  {
+   "ref_no": 8,
+   "raw": "[8] Chris Dyer, Adhiguna Kuncoro, Miguel Ballesteros, and Noah A. Smith. Recurrent neural network grammars. In Proc. of NAACL, 2016.",
+   "page": 10
+  },
+  {
+   "ref_no": 9,
+   "raw": "[9] Jonas Gehring, Michael Auli, David Grangier, Denis Yarats, and Yann N. Dauphin. Convolu- tional sequence to sequence learning. arXiv preprint arXiv:1705.03122v2, 2017.",
+   "page": 10
+  },
+  {
+   "ref_no": 10,
+   "raw": "[10] Alex Graves. Generating sequences with recurrent neural networks. arXiv preprint arXiv:1308.0850, 2013.",
+   "page": 10
+  },
+  {
+   "ref_no": 11,
+   "raw": "[11] Sepp Hochreiter, Yoshua Bengio, Paolo Frasconi, and Jürgen Schmidhuber. Gradient ﬂow in recurrent nets: the difﬁculty of learning long-term dependencies, 2001.",
+   "page": 10
+  },
+  {
+   "ref_no": 12,
+   "raw": "[12] Sepp Hochreiter and Jürgen Schmidhuber. Long short-term memory. Neural computation, 9(8):1735–1780, 1997.",
+   "page": 10
+  },
+  {
+   "ref_no": 13,
+   "raw": "[13] Zhongqiang Huang and Mary Harper. Self-training PCFG grammars with latent annotations across languages. In Proceedings of the 2009 Conference on Empirical Methods in Natural Language Processing, pages 832–841. ACL, August 2009.",
+   "page": 10
+  },
+  {
+   "ref_no": 14,
+   "raw": "[14] Rafal Jozefowicz, Oriol Vinyals, Mike Schuster, Noam Shazeer, and Yonghui Wu. Exploring",
+   "page": 10
+  },
+  {
+   "ref_no": 15,
+   "raw": "[15] Łukasz Kaiser and Ilya Sutskever. Neural GPUs learn algorithms. In International Conference on Learning Representations (ICLR), 2016.",
+   "page": 11
+  },
+  {
+   "ref_no": 16,
+   "raw": "[16] Nal Kalchbrenner, Lasse Espeholt, Karen Simonyan, Aaron van den Oord, Alex Graves, and Ko- ray Kavukcuoglu. Neural machine translation in linear time. arXiv preprint arXiv:1610.10099v2, 2017.",
+   "page": 11
+  },
+  {
+   "ref_no": 17,
+   "raw": "[17] Yoon Kim, Carl Denton, Luong Hoang, and Alexander M. Rush. Structured attention networks. In International Conference on Learning Representations, 2017.",
+   "page": 11
+  },
+  {
+   "ref_no": 18,
+   "raw": "[18] Diederik Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In ICLR, 2015.",
+   "page": 11
+  },
+  {
+   "ref_no": 19,
+   "raw": "[19] Oleksii Kuchaiev and Boris Ginsburg. Factorization tricks for LSTM networks. arXiv preprint arXiv:1703.10722, 2017.",
+   "page": 11
+  },
+  {
+   "ref_no": 20,
+   "raw": "[20] Zhouhan Lin, Minwei Feng, Cicero Nogueira dos Santos, Mo Yu, Bing Xiang, Bowen Zhou, and Yoshua Bengio. A structured self-attentive sentence embedding. arXiv preprint arXiv:1703.03130, 2017.",
+   "page": 11
+  },
+  {
+   "ref_no": 21,
+   "raw": "[21] Samy Bengio Łukasz Kaiser. Can active memory replace attention? In Advances in Neural Information Processing Systems, (NIPS), 2016.",
+   "page": 11
+  },
+  {
+   "ref_no": 22,
+   "raw": "[22] Minh-Thang Luong, Hieu Pham, and Christopher D Manning. Effective approaches to attention- based neural machine translation. arXiv preprint arXiv:1508.04025, 2015.",
+   "page": 11
+  },
+  {
+   "ref_no": 23,
+   "raw": "[23] Mitchell P Marcus, Mary Ann Marcinkiewicz, and Beatrice Santorini. Building a large annotated corpus of english: The penn treebank. Computational linguistics, 19(2):313–330, 1993.",
+   "page": 11
+  },
+  {
+   "ref_no": 24,
+   "raw": "[24] David McClosky, Eugene Charniak, and Mark Johnson. Effective self-training for parsing. In Proceedings of the Human Language Technology Conference of the NAACL, Main Conference, pages 152–159. ACL, June 2006.",
+   "page": 11
+  },
+  {
+   "ref_no": 25,
+   "raw": "[25] Ankur Parikh, Oscar Täckström, Dipanjan Das, and Jakob Uszkoreit. A decomposable attention model. In Empirical Methods in Natural Language Processing, 2016.",
+   "page": 11
+  },
+  {
+   "ref_no": 26,
+   "raw": "[26] Romain Paulus, Caiming Xiong, and Richard Socher. A deep reinforced model for abstractive summarization. arXiv preprint arXiv:1705.04304, 2017.",
+   "page": 11
+  },
+  {
+   "ref_no": 27,
+   "raw": "[27] Slav Petrov, Leon Barrett, Romain Thibaux, and Dan Klein. Learning accurate, compact, and interpretable tree annotation. In Proceedings of the 21st International Conference on Computational Linguistics and 44th Annual Meeting of the ACL, pages 433–440. ACL, July 2006.",
+   "page": 11
+  },
+  {
+   "ref_no": 28,
+   "raw": "[28] Rico Sennrich, Barry Haddow, and Alexandra Birch. Neural machine translation of rare words with subword units. arXiv preprint arXiv:1508.07909, 2015.",
+   "page": 11
+  },
+  {
+   "ref_no": 29,
+   "raw": "[29] Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, Andy Davis, Quoc Le, Geoffrey Hinton, and Jeff Dean. Outrageously large neural networks: The sparsely-gated mixture-of-experts layer. arXiv preprint arXiv:1701.06538, 2017.",
+   "page": 11
+  },
+  {
+   "ref_no": 30,
+   "raw": "[30] Nitish Srivastava, Geoffrey E Hinton, Alex Krizhevsky, Ilya Sutskever, and Ruslan Salakhutdi- nov. Dropout: a simple way to prevent neural networks from overﬁtting. Journal of Machine Learning Research, 15(1):1929–1958, 2014.",
+   "page": 11
+  },
+  {
+   "ref_no": 31,
+   "raw": "[31] Ilya Sutskever, Oriol Vinyals, and Quoc VV Le. Sequence to sequence learning with neural networks. In Advances in Neural Information Processing Systems, pages 3104–3112, 2014.",
+   "page": 11
+  },
+  {
+   "ref_no": 32,
+   "raw": "[32] Christian Szegedy, Vincent Vanhoucke, Sergey Ioffe, Jonathon Shlens, and Zbigniew Wojna. Rethinking the inception architecture for computer vision. CoRR, abs/1512.00567, 2015.",
+   "page": 11
+  },
+  {
+   "ref_no": 33,
+   "raw": "[33] Vinyals & Kaiser, Koo, Petrov, Sutskever, and Hinton. Grammar as a foreign language. In Advances in Neural Information Processing Systems, 2015.",
+   "page": 11
+  },
+  {
+   "ref_no": 34,
+   "raw": "[34] Yonghui Wu, Mike Schuster, Zhifeng Chen, Quoc V Le, Mohammad Norouzi, Wolfgang Macherey, Maxim Krikun, Yuan Cao, Qin Gao, Klaus Macherey, et al. Google’s neural machine translation system: Bridging the gap between human and machine translation. arXiv preprint arXiv:1609.08144, 2016.",
+   "page": 12
+  },
+  {
+   "ref_no": 35,
+   "raw": "[35] Jie Zhou, Ying Cao, Xuguang Wang, Peng Li, and Wei Xu. Deep recurrent models with fast-forward connections for neural machine translation. CoRR, abs/1606.04199, 2016.",
+   "page": 12
+  },
+  {
+   "ref_no": 36,
+   "raw": "[36] Muhua Zhu, Yue Zhang, Wenliang Chen, Min Zhang, and Jingbo Zhu. Fast and accurate shift-reduce constituent parsing. In Proceedings of the 51st Annual Meeting of the ACL (Volume 1: Long Papers), pages 434–443. ACL, August 2013.",
+   "page": 12
+  }
+ ],
+ "stats": {
+  "pages_parsed": 15,
+  "blocks": 434,
+  "ocr_pages": 0,
+  "elapsed_ms": 1020
+ }
+}

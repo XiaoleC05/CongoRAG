@@ -1,0 +1,101 @@
+# ConGoRAG 参赛版一键部署（demo / 省赛评审用）
+#
+# 【和另外两份 compose 的区别】
+#   · deployments/docker/docker-compose.yml   开发期依赖（只有 postgres）
+#   · deployments/startup/docker-compose.yml  交付形态（postgres+migrate+api+worker）
+#   · 这一份                                   再多一个 **pdf-service**
+#     （PDF 学术解析 sidecar），并把 api/worker 指向它——参赛作品的核心能力
+#     （页码/坐标/章节）依赖它，缺了它 PDF 上传会 failed。
+#
+# 【怎么用】
+#   docker build --target api     -t congorag-api:cup .
+#   docker build --target worker  -t congorag-worker:cup .
+#   docker build --target migrate -t congorag-migrate:cup .
+#   cd deployments/competition && cp .env.example .env
+#   docker compose up -d --build
+#   打开 http://<服务器IP>:3210 完成模型配置（BYOK），然后上传论文。
+
+name: congorag-competition
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg18
+    container_name: congorag-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${CONGORAG_PG_PASSWORD:-congorag}
+      POSTGRES_DB: congorag
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d congorag"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  migrate:
+    image: congorag-migrate:${CONGORAG_IMAGE_TAG:-cup}
+    container_name: congorag-migrate
+    environment:
+      CONGORAG_DB_URL: ${CONGORAG_DB_URL:-postgres://postgres:${CONGORAG_PG_PASSWORD:-congorag}@postgres:5432/congorag?sslmode=disable}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # PDF 学术解析 sidecar：页码/坐标/章节/OCR/表格。
+  pdf-service:
+    build:
+      context: ../../sidecars/pdf-service
+    image: congorag-pdf-service:${CONGORAG_IMAGE_TAG:-cup}
+    container_name: congorag-pdf-service
+    environment:
+      PDF_SERVICE_HOST: 0.0.0.0
+      PDF_SERVICE_PORT: "8000"
+    restart: unless-stopped
+
+  api:
+    image: congorag-api:${CONGORAG_IMAGE_TAG:-cup}
+    container_name: congorag-api
+    environment:
+      CONGORAG_DB_URL: ${CONGORAG_DB_URL:-postgres://postgres:${CONGORAG_PG_PASSWORD:-congorag}@postgres:5432/congorag?sslmode=disable}
+      CONGORAG_LISTEN_ADDR: ${CONGORAG_LISTEN_ADDR:-0.0.0.0:3210}
+      CONGORAG_LOG_LEVEL: ${CONGORAG_LOG_LEVEL:-info}
+      CONGORAG_MAX_UPLOAD_BYTES: ${CONGORAG_MAX_UPLOAD_BYTES:-33554432}
+      CONGORAG_PDF_SERVICE_URL: http://pdf-service:8000
+      CONGORAG_PDF_TIMEOUT: ${CONGORAG_PDF_TIMEOUT:-10m}
+    ports:
+      # 默认只绑回环：公网访问请走反向代理（见 README）。
+      - "127.0.0.1:${CONGORAG_PORT:-3210}:3210"
+    volumes:
+      - congorag-data:/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      pdf-service:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    image: congorag-worker:${CONGORAG_IMAGE_TAG:-cup}
+    container_name: congorag-worker
+    environment:
+      CONGORAG_DB_URL: ${CONGORAG_DB_URL:-postgres://postgres:${CONGORAG_PG_PASSWORD:-congorag}@postgres:5432/congorag?sslmode=disable}
+      CONGORAG_LOG_LEVEL: ${CONGORAG_LOG_LEVEL:-info}
+      CONGORAG_MAX_UPLOAD_BYTES: ${CONGORAG_MAX_UPLOAD_BYTES:-33554432}
+      CONGORAG_PDF_SERVICE_URL: http://pdf-service:8000
+      CONGORAG_PDF_TIMEOUT: ${CONGORAG_PDF_TIMEOUT:-10m}
+    volumes:
+      - congorag-data:/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      pdf-service:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  congorag-data:

@@ -1,0 +1,4167 @@
+{
+ "note": "541 页全量解析的头部样例：前 40 个 blocks；完整 JSON 未入库",
+ "doc_id": "f8237d393163900fa8e43210e680a3f987b45ccac7750b372e156fae3df0bf32",
+ "filename": "UnderstandingDeepLearning_02_09_26_C.pdf",
+ "page_count": 541,
+ "parser_version": "pdf-service-0.1.0",
+ "pages": [
+  {
+   "page_no": 1,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 2,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 3,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 4,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 5,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 6,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 7,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 8,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 9,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 10,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 11,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 12,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 13,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 14,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 15,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 16,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 17,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 18,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 19,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 20,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 21,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 22,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 23,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 24,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 25,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 26,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 27,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 28,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 29,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 30,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 31,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 32,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 33,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 34,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 35,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 36,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 37,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 38,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 39,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 40,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 41,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 42,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 43,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 44,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 45,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 46,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 47,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 48,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 49,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 50,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 51,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 52,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 53,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 54,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 55,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 56,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 57,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 58,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 59,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 60,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 61,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 62,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 63,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 64,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 65,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 66,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 67,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 68,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 69,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 70,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 71,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 72,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 73,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 74,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 75,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 76,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 77,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 78,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 79,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 80,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 81,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 82,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 83,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 84,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 85,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 86,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 87,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 88,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 89,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 90,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 91,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 92,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 93,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 94,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 95,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 96,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 97,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 98,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 99,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 100,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 101,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 102,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 103,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 104,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 105,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 106,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 107,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 108,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 109,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 110,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 111,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 112,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 113,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 114,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 115,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 116,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 117,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 118,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 119,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 120,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 121,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 122,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 123,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 124,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 125,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 126,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 127,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 128,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 129,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 130,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 131,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 132,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 133,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 134,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 135,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 136,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 137,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 138,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 139,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 140,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 141,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 142,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 143,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 144,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 145,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 146,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 147,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 148,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 149,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 150,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 151,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 152,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 153,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 154,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 155,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 156,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 157,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 158,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 159,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 160,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 161,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 162,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 163,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 164,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 165,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 166,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 167,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 168,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 169,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 170,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 171,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 172,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 173,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 174,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 175,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 176,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 177,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 178,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 179,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 180,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 181,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 182,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 183,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 184,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 185,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 186,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 187,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 188,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 189,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 190,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 191,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 192,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 193,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 194,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 195,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 196,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 197,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 198,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 199,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 200,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 201,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 202,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 203,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 204,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 205,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 206,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 207,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 208,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 209,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 210,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 211,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 212,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 213,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 214,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 215,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 216,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 217,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 218,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 219,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 220,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 221,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 222,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 223,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 224,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 225,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 226,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 227,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 228,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 229,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 230,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 231,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 232,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 233,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 234,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 235,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 236,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 237,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 238,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 239,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 240,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 241,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 242,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 243,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 244,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 245,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 246,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 247,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 248,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 249,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 250,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 251,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 252,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 253,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 254,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 255,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 256,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 257,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 258,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 259,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 260,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 261,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 262,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 263,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 264,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 265,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 266,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 267,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 268,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 269,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 270,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 271,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 272,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 273,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 274,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 275,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 276,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 277,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 278,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 279,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 280,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 281,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 282,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 283,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 284,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 285,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 286,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 287,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 288,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 289,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 290,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 291,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 292,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 293,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 294,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 295,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 296,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 297,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 298,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 299,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 300,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 301,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 302,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 303,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 304,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 305,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 306,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 307,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 308,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 309,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 310,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 311,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 312,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 313,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 314,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 315,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 316,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 317,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 318,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 319,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 320,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 321,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 322,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 323,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 324,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 325,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 326,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 327,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 328,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 329,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 330,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 331,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 332,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 333,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 334,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 335,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 336,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 337,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 338,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 339,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 340,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 341,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 342,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 343,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 344,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 345,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 346,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 347,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 348,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 349,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 350,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 351,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 352,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 353,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 354,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 355,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 356,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 357,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 358,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 359,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 360,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 361,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 362,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 363,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 364,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 365,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 366,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 367,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 368,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 369,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 370,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 371,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 372,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 373,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 374,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 375,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 376,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 377,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 378,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 379,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 380,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 381,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 382,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 383,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 384,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 385,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 386,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 387,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 388,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 389,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 390,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 391,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 392,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 393,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 394,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 395,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 396,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 397,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 398,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 399,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 400,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 401,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 402,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 403,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 404,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 405,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 406,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 407,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 408,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 409,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 410,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 411,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 412,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 413,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 414,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 415,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 416,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 417,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 418,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 419,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 420,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 421,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 422,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 423,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 424,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 425,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 426,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 427,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 428,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 429,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 430,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 431,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 432,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 433,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 434,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 435,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 436,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 437,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 438,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 439,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 440,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 441,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 442,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 443,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 444,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 445,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 446,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 447,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 448,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 449,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 450,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 451,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 452,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 453,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 454,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 455,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 456,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 457,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 458,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 459,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 460,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 461,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 462,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 463,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 464,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 465,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 466,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 467,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 468,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 469,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 470,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 471,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 472,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 473,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 474,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 475,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 476,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 477,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 478,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 479,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 480,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 481,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 482,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 483,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 484,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 485,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 486,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 487,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 488,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 489,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 490,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 491,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 492,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 493,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 494,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 495,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 496,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 497,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 498,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 499,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 500,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 501,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 502,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 503,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 504,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 505,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 506,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 507,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 508,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 509,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 510,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 511,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 512,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 513,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 514,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 515,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 516,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 517,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 518,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 519,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 520,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 521,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 522,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 523,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 524,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 525,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 526,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 527,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 528,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 529,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 530,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 531,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 532,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 533,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 534,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 535,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 536,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 537,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 538,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 539,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 540,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  },
+  {
+   "page_no": 541,
+   "width": 612.0,
+   "height": 792.0,
+   "rotation": 0
+  }
+ ],
+ "blocks": [
+  {
+   "id": "p1-b01",
+   "page": 1,
+   "bbox": [
+    0.2579,
+    0.1976,
+    0.6757,
+    0.2194
+   ],
+   "type": "heading",
+   "text": "Understanding Deep Learning",
+   "level": 1,
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b02",
+   "page": 1,
+   "bbox": [
+    0.3954,
+    0.2688,
+    0.5383,
+    0.2825
+   ],
+   "type": "paragraph",
+   "text": "Simon J.D. Prince",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b03",
+   "page": 1,
+   "bbox": [
+    0.3981,
+    0.3038,
+    0.5296,
+    0.3175
+   ],
+   "type": "paragraph",
+   "text": "February 8, 2026",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b04",
+   "page": 1,
+   "bbox": [
+    0.2048,
+    0.6713,
+    0.7289,
+    0.6826
+   ],
+   "type": "paragraph",
+   "text": "The most recent version of this document can be found at http://udlbook.com.",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b05",
+   "page": 1,
+   "bbox": [
+    0.1696,
+    0.7209,
+    0.764,
+    0.7461
+   ],
+   "type": "paragraph",
+   "text": "Copyright in this work has been licensed exclusively to The MIT Press, https://mitpress.mit.edu, which released the final version to the public in December 2023.",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b06",
+   "page": 1,
+   "bbox": [
+    0.1802,
+    0.7486,
+    0.7534,
+    0.7599
+   ],
+   "type": "paragraph",
+   "text": "Inquiries regarding rights should be addressed to the MIT Press, Rights & Permissions",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b07",
+   "page": 1,
+   "bbox": [
+    0.4253,
+    0.7624,
+    0.5084,
+    0.7737
+   ],
+   "type": "paragraph",
+   "text": "Department.",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b08",
+   "page": 1,
+   "bbox": [
+    0.239,
+    0.7834,
+    0.6946,
+    0.7947
+   ],
+   "type": "paragraph",
+   "text": "This work is subject to a Creative Commons CC-BY-NC-ND license.",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b09",
+   "page": 1,
+   "bbox": [
+    0.16,
+    0.8152,
+    0.7737,
+    0.8403
+   ],
+   "type": "paragraph",
+   "text": "I would really appreciate help improving this document. No detail too small! Please contact me with suggestions, factual inaccuracies, ambiguities, questions, and errata via github or by",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p1-b10",
+   "page": 1,
+   "bbox": [
+    0.3528,
+    0.8428,
+    0.5808,
+    0.8541
+   ],
+   "type": "paragraph",
+   "text": "e-mail at udlbookmail@gmail.com.",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p3-b01",
+   "page": 3,
+   "bbox": [
+    0.1551,
+    0.3783,
+    0.7786,
+    0.421
+   ],
+   "type": "paragraph",
+   "text": "This book is dedicated to Blair, Calvert, Coppola, Ellison, Faulkner, Kerpatenko, Morris, Robinson, Sträussler, Wallace, Waymon, Wojnarowicz, and all the others whose work is even more important and interesting than deep learning.",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b01",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.2591,
+    0.2941,
+    0.2852
+   ],
+   "type": "paragraph",
+   "text": "Contents",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b02",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.3533,
+    0.7786,
+    0.3659
+   ],
+   "type": "paragraph",
+   "text": "Preface ix",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b03",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.3863,
+    0.7786,
+    0.3988
+   ],
+   "type": "paragraph",
+   "text": "Acknowledgements xi",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b04",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.4193,
+    0.7786,
+    0.539
+   ],
+   "type": "list",
+   "text": "1 Introduction 1 1.1 Supervised learning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 1 1.2 Unsupervised learning . . . . . . . . . . . . . . . . . . . . . . . . . . . . 7 1.3 Reinforcement learning . . . . . . . . . . . . . . . . . . . . . . . . . . . . 11 1.4 Ethics . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12 1.5 Structure of book . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 1.6 Other books . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 1.7 How to read this book . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b05",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.5594,
+    0.7786,
+    0.6179
+   ],
+   "type": "list",
+   "text": "2 Supervised learning 17 2.1 Supervised learning overview . . . . . . . . . . . . . . . . . . . . . . . . . 17 2.2 Linear regression example . . . . . . . . . . . . . . . . . . . . . . . . . . 18 2.3 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b06",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.6383,
+    0.7786,
+    0.7427
+   ],
+   "type": "list",
+   "text": "3 Shallow neural networks 25 3.1 Neural network example . . . . . . . . . . . . . . . . . . . . . . . . . . . 25 3.2 Universal approximation theorem . . . . . . . . . . . . . . . . . . . . . . 29 3.3 Multivariate inputs and outputs . . . . . . . . . . . . . . . . . . . . . . . 30 3.4 Shallow neural networks: general case . . . . . . . . . . . . . . . . . . . . 33 3.5 Terminology . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 35 3.6 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 36",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p5-b07",
+   "page": 5,
+   "bbox": [
+    0.1551,
+    0.7631,
+    0.7786,
+    0.8675
+   ],
+   "type": "list",
+   "text": "4 Deep neural networks 41 4.1 Composing neural networks . . . . . . . . . . . . . . . . . . . . . . . . . 41 4.2 From composing networks to deep networks . . . . . . . . . . . . . . . . 43 4.3 Deep neural networks . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 45 4.4 Matrix notation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 48 4.5 Shallow vs. deep neural networks . . . . . . . . . . . . . . . . . . . . . . 49 4.6 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 52",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b01",
+   "page": 6,
+   "bbox": [
+    0.2139,
+    0.1358,
+    0.8421,
+    0.1484
+   ],
+   "type": "paragraph",
+   "text": "iv Contents",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b02",
+   "page": 6,
+   "bbox": [
+    0.2186,
+    0.1756,
+    0.8421,
+    0.3092
+   ],
+   "type": "list",
+   "text": "5 Loss functions 56 5.1 Maximum likelihood . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 56 5.2 Recipe for constructing loss functions . . . . . . . . . . . . . . . . . . . . 60 5.3 Example 1: univariate regression . . . . . . . . . . . . . . . . . . . . . . 61 5.4 Example 2: binary classification . . . . . . . . . . . . . . . . . . . . . . . 64 5.5 Example 3: multiclass classification . . . . . . . . . . . . . . . . . . . . . 67 5.6 Multiple outputs . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 69 5.7 Cross-entropy loss . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 71 5.8 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 72",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b03",
+   "page": 6,
+   "bbox": [
+    0.2186,
+    0.3296,
+    0.8421,
+    0.433
+   ],
+   "type": "list",
+   "text": "6 Fitting models 77 6.1 Gradient descent . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 77 6.2 Stochastic gradient descent . . . . . . . . . . . . . . . . . . . . . . . . . . 83 6.3 Momentum . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 86 6.4 Adam . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 88 6.5 Training algorithm hyperparameters . . . . . . . . . . . . . . . . . . . . 91 6.6 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 91",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b04",
+   "page": 6,
+   "bbox": [
+    0.2186,
+    0.4534,
+    0.8421,
+    0.5718
+   ],
+   "type": "list",
+   "text": "7 Gradients and initialization 96 7.1 Problem definitions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 96 7.2 Computing derivatives . . . . . . . . . . . . . . . . . . . . . . . . . . . . 97 7.3 Toy example . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 100 7.4 Backpropagation algorithm . . . . . . . . . . . . . . . . . . . . . . . . . . 103 7.5 Parameter initialization . . . . . . . . . . . . . . . . . . . . . . . . . . . . 107 7.6 Example training code . . . . . . . . . . . . . . . . . . . . . . . . . . . . 111 7.7 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 111",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b05",
+   "page": 6,
+   "bbox": [
+    0.2186,
+    0.5923,
+    0.8449,
+    0.6956
+   ],
+   "type": "list",
+   "text": "8 Measuring performance 118 8.1 Training a simple model . . . . . . . . . . . . . . . . . . . . . . . . . . . 118 8.2 Sources of error . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 120 8.3 Reducing error . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 124 8.4 Double descent . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 127 8.5 Choosing hyperparameters . . . . . . . . . . . . . . . . . . . . . . . . . . 132 8.6 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 133",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b06",
+   "page": 6,
+   "bbox": [
+    0.2186,
+    0.716,
+    0.8449,
+    0.7891
+   ],
+   "type": "list",
+   "text": "9 Regularization 138 9.1 Explicit regularization . . . . . . . . . . . . . . . . . . . . . . . . . . . . 138 9.2 Implicit regularization . . . . . . . . . . . . . . . . . . . . . . . . . . . . 141 9.3 Heuristics to improve performance . . . . . . . . . . . . . . . . . . . . . . 143 9.4 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 154",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p6-b07",
+   "page": 6,
+   "bbox": [
+    0.2186,
+    0.8095,
+    0.8449,
+    0.8675
+   ],
+   "type": "list",
+   "text": "10 Convolutional networks 161 10.1 Invariance and equivariance . . . . . . . . . . . . . . . . . . . . . . . . . 161 10.2 Convolutional networks for 1D inputs . . . . . . . . . . . . . . . . . . . . 163 10.3 Convolutional networks for 2D inputs . . . . . . . . . . . . . . . . . . . . 170",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p7-b01",
+   "page": 7,
+   "bbox": [
+    0.1795,
+    0.1756,
+    0.7786,
+    0.2185
+   ],
+   "type": "paragraph",
+   "text": "10.4 Downsampling and upsampling . . . . . . . . . . . . . . . . . . . . . . . 171 10.5 Applications . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 174 10.6 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 179",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p7-b02",
+   "page": 7,
+   "bbox": [
+    0.1551,
+    0.2389,
+    0.7814,
+    0.3573
+   ],
+   "type": "list",
+   "text": "11 Residual networks 186 11.1 Sequential processing . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 186 11.2 Residual connections and residual blocks . . . . . . . . . . . . . . . . . . 189 11.3 Exploding gradients in residual networks . . . . . . . . . . . . . . . . . . 192 11.4 Batch normalization . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 192 11.5 Common residual architectures . . . . . . . . . . . . . . . . . . . . . . . 195 11.6 Why do nets with residual connections perform so well? . . . . . . . . . 199 11.7 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 199",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p7-b03",
+   "page": 7,
+   "bbox": [
+    0.1551,
+    0.3777,
+    0.7814,
+    0.5567
+   ],
+   "type": "list",
+   "text": "12 Transformers 207 12.1 Processing text data . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 207 12.2 Dot-product self-attention . . . . . . . . . . . . . . . . . . . . . . . . . . 208 12.3 Extensions to dot-product self-attention . . . . . . . . . . . . . . . . . . 213 12.4 Transformer layers . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 215 12.5 Transformers for natural language processing . . . . . . . . . . . . . . . . 216 12.6 Encoder model example: BERT . . . . . . . . . . . . . . . . . . . . . . . 219 12.7 Decoder model example: GPT3 . . . . . . . . . . . . . . . . . . . . . . . 222 12.8 Encoder-decoder model example: machine translation . . . . . . . . . . . 226 12.9 Transformers for long sequences . . . . . . . . . . . . . . . . . . . . . . . 227 12.10 Transformers for images . . . . . . . . . . . . . . . . . . . . . . . . . . . 228 12.11 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 232",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p7-b04",
+   "page": 7,
+   "bbox": [
+    0.1551,
+    0.5771,
+    0.7814,
+    0.741
+   ],
+   "type": "list",
+   "text": "13 Graph neural networks 240 13.1 What is a graph? . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 240 13.2 Graph representation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 243 13.3 Graph neural networks, tasks, and loss functions . . . . . . . . . . . . . . 245 13.4 Graph convolutional networks . . . . . . . . . . . . . . . . . . . . . . . . 248 13.5 Example: graph classification . . . . . . . . . . . . . . . . . . . . . . . . 251 13.6 Inductive vs. transductive models . . . . . . . . . . . . . . . . . . . . . . 252 13.7 Example: node classification . . . . . . . . . . . . . . . . . . . . . . . . . 253 13.8 Layers for graph convolutional networks . . . . . . . . . . . . . . . . . . 256 13.9 Edge graphs . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 260 13.10 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 261",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p7-b05",
+   "page": 7,
+   "bbox": [
+    0.1551,
+    0.7614,
+    0.7814,
+    0.8345
+   ],
+   "type": "list",
+   "text": "14 Unsupervised learning 269 14.1 Taxonomy of unsupervised learning models . . . . . . . . . . . . . . . . . 269 14.2 What makes a good generative model? . . . . . . . . . . . . . . . . . . . 270 14.3 Quantifying performance . . . . . . . . . . . . . . . . . . . . . . . . . . . 272 14.4 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 274",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p7-b06",
+   "page": 7,
+   "bbox": [
+    0.1551,
+    0.8549,
+    0.7814,
+    0.8675
+   ],
+   "type": "list",
+   "text": "15 Generative adversarial networks 276",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p8-b01",
+   "page": 8,
+   "bbox": [
+    0.2139,
+    0.1358,
+    0.8421,
+    0.1484
+   ],
+   "type": "paragraph",
+   "text": "vi Contents",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p8-b02",
+   "page": 8,
+   "bbox": [
+    0.243,
+    0.1756,
+    0.8421,
+    0.2794
+   ],
+   "type": "paragraph",
+   "text": "15.1 Discrimination as a signal . . . . . . . . . . . . . . . . . . . . . . . . . . 276 15.2 Improving stability . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 281 15.3 Progressive growing, minibatch discrimination, and truncation . . . . . . 287 15.4 Conditional generation . . . . . . . . . . . . . . . . . . . . . . . . . . . . 289 15.5 Image translation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 291 15.6 StyleGAN . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 296 15.7 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 298",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p8-b03",
+   "page": 8,
+   "bbox": [
+    0.2186,
+    0.2998,
+    0.8449,
+    0.4036
+   ],
+   "type": "list",
+   "text": "16 Normalizing flows 304 16.1 1D example . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 304 16.2 General case . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 307 16.3 Invertible network layers . . . . . . . . . . . . . . . . . . . . . . . . . . . 309 16.4 Multi-scale flows . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 317 16.5 Applications . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 318 16.6 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 321",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p8-b04",
+   "page": 8,
+   "bbox": [
+    0.2186,
+    0.424,
+    0.8449,
+    0.5734
+   ],
+   "type": "list",
+   "text": "17 Variational autoencoders 327 17.1 Latent variable models . . . . . . . . . . . . . . . . . . . . . . . . . . . . 327 17.2 Nonlinear latent variable model . . . . . . . . . . . . . . . . . . . . . . . 328 17.3 Training . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 331 17.4 ELBO properties . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 334 17.5 Variational approximation . . . . . . . . . . . . . . . . . . . . . . . . . . 336 17.6 The variational autoencoder . . . . . . . . . . . . . . . . . . . . . . . . . 336 17.7 The reparameterization trick . . . . . . . . . . . . . . . . . . . . . . . . . 339 17.8 Applications . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 340 17.9 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 343",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p8-b05",
+   "page": 8,
+   "bbox": [
+    0.2186,
+    0.5939,
+    0.8449,
+    0.7129
+   ],
+   "type": "list",
+   "text": "18 Diffusion models 349 18.1 Overview . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 349 18.2 Encoder (forward process) . . . . . . . . . . . . . . . . . . . . . . . . . . 350 18.3 Decoder model (reverse process) . . . . . . . . . . . . . . . . . . . . . . . 356 18.4 Training . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 357 18.5 Reparameterization of loss function . . . . . . . . . . . . . . . . . . . . . 361 18.6 Implementation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 363 18.7 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 368",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p8-b06",
+   "page": 8,
+   "bbox": [
+    0.2186,
+    0.7333,
+    0.8449,
+    0.8675
+   ],
+   "type": "list",
+   "text": "19 Reinforcement learning 374 19.1 Markov decision processes, returns, and policies . . . . . . . . . . . . . . 374 19.2 Expected return . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 378 19.3 Tabular reinforcement learning . . . . . . . . . . . . . . . . . . . . . . . . 382 19.4 Fitted Q-learning . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 386 19.5 Policy gradient methods . . . . . . . . . . . . . . . . . . . . . . . . . . . 389 19.6 Actor-critic methods . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 394 19.7 Offline reinforcement learning . . . . . . . . . . . . . . . . . . . . . . . . 395 19.8 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 396",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p9-b01",
+   "page": 9,
+   "bbox": [
+    0.1551,
+    0.1756,
+    0.7814,
+    0.2939
+   ],
+   "type": "list",
+   "text": "20 Why does deep learning work? 402 20.1 The case against deep learning . . . . . . . . . . . . . . . . . . . . . . . . 402 20.2 Factors that influence fitting performance . . . . . . . . . . . . . . . . . 403 20.3 Properties of loss functions . . . . . . . . . . . . . . . . . . . . . . . . . . 407 20.4 Factors that determine generalization . . . . . . . . . . . . . . . . . . . . 411 20.5 Do we need so many parameters? . . . . . . . . . . . . . . . . . . . . . . 415 20.6 Do networks have to be deep? . . . . . . . . . . . . . . . . . . . . . . . . 418 20.7 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 419",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p9-b02",
+   "page": 9,
+   "bbox": [
+    0.1551,
+    0.3143,
+    0.7814,
+    0.4476
+   ],
+   "type": "list",
+   "text": "21 Deep learning and ethics 421 21.1 Value alignment . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 421 21.2 Intentional misuse . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 427 21.3 Other social, ethical, and professional issues . . . . . . . . . . . . . . . . 429 21.4 Case study . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 431 21.5 The value-free ideal of science . . . . . . . . . . . . . . . . . . . . . . . . 432 21.6 Responsible AI research as a collective action problem . . . . . . . . . . 433 21.7 Ways forward . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 434 21.8 Summary . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 435",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  },
+  {
+   "id": "p9-b03",
+   "page": 9,
+   "bbox": [
+    0.1551,
+    0.468,
+    0.7814,
+    0.4806
+   ],
+   "type": "paragraph",
+   "text": "A Notation 437",
+   "section_path": [
+    "Understanding Deep Learning"
+   ]
+  }
+ ],
+ "outline": [
+  {
+   "title": "Preface",
+   "level": 1,
+   "page": 5
+  },
+  {
+   "title": "Acknowledgements",
+   "level": 1,
+   "page": 11
+  },
+  {
+   "title": "Introduction",
+   "level": 1,
+   "page": 15
+  },
+  {
+   "title": "Supervised learning",
+   "level": 2,
+   "page": 15
+  },
+  {
+   "title": "Unsupervised learning",
+   "level": 2,
+   "page": 21
+  },
+  {
+   "title": "Reinforcement learning",
+   "level": 2,
+   "page": 25
+  },
+  {
+   "title": "Ethics",
+   "level": 2,
+   "page": 26
+  },
+  {
+   "title": "Structure of book",
+   "level": 2,
+   "page": 29
+  },
+  {
+   "title": "Other books",
+   "level": 2,
+   "page": 29
+  },
+  {
+   "title": "How to read this book",
+   "level": 2,
+   "page": 30
+  },
+  {
+   "title": "Supervised learning",
+   "level": 1,
+   "page": 31
+  },
+  {
+   "title": "Supervised learning overview",
+   "level": 2,
+   "page": 31
+  },
+  {
+   "title": "Linear regression example",
+   "level": 2,
+   "page": 32
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 36
+  },
+  {
+   "title": "Shallow neural networks",
+   "level": 1,
+   "page": 39
+  },
+  {
+   "title": "Neural network example",
+   "level": 2,
+   "page": 39
+  },
+  {
+   "title": "Universal approximation theorem",
+   "level": 2,
+   "page": 43
+  },
+  {
+   "title": "Multivariate inputs and outputs",
+   "level": 2,
+   "page": 44
+  },
+  {
+   "title": "Shallow neural networks: general case",
+   "level": 2,
+   "page": 47
+  },
+  {
+   "title": "Terminology",
+   "level": 2,
+   "page": 49
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 50
+  },
+  {
+   "title": "Deep neural networks",
+   "level": 1,
+   "page": 55
+  },
+  {
+   "title": "Composing neural networks",
+   "level": 2,
+   "page": 55
+  },
+  {
+   "title": "From composing networks to deep networks",
+   "level": 2,
+   "page": 57
+  },
+  {
+   "title": "Deep neural networks",
+   "level": 2,
+   "page": 59
+  },
+  {
+   "title": "Matrix notation",
+   "level": 2,
+   "page": 62
+  },
+  {
+   "title": "Shallow vs. deep neural networks",
+   "level": 2,
+   "page": 63
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 66
+  },
+  {
+   "title": "Loss functions",
+   "level": 1,
+   "page": 70
+  },
+  {
+   "title": "Maximum likelihood",
+   "level": 2,
+   "page": 70
+  },
+  {
+   "title": "Recipe for constructing loss functions",
+   "level": 2,
+   "page": 74
+  },
+  {
+   "title": "Example 1: univariate regression",
+   "level": 2,
+   "page": 75
+  },
+  {
+   "title": "Example 2: binary classification",
+   "level": 2,
+   "page": 78
+  },
+  {
+   "title": "Example 3: multiclass classification",
+   "level": 2,
+   "page": 81
+  },
+  {
+   "title": "Multiple outputs",
+   "level": 2,
+   "page": 83
+  },
+  {
+   "title": "Cross-entropy loss",
+   "level": 2,
+   "page": 85
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 86
+  },
+  {
+   "title": "Fitting models",
+   "level": 1,
+   "page": 91
+  },
+  {
+   "title": "Gradient descent",
+   "level": 2,
+   "page": 91
+  },
+  {
+   "title": "Stochastic gradient descent",
+   "level": 2,
+   "page": 97
+  },
+  {
+   "title": "Momentum",
+   "level": 2,
+   "page": 100
+  },
+  {
+   "title": "Adam",
+   "level": 2,
+   "page": 102
+  },
+  {
+   "title": "Training algorithm hyperparameters",
+   "level": 2,
+   "page": 105
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 105
+  },
+  {
+   "title": "Gradients and initialization",
+   "level": 1,
+   "page": 110
+  },
+  {
+   "title": "Problem definitions",
+   "level": 2,
+   "page": 110
+  },
+  {
+   "title": "Computing derivatives",
+   "level": 2,
+   "page": 111
+  },
+  {
+   "title": "Toy example",
+   "level": 2,
+   "page": 114
+  },
+  {
+   "title": "Backpropagation algorithm",
+   "level": 2,
+   "page": 117
+  },
+  {
+   "title": "Parameter initialization",
+   "level": 2,
+   "page": 121
+  },
+  {
+   "title": "Example training code",
+   "level": 2,
+   "page": 125
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 125
+  },
+  {
+   "title": "Measuring performance",
+   "level": 1,
+   "page": 132
+  },
+  {
+   "title": "Training a simple model",
+   "level": 2,
+   "page": 132
+  },
+  {
+   "title": "Sources of error",
+   "level": 2,
+   "page": 134
+  },
+  {
+   "title": "Reducing error",
+   "level": 2,
+   "page": 138
+  },
+  {
+   "title": "Double descent",
+   "level": 2,
+   "page": 141
+  },
+  {
+   "title": "Choosing hyperparameters",
+   "level": 2,
+   "page": 146
+  },
+  {
+   "title": "Summary",
+   "level": 2,
+   "page": 147
+  },
+  {
+   "title": "Regularization",
+   "level": 1,
+   "page": 152
+  }
+ ],
+ "references": [],
+ "stats": {
+  "pages_parsed": 541,
+  "blocks": 9511,
+  "ocr_pages": 0,
+  "elapsed_ms": 121952
+ }
+}
