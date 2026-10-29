@@ -33,7 +33,35 @@ type Chunk struct {
 	Content    string
 	Score      float64 // 余弦相似度，越大越相关
 	Filename   string  // 只有 Search 返回的 Chunk 会填这个字段
+
+	// 以下五个字段是参赛版「科研助手」新增的学术结构（migration 0015）。
+	//
+	// 【为什么放在 domain.Chunk 而不是另建 PDFBlock 类型】检索、引用、
+	// 评测三条链路都直接消费 domain.Chunk——另建一个类型意味着每个消费者
+	// 都要在两套结构之间转换一遍，而它们的差异只有一个"有没有页码"。
+	//
+	// 【零值语义】md/txt 文档没有页，PageStart/PageEnd 为 0、BBox/SectionPath
+	// 为 nil；PDF 解析出来才填。消费方用 IsAcademic 判断，不要拿 0 当页码。
+	PageStart   int       // 1-based 物理页码；0 表示未知/无页概念
+	PageEnd     int       // 跨页块才有意义；等于 PageStart 表示未跨页
+	BBox        []float64 // 归一化 [x0,y0,x1,y1]，0~1，左上原点
+	SectionPath []string  // 章节路径，如 ["3 Model Architecture", "3.2 Attention"]
+	BlockType   string    // heading|paragraph|formula|table|list|reference|caption|other
+
+	// 参赛版 M2：混合检索的两路原始分数（只在检索结果里填，索引输入时为零）。
+	//
+	// 【为什么不复用 Score】Score 是"最终排序分"（现在是 RRF 融合分），
+	// 而这两列分别是向量余弦相似度、词法 ts_rank_cd——量纲不同、用途不同：
+	// 前端检索调试面板要把它们并排显示，出问题时才能判断"是没召回还是排序错"。
+	VectorScore  float64
+	LexicalScore float64
 }
+
+// IsAcademic 表示这个分块是否带学术结构（PDF 解析产物）。
+//
+// 【为什么需要它】PageStart 的零值 0 是合法的"没有页"标记，不是第 0 页；
+// 想按页跳转的代码必须先判断，否则会把 md 文档块跳到 PDF 第 0 页。
+func (c Chunk) IsAcademic() bool { return c.PageStart > 0 }
 
 // Memory 是长期记忆的一条。
 type Memory struct {
@@ -65,6 +93,15 @@ type Citation struct {
 	Filename   string
 	Snippet    string
 	Score      float64
+
+	// 参赛版新增：引用要能"跳到论文第几页、高亮哪一块"。
+	//
+	// 【零值语义与 Chunk 一致】md/txt 文档这三个字段是零值，前端不渲染
+	// 页码按钮；PDF 才有。见 Chunk.IsAcademic。
+	Page        int
+	PageEnd     int
+	BBox        []float64
+	SectionPath []string
 }
 
 // TokenUsage 是一次模型调用的用量。
@@ -96,4 +133,31 @@ type MessageSnippet struct {
 	Role       Role
 	Content    string
 	SequenceNo int64
+}
+
+
+// OutlineEntry 是论文阅读器左侧目录的一行（参赛版 M3）。
+//
+// 【为什么 Level 由 section_path 长度推出，而不是解析标题里的 3.2.1 编号】
+// 编号格式在不同出版社的 PDF 里差异很大（有的用 1.、有的用 A.、有的没有
+// 编号）；而 sidecar 已经按版面层级推出了章节路径，长度就是天然的层级。
+// 前端只需按 Level 缩进，不用理解编号规则。
+type OutlineEntry struct {
+	Title string // 章节标题（heading 分块的原文）
+	Page  int    // 1-based 物理页码，点击目录直接跳这一页
+	Level int    // 1-based 层级 = len(section_path)
+}
+
+// ReferenceEntry 是论文参考文献的一条（参赛版 M5 引用图谱的基础节点）。
+//
+// 【MatchedDocumentID/MatchedFilename 的意义】它表示"这条参考文献对应的
+// 论文也在当前知识库里"——只有这样，引用图谱才有跨文档的边。匹配靠标题
+// 文本包含（见 knowledge.Usecase.References），不是真正的实体消歧：
+// 标题相同但年份不同的两篇论文会被认成同一篇，这一点写进技术文档的已知限制。
+type ReferenceEntry struct {
+	Index             int    // 引文编号（[n] 里的 n）；解析不出来时为 0
+	Text              string // 参考文献原文（可能跨行，已折叠空白）
+	Page              int    // 所在页码（PDF；md/txt 为 0）
+	MatchedDocumentID string // 命中的库内文档 id；空串 = 未命中
+	MatchedFilename   string // 命中的库内文档文件名
 }

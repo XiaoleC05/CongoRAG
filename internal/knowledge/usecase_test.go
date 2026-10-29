@@ -120,8 +120,35 @@ var _ DocRepo = (*fakeDocRepo)(nil)
 type fakeDocRepo struct {
 	docs []*Document
 
+	// outline 是 ListOutline 要返回的目录（参赛版 M3）。
+	outline []domain.OutlineEntry
+	// references / chunks 是引用图谱（M5）测试的摆放值。
+	references []domain.ReferenceEntry
+	chunks     []domain.Chunk
+
 	failOn string
 	err    error
+}
+
+func (f *fakeDocRepo) ListOutline(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.OutlineEntry, error) {
+	if f.failOn == "ListOutline" {
+		return nil, f.err
+	}
+	return f.outline, nil
+}
+
+func (f *fakeDocRepo) ListReferences(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.ReferenceEntry, error) {
+	if f.failOn == "ListReferences" {
+		return nil, f.err
+	}
+	return f.references, nil
+}
+
+func (f *fakeDocRepo) ListChunkContents(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.Chunk, error) {
+	if f.failOn == "ListChunkContents" {
+		return nil, f.err
+	}
+	return f.chunks, nil
 }
 
 func (f *fakeDocRepo) Insert(ctx context.Context, q platform.Querier, d *Document) error {
@@ -164,6 +191,25 @@ func (f *fakeDocRepo) UpdateStatus(ctx context.Context, q platform.Querier, id u
 				return platform.ErrConflict
 			}
 			d.Status = to
+			return nil
+		}
+	}
+	return platform.ErrNotFound
+}
+
+// UpdateParsedInfo 复刻真实实现的语义：只写文档级解析元信息，
+// 不改状态、不做 CAS。参赛版 ProcessDocument 在落库事务里调用它。
+func (f *fakeDocRepo) UpdateParsedInfo(ctx context.Context, q platform.Querier, id uuid.UUID, pageCount int, parser string) error {
+	if f.failOn == "UpdateParsedInfo" {
+		return f.err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	for _, d := range f.docs {
+		if d.ID == id {
+			d.PageCount = pageCount
+			d.Parser = parser
 			return nil
 		}
 	}
@@ -829,7 +875,7 @@ func TestStatus_CanTransition(t *testing.T) {
 		{StatusProcessing, StatusReady, true},
 		{StatusProcessing, StatusFailed, true},
 		{StatusProcessing, StatusQueued, true}, // 允许重试
-		{StatusReady, StatusProcessing, true}, // 重新索引（入队后由 worker 推进）
+		{StatusReady, StatusProcessing, true},  // 重新索引（入队后由 worker 推进）
 		// 【#39 之前这一行是 false】重新索引的入口把文档直接 CAS 回 queued
 		// 再交给 worker——queued 与 processing 在代码里已经有明确分工
 		// （queued = 排队中，processing = worker 正在跑），入队侧写 processing

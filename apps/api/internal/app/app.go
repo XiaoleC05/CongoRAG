@@ -27,10 +27,12 @@ import (
 
 	"github.com/XiaoleC05/CongoRAG/apps/api/internal/api"
 	"github.com/XiaoleC05/CongoRAG/internal/agent"
+	"github.com/XiaoleC05/CongoRAG/internal/arxiv"
 	"github.com/XiaoleC05/CongoRAG/internal/conversation"
 	"github.com/XiaoleC05/CongoRAG/internal/ctxmgr"
 	"github.com/XiaoleC05/CongoRAG/internal/knowledge"
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
+	"github.com/XiaoleC05/CongoRAG/internal/pdfparse"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 	"github.com/XiaoleC05/CongoRAG/internal/retrieval"
 
@@ -144,7 +146,8 @@ func Run(webFS embed.FS) error {
 	// ChunkIndexer 依赖——真正调用 IndexDocument 的是 apps/worker 的
 	// ProcessDocument，api 进程从不触发它。两边各自装一份是
 	// "worker 有自己的装配根"这条权衡的自然结果（见文件顶部注释）。
-	retrievalUC := retrieval.NewUsecase(chunkRepo, registry, llmRepo, pool)
+	retrievalUC := retrieval.NewUsecase(chunkRepo, registry, llmRepo, pool,
+		retrieval.WithNearDedupe(cfg.RetrievalDedupe))
 
 	// sched 在这个进程里同样是占位：StartReconciler 只在 worker 启动时
 	// 调用一次，api 进程从不调它，所以这里不需要接 river.Client。
@@ -157,6 +160,13 @@ func Run(webFS embed.FS) error {
 		platform.NewTxManager(pool),
 		pool,
 	)
+
+	// 参赛版：配置了 PDF 解析 sidecar 才接上。没配时 .pdf 上传会在
+	// worker 处理阶段明确失败（落 failed 终态），md/txt 行为完全不变——
+	// 这样默认启动不依赖额外进程，评审环境少一个启动条件。
+	if cfg.PDFServiceURL != "" {
+		knowUC.SetPDFParser(pdfparse.NewClient(cfg.PDFServiceURL, cfg.PDFTimeout))
+	}
 
 	// 【llmUC 必须排在 knowUC 之后，这不是顺序偏好】换 embedding 模型时，
 	// "清空旧向量 → 改列类型 → 全部文档重新排队"三步必须在同一个事务里，
@@ -177,6 +187,11 @@ func Run(webFS embed.FS) error {
 		pool,
 	)
 
+	// 参赛版抗幻觉闸门：检索不到证据时固定拒答，不让模型自由发挥。
+	// 只在 api（聊天入口）打开；测试与其它装配保持旧行为，见 usecase.go
+	// noEvidenceRefusal 字段的注释。
+	convUC.SetNoEvidenceRefusal(true)
+
 	// agent 拥有工具、Agent 配置、执行记录。三个内置工具全是 ReadOnly
 	// （代码架构设计 §5.9),conversation_search 依赖 convUC 已经装好,
 	// 所以工具注册必须排在 convUC 构造之后。
@@ -184,6 +199,8 @@ func Run(webFS embed.FS) error {
 	toolReg := agent.NewToolRegistry()
 	toolReg.Register(agent.NewCalculator())
 	toolReg.Register(agent.NewKnowledgeSearch(retrievalUC))
+	// 参赛版 M4：arXiv 论文检索（联网工具，只读、可重试）。
+	toolReg.Register(agent.NewArxivSearch(arxiv.NewClient()))
 	toolReg.Register(agent.NewConversationSearch(convUC))
 	agentUC := agent.NewUsecase(
 		agentRepo,
@@ -239,6 +256,7 @@ func Run(webFS embed.FS) error {
 		LLM:            llmUC,
 		Conversation:   convUC,
 		Agent:          agentUC,
+		Files:          files,
 		Retrieval:      retrievalUC,
 		MaxUploadBytes: cfg.MaxUploadBytes,
 		// pool 是 *pgxpool.Pool，结构性地满足 platform.Pinger；/readyz 用它

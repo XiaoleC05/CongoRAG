@@ -2,13 +2,16 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
 
@@ -360,4 +363,86 @@ func (u *Usecase) DeleteModel(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("delete model %s: %w", id, err)
 	}
 	return nil
+}
+
+// maxTranslateRunes 是一次翻译的文本上限（按字符数）。
+//
+// 【为什么是 8000】一页论文正文大约 3000~5000 字符；8000 覆盖"整页 + 少量
+// 上下文"，再长就应该分段翻译——一次性塞给模型既贵又容易丢后半段。
+const maxTranslateRunes = 8000
+
+// Translate 把一段论文文本翻译成目标语言（参赛版 M3 的阅读器翻译）。
+//
+// 走的是"当前生效 chat 模型 + 流式拼装"，错误分类与聊天共用同一条路径。
+func (u *Usecase) Translate(ctx context.Context, text, targetLang string) (string, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", fmt.Errorf("empty text: %w", platform.ErrInvalid)
+	}
+	if n := len([]rune(text)); n > maxTranslateRunes {
+		return "", fmt.Errorf("text too long (%d characters, max %d): %w", n, maxTranslateRunes, platform.ErrInvalid)
+	}
+	if targetLang == "" {
+		targetLang = "zh-CN"
+	}
+	system := "你是学术论文翻译助手。把用户给出的论文片段准确翻译成" + targetLang +
+		"；保留公式、术语、引用编号与数字原文；只输出译文，不要解释或补充。"
+	return u.complete(ctx, system, text, 0.1)
+}
+
+// Generate 用当前 chat 模型完成一次非流式生成（参赛版 M6 写作 Copilot）。
+//
+// 【为什么单独暴露一个 Generate 而不是让写作功能自己拼 registry 调用】
+// 模型解析、key 解密、用量记账、错误分类都封装在这个包里；HTTP 边界
+// 只提供两段提示词和参数，不接触任何适配器细节。
+func (u *Usecase) Generate(ctx context.Context, system, user string) (string, error) {
+	if strings.TrimSpace(user) == "" {
+		return "", fmt.Errorf("empty user prompt: %w", platform.ErrInvalid)
+	}
+	// 写作任务需要一点创造力但不能跑题，0.3 是中间档。
+	return u.complete(ctx, system, user, 0.3)
+}
+
+// complete 是所有"非流式、一次性拿全文"调用的共用实现。
+//
+// 【为什么用 Stream 拼全文而不是 Generate】适配器的 Stream 路径已经
+// 验证过超时、用量记账和错误分类；Generate 只是它的便捷封装，但两者
+// 走不同的适配器方法，行为差异不值得为这两个调用点去验证第二遍。
+func (u *Usecase) complete(ctx context.Context, system, user string, temperature float32) (string, error) {
+	modelID, err := u.registry.ActiveModelID(ctx, KindChat)
+	if err != nil {
+		return "", fmt.Errorf("resolve active chat model: %w", err)
+	}
+	chatModel, err := u.registry.Chat(ctx, modelID)
+	if err != nil {
+		return "", fmt.Errorf("get chat model %s: %w", modelID, err)
+	}
+
+	msgs := []Message{
+		{Role: domain.RoleSystem, Content: system},
+		{Role: domain.RoleUser, Content: user},
+	}
+	stream, err := chatModel.Stream(ctx, msgs, WithTemperature(temperature))
+	if err != nil {
+		return "", fmt.Errorf("start completion stream: %w", err)
+	}
+	defer stream.Close()
+
+	var out strings.Builder
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return "", fmt.Errorf("receive completion chunk: %w", err)
+		}
+		if msg != nil {
+			out.WriteString(msg.Content)
+		}
+	}
+	if strings.TrimSpace(out.String()) == "" {
+		return "", fmt.Errorf("completion model returned empty output: %w", platform.ErrUpstream)
+	}
+	return strings.TrimSpace(out.String()), nil
 }

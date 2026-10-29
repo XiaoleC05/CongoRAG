@@ -73,9 +73,21 @@ run_started  Agent 运行的身份。data: {"runId": string}
              普通聊天没有 Run，不会出现这一帧。
 token        文本增量。data: {"text": string}
 citation     一次引用命中。data: {"chunkId": string, "documentId": string,
-                              "filename": string, "snippet": string, "score": number}
+                              "filename": string, "snippet": string, "score": number,
+                              "page": int|null, "pageEnd": int|null,
+                              "bbox": [x0,y0,x1,y1]|null, "sectionPath": [string]|null}
+             **参赛版新增后四个字段**（migration 0015 / PDF 学术解析）：
+             page 是 1-based 物理页码，bbox 是归一化 0~1、左上原点，
+             sectionPath 是章节路径。md/txt 文档这四个字段为 null——
+             与 REST 的 KnowledgeSearchHit 同一套零值约定，前端一条分支处理。
 tool_call    工具调用请求（M4-A 才会出现）。data: {"id": string, "name": string, "args": object}
 tool_result  工具调用结果（M4-A 才会出现）。data: {"id": string, "result": unknown}
+grounding    引用落地检查（参赛版）。data: {"sentences": int, "cited": int,
+             "unsupported": int, "refs": int, "validRefs": int, "valid": bool}
+             在 done 之前发出：句子级统计回答里的 [n] 标记是否都能对应到
+             本次下发的 citation。valid=false 表示有句子没引用或编号越界，
+             前端显示"部分结论未溯源"。没有检索到证据时走固定拒答文案，
+             同样会发 grounding（valid=false）。
 error        出错。data: {"type": string, "detail": string}——type 和 REST 的
              Problem.type 是同一套枚举（web/README.md 那张表），前端可以复用同一个
              错误文案映射，不用为流式错误另外维护一套文案

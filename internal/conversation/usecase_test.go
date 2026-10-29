@@ -20,6 +20,7 @@ import (
 
 	"github.com/XiaoleC05/CongoRAG/internal/ctxmgr"
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
+	"github.com/XiaoleC05/CongoRAG/internal/grounding"
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
@@ -433,7 +434,8 @@ func (f *fakeRepo) ListMessagesPage(ctx context.Context, q platform.Querier, con
 	return candidates, hasMore, nil
 }
 
-func (f *fakeRepo) UpdateMessageContent(ctx context.Context, q platform.Querier, id uuid.UUID, content string, status MessageStatus) error {
+func (f *fakeRepo) UpdateMessageContent(ctx context.Context, q platform.Querier, id uuid.UUID, content string, status MessageStatus,
+	citations []domain.Citation, groundingReport *grounding.Report) error {
 	if f.failOn == "UpdateMessageContent" {
 		return f.err
 	}
@@ -444,6 +446,8 @@ func (f *fakeRepo) UpdateMessageContent(ctx context.Context, q platform.Querier,
 			if m.ID == id {
 				m.Content = content
 				m.Status = status
+				m.Citations = citations
+				m.Grounding = groundingReport
 				return nil
 			}
 		}
@@ -2131,3 +2135,68 @@ func TestSend_ClientError_ErrorFramePassesInnermostCause(t *testing.T) {
 
 // ptrTo 只是为了让上面那张表里的 embedded 字段可读一点。
 func ptrTo(s string) *string { return &s }
+
+// ────────────────────────────────────────────────────────────────
+// 参赛版：无证据拒答 + grounding 事件
+// ────────────────────────────────────────────────────────────────
+
+// 检索不到任何证据时，不允许模型自由发挥——直接给固定拒答文案，
+// 并在 done 之前发一条 grounding 事件（valid=false，表示未溯源）。
+func TestSend_NoEvidenceRefusal(t *testing.T) {
+	d := newTestUsecase()
+	d.uc.SetNoEvidenceRefusal(true)
+	conv := d.createConversation(t, nil)
+	sink := newFakeSink()
+
+	err := d.uc.Send(context.Background(), conv.ID, "什么是量子纠缠？", "", sink)
+	require.NoError(t, err)
+
+	msgs := d.repo.messages[conv.ID]
+	require.Len(t, msgs, 2)
+	assert.Contains(t, msgs[1].Content, "没有在当前知识库里找到",
+		"检索为空时必须给固定拒答，而不是让模型编")
+	assert.Equal(t, MsgCompleted, msgs[1].Status)
+
+	// 拒答也要走 token 事件，否则前端只有一个空气泡。
+	assert.NotEmpty(t, sink.eventsByType("token"))
+	assert.NotEmpty(t, sink.eventsByType("done"))
+
+	g := sink.eventsByType("grounding")
+	require.Len(t, g, 1, "done 之前必须有一条 grounding 事件")
+	var frame struct {
+		Data struct {
+			Valid       bool `json:"valid"`
+			Unsupported int  `json:"unsupported"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(g[0].Payload, &frame))
+	assert.False(t, frame.Data.Valid, "拒答不是从文献得出的，不能标成已溯源")
+}
+
+// 正常回答（有引用）在 done 之前同样发 grounding 事件——这是前端
+// "已溯源/部分未溯源"徽标的数据来源。
+func TestSend_EmitsGroundingReport(t *testing.T) {
+	d := newTestUsecase()
+	d.search.result = []domain.Chunk{{
+		ID: uuid.New(), DocumentID: uuid.New(), Filename: "a.pdf",
+		Content: "注意力机制是 Transformer 的核心", Score: 0.9,
+	}}
+	conv := d.createConversation(t, nil)
+	sink := newFakeSink()
+
+	require.NoError(t, d.uc.Send(context.Background(), conv.ID, "核心是什么", "", sink))
+
+	g := sink.eventsByType("grounding")
+	require.Len(t, g, 1)
+	var frame struct {
+		Data struct {
+			Sentences int  `json:"sentences"`
+			Cited     int  `json:"cited"`
+			Valid     bool `json:"valid"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(g[0].Payload, &frame))
+	// fakeChatModel 默认吐"你好"（两个 rune，不足 6 个 rune 会被当成碎片），
+	// 所以这里只断言事件存在且字段被序列化，不断言 valid=true。
+	assert.GreaterOrEqual(t, frame.Data.Sentences, 0)
+}

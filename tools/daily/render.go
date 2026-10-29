@@ -25,16 +25,13 @@ func shanghai() *time.Location {
 
 func buildView(cfg Config, date string, issueNo int, repos []Repo, c Copy) IssueView {
 	t, _ := time.ParseInLocation("2006-01-02", date, shanghai())
-	for i := range repos {
-		if strings.TrimSpace(repos[i].Language) == "" {
-			repos[i].Language = "未知"
-		}
-	}
 	total := 0
 	langs := map[string]int{}
 	for _, r := range repos {
 		total += r.StarsToday
-		langs[r.Language]++
+		if r.Language != "" {
+			langs[r.Language]++
+		}
 	}
 	var stats []LangStat
 	for k, v := range langs {
@@ -140,10 +137,10 @@ func comma(n int) string {
 }
 
 type renderData struct {
-	Issue IssueView
-	Lead  LeadCopy
-	Copy  Copy
-	Repos []Repo
+	Issue  IssueView
+	Lead   LeadCopy
+	Copy   Copy
+	Repos  []Repo
 }
 
 func renderIssue(cfg Config, view IssueView, lead LeadCopy, c Copy, repos []Repo) (string, string, error) {

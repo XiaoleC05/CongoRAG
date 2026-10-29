@@ -1,0 +1,5 @@
+# pdf-service v0 核心依赖（已在本机 bundled python 验证）
+fastapi>=0.110
+uvicorn>=0.27
+python-multipart>=0.0.9
+pymupdf>=1.24          # page.find_tables() 需要 1.24+

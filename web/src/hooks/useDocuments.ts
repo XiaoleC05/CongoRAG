@@ -1,8 +1,115 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@congorag/api-client'
 import type { Schemas } from '@congorag/api-client'
 import { flattenPages, nextPageParam } from '@/lib/pagination'
+
+/** 写作草稿的类型（与契约的 enum 一致）。 */
+export type WritingKind = 'related_work' | 'summary' | 'outline'
+
+/**
+ * 写作 Copilot（参赛版 M6）：POST /knowledge-bases/{id}/writing。
+ *
+ * 【为什么用 useMutation】它是"点一次生成一次"的写操作（虽然不改库，
+ * 但语义上是一次任务提交），没有"页面打开就该有草稿"的概念，用 mutation
+ * 比 query 更贴合；失败也按写操作处理（页内 Alert，不用 toast——
+ * 这个组件就在页面上，失败原因要能停留着让人读）。
+ */
+export function useWritingDraft(kbId: string) {
+  return useMutation({
+    mutationFn: async (input: {
+      topic: string
+      kind: WritingKind
+      topK?: number
+    }): Promise<Schemas['WritingResponse']> => {
+      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/writing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      return (await res.json()) as Schemas['WritingResponse']
+    },
+  })
+}
+
+/** 参考文献条目（参赛版 M5 引用图谱）。 */
+export type DocumentReference = {
+  index: number
+  text: string
+  page: number
+  matchedDocumentId: string | null
+  matchedFilename: string | null
+}
+
+/**
+ * 阅读器「参考文献」面板：GET /documents/{id}/references。
+ *
+ * 【为什么和 outline 一样单独缓存】参考文献只在阅读器里用，而且它依赖
+ * "库内其它文档"——知识库新增/删除文档后结果会变，所以 staleTime 比
+ * outline 短，并在重新索引后由 ReaderPage 的文档查询失效间接触发。
+ */
+export function useDocumentReferences(docId: string) {
+  return useQuery<DocumentReference[]>({
+    queryKey: ['document-references', docId],
+    queryFn: async (): Promise<DocumentReference[]> => {
+      const res = await fetch(`/api/v1/documents/${docId}/references`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return (await res.json()) as DocumentReference[]
+    },
+    enabled: docId !== '',
+    staleTime: 30 * 1000,
+  })
+}
+
+/**
+ * 多篇对比（参赛版 A6）：POST /knowledge-bases/{id}/compare。
+ *
+ * 输出是"对照表 + 综合结论 + 引用列表"，和写作草稿的形态不同，所以单独
+ * 一个 mutation，不复用写作的 hook（两者的错误文案与结果渲染都不一样）。
+ */
+export function useCompareDraft(kbId: string) {
+  return useMutation({
+    mutationFn: async (input: { question: string; topK?: number }): Promise<Schemas['CompareResponse']> => {
+      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/compare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      return (await res.json()) as Schemas['CompareResponse']
+    },
+  })
+}
+
+/**
+ * 阅读器目录（参赛版 M3）：GET /documents/{id}/outline。
+ *
+ * 【为什么单独一个 hook】目录只有在阅读器打开时才需要，且与文档列表的
+ * 轮询无关；塞进列表查询会让每次轮询都白跑一遍目录。react-query 的 key
+ * 按文档 id 分开缓存，切换文档不会读到上一份的目录。
+ */
+export function useDocumentOutline(docId: string) {
+  // 显式给 TData：react-query v5 对 queryFn 返回类型的推断在某些
+  // 选项组合（enabled/staleTime）下会退化成 any，目录因此丢类型。
+  return useQuery<Schemas['OutlineEntry'][]>({
+    queryKey: ['document-outline', docId],
+    queryFn: async (): Promise<Schemas['OutlineEntry'][]> => {
+      const res = await fetch(`/api/v1/documents/${docId}/outline`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return (await res.json()) as Schemas['OutlineEntry'][]
+    },
+    enabled: docId !== '',
+    // 目录来自解析产物，重新索引前不会变；不自动轮询。
+    staleTime: 5 * 60 * 1000,
+  })
+}
 
 /** 文档状态。直接用契约里的枚举，前端不另立一套（web/README.md §5）。 */
 export type DocumentStatus = Schemas['Document']['status']

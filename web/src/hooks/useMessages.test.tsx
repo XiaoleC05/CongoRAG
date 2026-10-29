@@ -32,6 +32,7 @@ const persistedUserMessage: Message = {
   status: 'completed',
   sequenceNo: 1,
   createdAt: '2026-09-21T00:00:00Z',
+  citations: [],
 }
 
 /** 造一条历史消息：本文件只关心顺序和正文，其余字段给个合理默认。 */
@@ -49,6 +50,7 @@ function historyMessage(
     status: 'completed',
     sequenceNo,
     createdAt: '2026-09-21T00:00:00Z',
+    citations: [],
   }
 }
 

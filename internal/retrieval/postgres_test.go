@@ -78,9 +78,10 @@ func (r *fakeRows) Scan(dest ...any) error {
 	}
 	row := r.rows[r.cur]
 
-	// 列的顺序就是两条 SELECT 的顺序：id, document_id, content, filename, score。
-	if len(dest) != 5 {
-		return fmt.Errorf("fakeRows: 期望 5 个扫描目标，收到 %d 个", len(dest))
+	// 列的顺序就是两条 SELECT 的顺序：id, document_id, content, filename,
+	// page_start, page_end, bbox, section_path, block_type, score。
+	if len(dest) != 10 {
+		return fmt.Errorf("fakeRows: 期望 10 个扫描目标，收到 %d 个", len(dest))
 	}
 	id, ok := dest[0].(*uuid.UUID)
 	if !ok {
@@ -102,9 +103,37 @@ func (r *fakeRows) Scan(dest ...any) error {
 		return fmt.Errorf("fakeRows: 第 4 列不是 *string")
 	}
 	*filename = row.filename
-	score, ok := dest[4].(*float64)
+
+	// 参赛版新增的五列学术结构：这个假实现只服务 md/txt 那条查询，
+	// 所以统一给 NULL/默认值——正好覆盖"没有页码"这条零值路径。
+	pageStart, ok := dest[4].(**int)
 	if !ok {
-		return fmt.Errorf("fakeRows: 第 5 列不是 *float64")
+		return fmt.Errorf("fakeRows: 第 5 列不是 **int")
+	}
+	*pageStart = nil
+	pageEnd, ok := dest[5].(**int)
+	if !ok {
+		return fmt.Errorf("fakeRows: 第 6 列不是 **int")
+	}
+	*pageEnd = nil
+	bbox, ok := dest[6].(*[]byte)
+	if !ok {
+		return fmt.Errorf("fakeRows: 第 7 列不是 *[]byte")
+	}
+	*bbox = nil
+	section, ok := dest[7].(*[]byte)
+	if !ok {
+		return fmt.Errorf("fakeRows: 第 8 列不是 *[]byte")
+	}
+	*section = nil
+	blockType, ok := dest[8].(*string)
+	if !ok {
+		return fmt.Errorf("fakeRows: 第 9 列不是 *string")
+	}
+	*blockType = "paragraph"
+	score, ok := dest[9].(*float64)
+	if !ok {
+		return fmt.Errorf("fakeRows: 第 10 列不是 *float64")
 	}
 	*score = row.score
 	return nil

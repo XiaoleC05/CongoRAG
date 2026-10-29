@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
+	"github.com/XiaoleC05/CongoRAG/internal/grounding"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
 
@@ -206,9 +207,9 @@ func (r *PgRepo) RecentMessages(ctx context.Context, q platform.Querier, convID 
 	// 由序号上界挡住；万一还有别的空行漏下来，itemsToLLMMessages 还会再
 	// 过滤一次。
 	rows, err := q.Query(ctx,
-		`SELECT id, conversation_id, role, content, status, sequence_no, token_usage, created_at
+		`SELECT id, conversation_id, role, content, status, sequence_no, token_usage, created_at, citations, grounding
 		 FROM (
-		     SELECT id, conversation_id, role, content, status, sequence_no, token_usage, created_at
+		     SELECT id, conversation_id, role, content, status, sequence_no, token_usage, created_at, citations, grounding
 		     FROM messages
 		     WHERE conversation_id = $1 AND sequence_no > $2 AND ($3 = 0 OR sequence_no < $3)
 		     ORDER BY sequence_no DESC
@@ -244,7 +245,7 @@ func (r *PgRepo) RecentMessages(ctx context.Context, q platform.Querier, convID 
 // 分配（见 NextSequenceNo），在会话内天然唯一，一个键就够。
 func (r *PgRepo) ListMessagesPage(ctx context.Context, q platform.Querier, convID uuid.UUID, beforeSequenceNo int64, limit int) ([]*Message, bool, error) {
 	rows, err := q.Query(ctx,
-		`SELECT id, conversation_id, role, content, status, sequence_no, token_usage, created_at
+		`SELECT id, conversation_id, role, content, status, sequence_no, token_usage, created_at, citations, grounding
 		 FROM messages
 		 WHERE conversation_id = $1 AND ($2 = 0 OR sequence_no < $2)
 		 ORDER BY sequence_no DESC
@@ -272,7 +273,7 @@ func (r *PgRepo) ListMessagesPage(ctx context.Context, q platform.Querier, convI
 
 func (r *PgRepo) MessagesAfter(ctx context.Context, q platform.Querier, convID uuid.UUID, afterSequenceNo int64, limit int) ([]*Message, error) {
 	rows, err := q.Query(ctx,
-		`SELECT id, conversation_id, role, content, status, sequence_no, token_usage, created_at
+		`SELECT id, conversation_id, role, content, status, sequence_no, token_usage, created_at, citations, grounding
 		 FROM messages
 		 WHERE conversation_id = $1 AND sequence_no > $2
 		 ORDER BY sequence_no ASC
@@ -421,10 +422,21 @@ func scanMessages(rows pgx.Rows) ([]*Message, error) {
 	for rows.Next() {
 		m := &Message{}
 		var role, status string
-		var tokenUsageRaw []byte
+		var tokenUsageRaw, citationsRaw, groundingRaw []byte
 		if err := rows.Scan(&m.ID, &m.ConversationID, &role, &m.Content, &status,
-			&m.SequenceNo, &tokenUsageRaw, &m.CreatedAt); err != nil {
+			&m.SequenceNo, &tokenUsageRaw, &m.CreatedAt, &citationsRaw, &groundingRaw); err != nil {
 			return nil, fmt.Errorf("scan message: %w", err)
+		}
+		if len(citationsRaw) > 0 {
+			// 反序列化失败不中断查询：与 token_usage 同一取舍，丢掉这一个
+			// 字段比让整个消息列表加载失败更合理。
+			_ = json.Unmarshal(citationsRaw, &m.Citations)
+		}
+		if len(groundingRaw) > 0 {
+			var gr grounding.Report
+			if err := json.Unmarshal(groundingRaw, &gr); err == nil {
+				m.Grounding = &gr
+			}
 		}
 		m.Role = domain.Role(role)
 		m.Status = MessageStatus(status)
@@ -445,10 +457,26 @@ func scanMessages(rows pgx.Rows) ([]*Message, error) {
 	return out, nil
 }
 
-func (r *PgRepo) UpdateMessageContent(ctx context.Context, q platform.Querier, id uuid.UUID, content string, status MessageStatus) error {
+func (r *PgRepo) UpdateMessageContent(ctx context.Context, q platform.Querier, id uuid.UUID, content string, status MessageStatus,
+	citations []domain.Citation, groundingReport *grounding.Report) error {
+	// nil 指针写 NULL（而不是 jsonb 的 'null'）：两者语义不同，"没有引用"
+	// 应该真的没有值，JSON null 会让 scan 侧多一层判别。
+	var citationsArg, groundingArg *string
+	if len(citations) > 0 {
+		if b, err := json.Marshal(citations); err == nil {
+			s := string(b)
+			citationsArg = &s
+		}
+	}
+	if groundingReport != nil {
+		if b, err := json.Marshal(groundingReport); err == nil {
+			s := string(b)
+			groundingArg = &s
+		}
+	}
 	tag, err := q.Exec(ctx,
-		`UPDATE messages SET content = $2, status = $3 WHERE id = $1`,
-		id, content, string(status))
+		`UPDATE messages SET content = $2, status = $3, citations = $4::jsonb, grounding = $5::jsonb WHERE id = $1`,
+		id, content, string(status), citationsArg, groundingArg)
 	if err != nil {
 		return fmt.Errorf("update message %s content: %w", id, platform.WrapPgErr(err))
 	}

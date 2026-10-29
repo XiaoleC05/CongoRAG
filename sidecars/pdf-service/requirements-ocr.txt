@@ -1,0 +1,3 @@
+# 可选：扫描页 OCR（无文本层 PDF）。不装则 /parse 自动降级为仅文本层。
+-r requirements.txt
+rapidocr_onnxruntime>=1.3

@@ -26,6 +26,7 @@ import (
 	"github.com/XiaoleC05/CongoRAG/internal/ctxmgr"
 	"github.com/XiaoleC05/CongoRAG/internal/knowledge"
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
+	"github.com/XiaoleC05/CongoRAG/internal/pdfparse"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 	"github.com/XiaoleC05/CongoRAG/internal/retrieval"
 
@@ -176,6 +177,14 @@ func Run() error {
 
 	txm := platform.NewTxManager(pool)
 	knowUC := knowledge.NewUsecase(kbRepo, docRepo, files, enqueuer, retrievalUC, cleaner, sched, txm, pool)
+
+	// 参赛版：PDF 解析 sidecar（见 _dev/CONTRACT_pdf-service.md）。
+	// 处理 PDF 的正是 worker，所以这里才是真正必须接上的地方；
+	// api 侧那一次注入只影响上传白名单之外的路径（当前没有），
+	// 两边都接是为了两个装配根保持对称。
+	if cfg.PDFServiceURL != "" {
+		knowUC.SetPDFParser(pdfparse.NewClient(cfg.PDFServiceURL, cfg.PDFTimeout))
+	}
 
 	// ── River：Workers 必须在 Client 构造之前注册好 ──
 	workers := river.NewWorkers()

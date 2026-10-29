@@ -120,6 +120,25 @@ func (noopDocRepo) ByID(ctx context.Context, q platform.Querier, id uuid.UUID) (
 func (noopDocRepo) UpdateStatus(ctx context.Context, q platform.Querier, id uuid.UUID, from, to knowledge.Status) error {
 	return nil
 }
+
+func (noopDocRepo) UpdateParsedInfo(ctx context.Context, q platform.Querier, id uuid.UUID, pageCount int, parser string) error {
+	return nil
+}
+
+// ListReferences / ListChunkContents 是参赛版 M5 引用图谱；大多数用例不关心。
+func (noopDocRepo) ListReferences(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.ReferenceEntry, error) {
+	return nil, nil
+}
+
+func (noopDocRepo) ListChunkContents(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.Chunk, error) {
+	return nil, nil
+}
+
+// ListOutline 是参赛版 M3 阅读器目录；绝大多数用例不关心目录，返回空。
+func (noopDocRepo) ListOutline(ctx context.Context, q platform.Querier, id uuid.UUID) ([]domain.OutlineEntry, error) {
+	return nil, nil
+}
+
 func (noopDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID, cur *platform.ListCursor, limit int) ([]*knowledge.Document, bool, error) {
 	return nil, false, nil
 }
@@ -129,6 +148,7 @@ func (noopDocRepo) Delete(ctx context.Context, q platform.Querier, id uuid.UUID)
 func (noopDocRepo) DeleteByKnowledgeBase(ctx context.Context, q platform.Querier, kbID uuid.UUID) ([]string, error) {
 	return nil, nil
 }
+
 // 下面三个是重新索引（issue #39）要的方法。这个替身只服务"api 层能不能
 // 装配起来"这件事，业务语义由 knowledge 包自己的测试覆盖。
 func (noopDocRepo) MarkForReindex(ctx context.Context, q platform.Querier, id uuid.UUID) error {

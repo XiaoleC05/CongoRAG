@@ -66,12 +66,27 @@ function lastAssistantId(data: InfiniteData<Page<Message>> | undefined): string 
 }
 
 /** 展示层用的引用：从 citation 事件的 payload 摊平出来，配到具体某条消息上。 */
+/** grounding 事件的数据形状（见 docs/sse-protocol.md）。 */
+export type GroundingReport = {
+  sentences: number
+  cited: number
+  unsupported: number
+  refs: number
+  validRefs: number
+  valid: boolean
+}
+
 export type DisplayCitation = {
   chunkId: string
   documentId: string
   filename: string
   snippet: string
   score: number
+  /** 1-based 物理页码；md/txt 文档为 null/undefined（旧帧没有这两个字段） */
+  page?: number | null
+  pageEnd?: number | null
+  bbox?: number[] | null
+  sectionPath?: string[] | null
 }
 
 /**
@@ -122,6 +137,12 @@ export type TurnSource = { messageId: string; kind: 'retry' | 'regenerate' }
 export function useSendMessage(conversationId: string) {
   const queryClient = useQueryClient()
   const [pendingCitations, setPendingCitations] = useState<DisplayCitation[]>([])
+  /**
+   * 引用落地检查报告（参赛版）：done 之前一条 grounding 事件。
+   * 有它才能显示"已溯源 / 部分未溯源"——抗幻觉不是一个形容词，
+   * 要有可展示的数字。
+   */
+  const [groundingReport, setGroundingReport] = useState<GroundingReport | null>(null)
   const [streamingContent, setStreamingContent] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamError, setStreamError] = useState<unknown>(null)
@@ -181,6 +202,7 @@ export function useSendMessage(conversationId: string) {
       setStreamError(null)
       setStreamingContent('')
       setPendingCitations([])
+      setGroundingReport(null)
       contentRef.current = ''
       setActiveSource(options.source ?? null)
 
@@ -218,6 +240,7 @@ export function useSendMessage(conversationId: string) {
             status: 'completed',
             sequenceNo: lastSequenceNo(old) + 1,
             createdAt: new Date().toISOString(),
+            citations: [],
           }
           if (!old || old.pages.length === 0) {
             // 还没有任何一页（首屏还在加载）：造一个只含这条乐观消息的页，
@@ -258,6 +281,9 @@ export function useSendMessage(conversationId: string) {
                 case 'token':
                   contentRef.current += event.data.text
                   setStreamingContent(contentRef.current)
+                  break
+                case 'grounding':
+                  setGroundingReport(event.data)
                   break
                 case 'error':
                   terminal = 'error'
@@ -388,6 +414,7 @@ export function useSendMessage(conversationId: string) {
     isStreaming,
     streamingContent,
     pendingCitations,
+    groundingReport,
     streamError,
     stoppedIds,
     regeneratedIds,

@@ -31,4 +31,14 @@ type Repo interface {
 	// 的返回值会填这个字段），JOIN documents 表拿到，给 SSE 的 citation
 	// 事件用。
 	Search(ctx context.Context, q platform.Querier, kbID uuid.UUID, vec []float32, model string, topK int) ([]domain.Chunk, error)
+
+	// SearchLexical 做词法检索（Postgres FTS，靠 document_chunks.search_tsv）。
+	//
+	// 【为什么没有 vec/model 参数】词法这一路不依赖 embedding 模型：
+	// 换了 embedding 模型也照样能按关键词召回。它和向量一路是"两条独立
+	// 召回通道"，融合在 retrieval.Usecase.Search 里做（RRF）。
+	//
+	// tsQuery 是已经拼好的 to_tsquery 表达式（见 internal/tokenize.Query）；
+	// 空串表示查询里没有可检索词，实现直接返回空。
+	SearchLexical(ctx context.Context, q platform.Querier, kbID uuid.UUID, tsQuery string, topK int) ([]domain.Chunk, error)
 }

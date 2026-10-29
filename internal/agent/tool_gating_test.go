@@ -168,11 +168,12 @@ func TestCreateAgent_ModelWithToolCalling_Allowed(t *testing.T) {
 // LatestByKind 按 created_at 决定，重跑一次引导页就会换）。
 //
 // 【这条同时钉四件事】
-//  ① Start 返回 ErrInvalid；
-//  ② 恰好推了一条 error 帧，type 是 invalid_argument——不是
-//     upstream_llm_error，也不是 internal_error（issue #34 修掉的误报形状）；
-//  ③ InsertRun 没被调用（没有留下一条用户从没见过的 running 行）；
-//  ④ 拦截发生在解析模型之后、runAgent 之前，所以不会去碰真实上游。
+//
+//	① Start 返回 ErrInvalid；
+//	② 恰好推了一条 error 帧，type 是 invalid_argument——不是
+//	   upstream_llm_error，也不是 internal_error（issue #34 修掉的误报形状）；
+//	③ InsertRun 没被调用（没有留下一条用户从没见过的 running 行）；
+//	④ 拦截发生在解析模型之后、runAgent 之前，所以不会去碰真实上游。
 func TestStart_ModelWithoutToolCalling_RejectedBeforeRunInserted(t *testing.T) {
 	u, repo := newGatedUsecase(t, false)
 

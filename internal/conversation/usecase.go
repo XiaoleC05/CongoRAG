@@ -19,6 +19,7 @@ import (
 
 	"github.com/XiaoleC05/CongoRAG/internal/ctxmgr"
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
+	"github.com/XiaoleC05/CongoRAG/internal/grounding"
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
@@ -213,6 +214,15 @@ type Usecase struct {
 	search   ChunkSearcher
 	memRepo  MemoryRepo
 	db       platform.Querier
+
+	// noEvidenceRefusal 是参赛版抗幻觉闸门：检索不到证据时直接给固定拒答，
+	// 不让模型自由发挥。
+	//
+	// 【默认关闭、装配根显式打开】现有测试大量依赖"空检索也能走完模型调用"
+	// 这条路径（它们测的是 Prompt 组装、流式、错误映射，不是 RAG 本身）。
+	// 默认开启会让十几条与幻觉无关的测试同时变红，且断言的是别的行为。
+	// 生产装配根（apps/api）显式打开，行为在真实请求里始终生效。
+	noEvidenceRefusal bool
 }
 
 func NewUsecase(
@@ -230,6 +240,12 @@ func NewUsecase(
 		ctxmgr: cm, search: search, memRepo: memRepo, db: db,
 	}
 }
+
+// SetNoEvidenceRefusal 打开/关闭"无证据直接拒答"（参赛版）。
+//
+// 装配根在启动时调用一次。为什么不是构造参数：见 noEvidenceRefusal 字段的
+// 注释——现有测试依赖默认关闭的旧行为。
+func (u *Usecase) SetNoEvidenceRefusal(enabled bool) { u.noEvidenceRefusal = enabled }
 
 // cleanTitle 校验并规整会话标题。空标题合法——很多产品的"新会话"
 // 默认没有标题，靠第一条消息生成，这里不强制非空,只做长度上限校验。
@@ -642,6 +658,14 @@ func (u *Usecase) send(ctx context.Context, convID uuid.UUID, text, idempotencyK
 		return u.failMessage(ctx, assistantMsgID, "", err)
 	}
 
+	// 【参赛版抗幻觉闸门：没有证据就直接拒答】检索结果为空时还让模型自由
+	// 发挥，是幻觉最大的来源（它会拿"通用知识"编一段看起来很有道理的
+	// 回答）。这里在调模型之前短路，给出确定性的拒答 + 一条 grounding
+	// 事件，把"没找到依据"这件事明确告诉用户。
+	if u.noEvidenceRefusal && len(finalCtx.Citations) == 0 {
+		return u.streamNoEvidenceAnswer(ctx, convID, assistantMsgID, sink)
+	}
+
 	// ⑥ 调模型。
 	//
 	// 【记账要的 message_id 走 ctx 传下去（issue #47）】assistant 那条消息
@@ -673,14 +697,81 @@ func (u *Usecase) send(ctx context.Context, convID uuid.UUID, text, idempotencyK
 		return u.failMessage(ctx, assistantMsgID, content, err)
 	}
 
-	// ⑧ 完成。
-	if err := u.repo.UpdateMessageContent(ctx, u.db, assistantMsgID, content, MsgCompleted); err != nil {
+	// ⑧ 引用落地检查（参赛版，抗幻觉的第二道闸）：回答已经流给用户了，
+	// 不能再回撤；这里做的是"把可信度量化并明确展示"——覆盖率达标的回答
+	// 前端标"已溯源"，不达标就标"部分结论未溯源"。指标进 SSE 事件，
+	// 同时可用于评测（评测集统计同一指标）。
+	report := grounding.Verify(content, len(finalCtx.Citations))
+	if err := u.emitEvent(ctx, convID, sink, "grounding", report); err != nil {
+		return fmt.Errorf("emit grounding event: %w", err)
+	}
+
+	// ⑨ 完成。
+	if err := u.repo.UpdateMessageContent(ctx, u.db, assistantMsgID, content, MsgCompleted, finalCtx.Citations, &report); err != nil {
 		return fmt.Errorf("mark message %s completed: %w", assistantMsgID, err)
 	}
 	if err := u.emitEvent(ctx, convID, sink, "done", struct{}{}); err != nil {
 		return fmt.Errorf("emit done event: %w", err)
 	}
 	return nil
+}
+
+// noEvidenceAnswer 是"检索不到依据"时的确定性回答。
+//
+// 【为什么不交给模型自由发挥】模型看到"没有资料"时有两种表现：老实说
+// 不知道，或者用通用知识编一个合理答案——后者正是赛题要求抗住的幻觉。
+// 拒答文案是固定文本，不经过模型，因此不可能幻觉；同时它明确告诉用户
+// 下一步该做什么（换问法/先上传论文）。
+const noEvidenceAnswer = "没有在当前知识库里找到能支撑这个问题的内容，因此不作答，避免编造。你可以换一种问法，或先上传相关论文后再问。"
+
+// streamNoEvidenceAnswer 走和正常回答完全相同的收尾路径（token 事件、
+// 落库、grounding 事件、done），只是正文是固定的拒答文案。
+//
+// 【为什么要发 token 事件而不是直接 done】前端渲染的是一个流式气泡：
+// 只有 done、没有 token 的话用户看不到拒答文案。分期发送也能让"停止"
+// 按钮和正常轮次表现一致。
+func (u *Usecase) streamNoEvidenceAnswer(ctx context.Context, convID, assistantMsgID uuid.UUID, sink EventSink) error {
+	report := grounding.Verify(noEvidenceAnswer, 0)
+	// 拒答本身没有引用：以 0 条引用校验，句子会被记为 unsupported——
+	// 这是准确的（它确实不是从文献里得出的），前端据此显示"未溯源"。
+	// 文案本身是固定模板，不存在幻觉风险，所以不改 Valid 语义。
+
+	for _, chunk := range splitByRunes(noEvidenceAnswer, 16) {
+		payload := struct {
+			Text string `json:"text"`
+		}{Text: chunk}
+		if err := u.emitEvent(ctx, convID, sink, "token", payload); err != nil {
+			return fmt.Errorf("emit refusal token: %w", err)
+		}
+	}
+	if err := u.repo.UpdateMessageContent(ctx, u.db, assistantMsgID, noEvidenceAnswer, MsgCompleted, nil, &report); err != nil {
+		return fmt.Errorf("mark refusal message %s completed: %w", assistantMsgID, err)
+	}
+	if err := u.emitEvent(ctx, convID, sink, "grounding", report); err != nil {
+		return fmt.Errorf("emit grounding event: %w", err)
+	}
+	if err := u.emitEvent(ctx, convID, sink, "done", struct{}{}); err != nil {
+		return fmt.Errorf("emit done event: %w", err)
+	}
+	return nil
+}
+
+// splitByRunes 把字符串按 rune 数切块（流式发送用；不切开多字节字符）。
+func splitByRunes(s string, n int) []string {
+	if n <= 0 {
+		return []string{s}
+	}
+	runes := []rune(s)
+	out := make([]string, 0, len(runes)/n+1)
+	for len(runes) > 0 {
+		k := n
+		if k > len(runes) {
+			k = len(runes)
+		}
+		out = append(out, string(runes[:k]))
+		runes = runes[k:]
+	}
+	return out
 }
 
 // lockAndWriteInitialMessages 是 Send 的 ①② 两步，整个方法体在
@@ -986,7 +1077,7 @@ func (u *Usecase) streamToClient(ctx context.Context, convID uuid.UUID, msgID uu
 		}
 
 		if time.Since(lastCheckpoint) >= checkpointInterval {
-			if err := u.repo.UpdateMessageContent(ctx, u.db, msgID, content.String(), MsgStreaming); err != nil {
+			if err := u.repo.UpdateMessageContent(ctx, u.db, msgID, content.String(), MsgStreaming, nil, nil); err != nil {
 				return content.String(), fmt.Errorf("checkpoint message %s: %w", msgID, err)
 			}
 			lastCheckpoint = time.Now()
@@ -1018,7 +1109,7 @@ func (u *Usecase) failMessage(ctx context.Context, msgID uuid.UUID, content stri
 	// 用 context.Background()——原始 ctx 这时可能已经被取消
 	//（比如客户端断开），但"把消息标记失败"这个收尾动作应该总是尝试执行，
 	// 不该因为 ctx 取消就跳过，那样会把消息永远卡在 streaming 状态。
-	_ = u.repo.UpdateMessageContent(context.Background(), u.db, msgID, content, MsgFailed)
+	_ = u.repo.UpdateMessageContent(context.Background(), u.db, msgID, content, MsgFailed, nil, nil)
 	return cause
 }
 
@@ -1030,19 +1121,52 @@ type tokenPayload struct {
 	Text string `json:"text"`
 }
 
+// citationPayload 是 SSE citation 事件的 data。
+//
+// 【参赛版新增 page/pageEnd/bbox/sectionPath】前端要能"点引用跳到论文
+// 第几页、高亮哪一块"。md/txt 文档没有页概念，这四项是 null（不是
+// 省略）——与 KnowledgeSearchHit 的约定一致，前端一条分支处理空态。
 type citationPayload struct {
-	ChunkID    uuid.UUID `json:"chunkId"`
-	DocumentID uuid.UUID `json:"documentId"`
-	Filename   string    `json:"filename"`
-	Snippet    string    `json:"snippet"`
-	Score      float64   `json:"score"`
+	ChunkID     uuid.UUID  `json:"chunkId"`
+	DocumentID  uuid.UUID  `json:"documentId"`
+	Filename    string     `json:"filename"`
+	Snippet     string     `json:"snippet"`
+	Score       float64    `json:"score"`
+	Page        *int       `json:"page"`
+	PageEnd     *int       `json:"pageEnd"`
+	BBox        *[]float64 `json:"bbox"`
+	SectionPath *[]string  `json:"sectionPath"`
+}
+
+// citationLocator 把 domain.Chunk 的学术定位字段转成 SSE payload 的
+// nullable 形状。零值 -> null 的规则与 API 层 intPtrOrNil 一致。
+func citationLocator(c domain.Citation) (page, pageEnd *int, bbox *[]float64, section *[]string) {
+	if c.Page > 0 {
+		page = &c.Page
+		pe := c.Page
+		if c.PageEnd > pe {
+			pe = c.PageEnd
+		}
+		pageEnd = &pe
+	}
+	if len(c.BBox) > 0 {
+		v := append([]float64(nil), c.BBox...)
+		bbox = &v
+	}
+	if len(c.SectionPath) > 0 {
+		v := append([]string(nil), c.SectionPath...)
+		section = &v
+	}
+	return page, pageEnd, bbox, section
 }
 
 func (u *Usecase) emitCitations(ctx context.Context, convID uuid.UUID, sink EventSink, citations []domain.Citation) error {
 	for _, c := range citations {
+		page, pageEnd, bbox, section := citationLocator(c)
 		payload := citationPayload{
 			ChunkID: c.ChunkID, DocumentID: c.DocumentID,
 			Filename: c.Filename, Snippet: c.Snippet, Score: c.Score,
+			Page: page, PageEnd: pageEnd, BBox: bbox, SectionPath: section,
 		}
 		if err := u.emitEvent(ctx, convID, sink, "citation", payload); err != nil {
 			return err
@@ -1090,8 +1214,10 @@ func (u *Usecase) emitEvent(ctx context.Context, convID uuid.UUID, sink EventSin
 // 【故意不做成可配置】技术方案没有把"系统提示词可配置"列为 M2 的验收项——
 // Agent 的 system_prompt 才是数据库字段（agents 表，M4-A），普通聊天
 // 现在只需要一个够用的默认值。
-const defaultSystemPrompt = "你是 ConGoRAG 的助手。基于提供的检索片段回答用户问题，" +
-	"如果片段里没有相关信息，如实说明，不要编造。"
+const defaultSystemPrompt = "你是 ConGoRAG 的科研助手。只依据提供的检索片段回答用户问题。" +
+	"回答里的每一句话末尾都必须用方括号标注它依赖的片段编号，例如 [1]、[2]（编号就是片段前面的序号，从 1 开始）；" +
+	"不要输出任何没有引用编号的句子。片段里没有相关信息时，直接回答「根据现有资料无法回答」，" +
+	"不要使用片段之外的知识，不要编造引用编号。"
 
 func toLLMMessages(msgs []*Message) []llm.Message {
 	out := make([]llm.Message, len(msgs))
@@ -1148,6 +1274,10 @@ func itemsToLLMMessages(items []ctxmgr.Item) []llm.Message {
 	var untrustedParts []string
 	var history []llm.Message
 	var userInput string
+	// chunkNo 给每个检索片段编号：模型输出 [n] 时，n 就是这里的序号。
+	// 顺序必须与 emitCitations 发出的 citation 顺序一致（都是
+	// ctxmgr 的 survivingChunks 顺序），否则 [n] 会指到别的片段上。
+	chunkNo := 0
 
 	for _, it := range items {
 		switch it.Source {
@@ -1169,7 +1299,9 @@ func itemsToLLMMessages(items []ctxmgr.Item) []llm.Message {
 			}
 			history = append(history, llm.Message{Role: it.Role, Content: it.Content})
 		case domain.SourceChunk:
-			untrustedParts = append(untrustedParts, "检索到的相关内容：\n"+stripUntrustedTags(it.Content))
+			chunkNo++
+			untrustedParts = append(untrustedParts,
+				fmt.Sprintf("[%d] %s", chunkNo, stripUntrustedTags(it.Content)))
 		case domain.SourceMemory:
 			untrustedParts = append(untrustedParts, "已知的用户偏好：\n"+stripUntrustedTags(it.Content))
 		}

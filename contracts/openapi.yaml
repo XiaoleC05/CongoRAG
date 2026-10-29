@@ -322,6 +322,94 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── 写作 Copilot（参赛版 M6）────────────────────────────────
+  #
+  # 【它和聊天的区别】聊天是"一问一答"；写作 Copilot 的输出是**可直接
+  # 编辑的草稿**——相关工作综述、章节提纲、摘要初稿。它复用同一套检索与
+  # 引用数据，但提示词要求模型按学术写作的体例组织段落并逐句标注 [n]。
+  /api/v1/knowledge-bases/{id}/writing:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: generateWritingDraft
+      summary: 基于知识库检索结果生成论文写作草稿（相关工作/摘要/提纲）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WritingRequest'
+      responses:
+        '200':
+          description: 草稿 + 依据的引用列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WritingResponse'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          description: 上游模型服务出错
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── 多篇对比（参赛版 M2/M6 的对比问答）──────────────────────
+  #
+  # 【为什么单独一个端点】对比问答的输出形态与聊天不同：要给"按维度组织
+  # 的对照表 + 综合结论"，并且需要把每篇论文的引用按文档聚合展示。
+  # 复用聊天会得到一段线性叙述，读者很难横向比较。
+  /api/v1/knowledge-bases/{id}/compare:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: comparePapers
+      summary: 基于知识库的多篇论文对比（表格 + 结论 + 引用）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompareRequest'
+      responses:
+        '200':
+          description: 对比结果与引用来源
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompareResponse'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          description: 上游模型服务出错
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ── 文档：单个 ──────────────────────────────────────────────
   /api/v1/documents/{id}:
 
@@ -406,6 +494,131 @@ paths:
           $ref: '#/components/responses/InternalError'
 
   # ── 会话 ────────────────────────────────────────────────────
+  # ── 文档：章节目录（参赛版 M3）───────────────────────────────
+  #
+  # 阅读器左侧目录用它：解析阶段已经给每个 heading 分块算了页码和章节
+  # 层级（section_path 长度），这里只是把它们按原文顺序取出来，不再做
+  # 任何推导。返回裸数组：目录天然是"一整个列表"，没有分页语义。
+  /api/v1/documents/{id}/outline:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: getDocumentOutline
+      summary: 取一份文档的章节大纲（heading 分块 → 阅读器目录）
+      responses:
+        '200':
+          description: 按原文顺序排列的章节列表；还没解析出 heading 时为空数组
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OutlineEntry'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── 文档：参考文献（参赛版 M5，引用图谱）────────────────────
+  #
+  # 返回文档的参考文献条目，并标出其中哪些文献也在**当前知识库**里
+  #（matchedDocumentId 非空）。阅读器用它渲染"本文引用 + 库内被引"面板。
+  /api/v1/documents/{id}/references:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: listDocumentReferences
+      summary: 取一份文档的参考文献并标注库内命中
+      responses:
+        '200':
+          description: 按原文顺序排列的参考文献；没有解析出文献时为空数组
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReferenceEntry'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── 文档：原始文件 ──────────────────────────────────────────
+  #
+  # 阅读器（ReaderPage）要用它取原始 PDF 的字节流：PDF.js 需要文件本体，
+  # 而不是解析后的 JSON。md/txt 也走这条（浏览器直接下载）。
+  #
+  # 【为什么单独一个端点，不复用 /documents/{id}】后者返回 JSON 元信息，
+  # 混在一起要么给 JSON 塞 base64（体积 ×1.33、前端还得解），要么按
+  # Accept 头分叉响应类型——都不如一个明确的二进制端点干净。
+  /api/v1/documents/{id}/file:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      operationId: downloadDocumentFile
+      summary: 下载文档的原始文件（PDF 阅读器用）
+      responses:
+        '200':
+          description: 原始文件字节
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ── 翻译（参赛版 M3 阅读器）─────────────────────────────────
+  #
+  # 阅读器把当前页的文本抽出来（PDF.js 的 textContent），交给后端用当前
+  # 生效的 chat 模型翻译。没有文档 id 参数：翻译只依赖文本本身，和文档
+  # 归属无关；这样同一段文字从任何入口（阅读器/引用卡片）都能复用。
+  /api/v1/translate:
+
+    post:
+      operationId: translateText
+      summary: 翻译一段论文文本（学术术语保留，只输出译文）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TranslateRequest'
+      responses:
+        '200':
+          description: 译文
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranslateResponse'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/conversations:
 
     get:
@@ -1192,9 +1405,47 @@ components:
           maxLength: 8000
           example: ConGoRAG 的默认端口是多少？
 
+    # 参赛版：消息上持久化的引用与引用校验结果（migration 0017）。
+    #
+    # 【为什么独立于 SSE】SSE 的 citation/grounding 只在当轮有效；刷新页面后
+    # 历史消息靠这两个字段渲染可点击角标与"已溯源/部分未溯源"徽标。
+    MessageCitation:
+      type: object
+      required: [chunkId, documentId, filename, snippet, score, page, pageEnd, bbox, sectionPath]
+      properties:
+        chunkId:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        snippet:
+          type: string
+        score:
+          type: number
+          format: double
+        page:
+          type: integer
+          nullable: true
+        pageEnd:
+          type: integer
+          nullable: true
+        bbox:
+          type: array
+          nullable: true
+          items:
+            type: number
+        sectionPath:
+          type: array
+          nullable: true
+          items:
+            type: string
+
     Message:
       type: object
-      required: [id, conversationId, role, content, status, sequenceNo, createdAt]
+      required: [id, conversationId, role, content, status, sequenceNo, createdAt, citations]
       properties:
         id:
           type: string
@@ -1216,6 +1467,29 @@ components:
         createdAt:
           type: string
           format: date-time
+        citations:
+          type: array
+          description: 这一轮回答的引用（总是数组；没有引用时为空）
+          items:
+            $ref: '#/components/schemas/MessageCitation'
+        grounding:
+          type: object
+          nullable: true
+          description: 引用落地检查结果；流式中/失败的消息为 null
+          properties:
+            sentences:
+              type: integer
+            cited:
+              type: integer
+            unsupported:
+              type: integer
+            refs:
+              type: integer
+            validRefs:
+              type: integer
+            valid:
+              type: boolean
+          required: [sentences, cited, unsupported, refs, validRefs, valid]
 
     # ── 文档 ──────────────────────────────────────────────────
 
@@ -1250,7 +1524,7 @@ components:
     # 不需要为调试视图再做一套展示。
     KnowledgeSearchHit:
       type: object
-      required: [chunkId, documentId, filename, snippet, score]
+      required: [chunkId, documentId, filename, snippet, score, page, pageEnd, bbox, sectionPath, vectorScore, lexicalScore]
       properties:
         chunkId:
           type: string
@@ -1269,6 +1543,176 @@ components:
           format: double
           description: 余弦相似度，越大越相关
 
+        # ── 参赛版「科研助手」：学术定位信息 ──────────────────────
+        #
+        # 【为什么 required + nullable】这四个字段对 md/txt 文档没有意义，
+        # 但对 PDF 必须出现——直接标 optional 的话生成的 Go 字段是指针、
+        # JSON 里省略，前端要同时处理"字段缺失"和"值为 null"两种空态。
+        # 统一成"始终出现、没有就是 null"，前端一条分支就够。
+        page:
+          type: integer
+          nullable: true
+          description: 1-based 物理页码；md/txt 文档为 null
+        pageEnd:
+          type: integer
+          nullable: true
+          description: 跨页分块的结束页码；未跨页时等于 page
+        bbox:
+          type: array
+          nullable: true
+          items:
+            type: number
+            format: double
+          description: |
+            归一化 [x0, y0, x1, y1]，0~1，左上原点。前端 PDF.js 叠层
+            按百分比定位，不处理缩放/旋转。md/txt 文档为 null。
+        sectionPath:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: 章节路径（如 ["3 Model Architecture", "3.2 Attention"]）；md/txt 为 null
+
+        # ── 参赛版 M2：混合检索的两路原始分数 ──────────────────────
+        #
+        # score 是 RRF 融合后的最终排序分（量纲不同于相似度，只在同一
+        # 次查询内可比）；这两列是两路各自的原始分，检索调试时用来判断
+        # "这一路到底召回了没有"。
+        vectorScore:
+          type: number
+          format: double
+          nullable: true
+          description: 向量余弦相似度（0~1）；这一路没命中时为 null
+        lexicalScore:
+          type: number
+          format: double
+          nullable: true
+          description: 词法 ts_rank_cd（>=0）；这一路没命中时为 null
+
+    ReferenceEntry:
+      type: object
+      description: 参考文献的一条（参赛版 M5）
+      required: [index, text, page, matchedDocumentId, matchedFilename]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          description: 引文编号（[n] 里的 n）；解析不出来时为 0
+        text:
+          type: string
+          description: 参考文献原文
+        page:
+          type: integer
+          minimum: 0
+          description: 所在页码（PDF）；md/txt 为 0
+        matchedDocumentId:
+          type: string
+          nullable: true
+          description: 同库里命中的文档 id；未命中为 null
+        matchedFilename:
+          type: string
+          nullable: true
+          description: 同库里命中的文档文件名；未命中为 null
+
+    TranslateRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 8000
+          description: 要翻译的原文（字符数上限与后端 maxTranslateRunes 一致）
+        targetLang:
+          type: string
+          description: 目标语言，默认 zh-CN
+          example: zh-CN
+
+    TranslateResponse:
+      type: object
+      required: [translation]
+      properties:
+        translation:
+          type: string
+          description: 译文；模型只输出译文本身
+
+    OutlineEntry:
+      type: object
+      description: 论文阅读器目录的一行
+      required: [title, page, level]
+      properties:
+        title:
+          type: string
+          description: 章节标题（heading 分块原文）
+        page:
+          type: integer
+          minimum: 1
+          description: 1-based 物理页码，点击目录跳这一页
+        level:
+          type: integer
+          minimum: 1
+          description: 层级（1 = 一级标题），前端按它缩进
+
+    CompareRequest:
+      type: object
+      required: [question]
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: 要对比的问题（如"这些论文如何解决长距离依赖"）
+        topK:
+          type: integer
+          minimum: 2
+          maximum: 12
+          description: 检索多少条依据（默认 8；对比至少需要 2 条）
+
+    CompareResponse:
+      type: object
+      required: [answer, citations]
+      properties:
+        answer:
+          type: string
+          description: Markdown 对比表 + 综合结论，每句带 [n]
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeSearchHit'
+
+    WritingRequest:
+      type: object
+      required: [topic, kind]
+      properties:
+        topic:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: 写作主题（如"Transformer 的高效注意力机制"）
+        kind:
+          type: string
+          enum: [related_work, summary, outline]
+          description: |
+            related_work = 相关工作综述段；summary = 摘要/要点总结；
+            outline = 章节提纲
+        topK:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: 检索多少条依据（默认 6）
+
+    WritingResponse:
+      type: object
+      required: [draft, citations]
+      properties:
+        draft:
+          type: string
+          description: Markdown 草稿，每个事实句带 [n] 引用
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeSearchHit'
+
     KnowledgeSearchResult:
       type: object
       required: [hits]
@@ -1284,7 +1728,7 @@ components:
 
     Document:
       type: object
-      required: [id, knowledgeBaseId, filename, status, byteSize, chunkCount, createdAt, updatedAt]
+      required: [id, knowledgeBaseId, filename, status, byteSize, chunkCount, pageCount, parser, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -1323,6 +1767,14 @@ components:
         updatedAt:
           type: string
           format: date-time
+        pageCount:
+          type: integer
+          description: |
+            PDF 页数；md/txt 文档是 0（不是 null——"没有页概念"与"未知"
+            对前端是同一个分支，少一个空态）。
+        parser:
+          type: string
+          description: 解析器版本（如 pdf-service-0.1.0）；md/txt 为空串
 
     # 整库重建的响应。只报"这次真的排进去多少份"——不报总量、不报进度，
     # 那些由前端轮询文档列表（受影响的行会显示为 queued）自己看。

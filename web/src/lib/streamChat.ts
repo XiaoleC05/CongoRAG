@@ -30,10 +30,35 @@ export type ChatEvent =
   | {
       type: 'citation'
       id: number | null
-      data: { chunkId: string; documentId: string; filename: string; snippet: string; score: number }
+      data: {
+        chunkId: string
+        documentId: string
+        filename: string
+        snippet: string
+        score: number
+        /** 1-based 物理页码；md/txt 文档为 null。见 docs/sse-protocol.md */
+        page?: number | null
+        pageEnd?: number | null
+        /** 归一化 [x0,y0,x1,y1]，0~1 左上原点 */
+        bbox?: number[] | null
+        /** 章节路径，如 ["3 Model Architecture", "3.2 Attention"] */
+        sectionPath?: string[] | null
+      }
     }
   | { type: 'tool_call'; id: number | null; data: { id: string; name: string; args: unknown } }
   | { type: 'tool_result'; id: number | null; data: { id: string; result: unknown } }
+  | {
+      type: 'grounding'
+      id: number | null
+      data: {
+        sentences: number
+        cited: number
+        unsupported: number
+        refs: number
+        validRefs: number
+        valid: boolean
+      }
+    }
   | { type: 'error'; id: number | null; data: { type: string; detail: string } }
   | { type: 'done'; id: number | null; data: Record<string, never> }
 

@@ -10,6 +10,8 @@ import { DocumentListToolbar } from '@/components/knowledge/DocumentListToolbar'
 import { DocumentRowActions } from '@/components/knowledge/DocumentRowActions'
 import { DocumentStatusBadge } from '@/components/knowledge/DocumentStatusBadge'
 import { KnowledgeSearchPanel } from '@/components/knowledge/KnowledgeSearchPanel'
+import { KnowledgeWritingPanel } from '@/components/knowledge/KnowledgeWritingPanel'
+import { KnowledgeComparePanel } from '@/components/knowledge/KnowledgeComparePanel'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -353,6 +355,26 @@ export default function KnowledgeBaseDetailPage() {
           模型、调了切分策略，或者某次问答答得不对时，都可以在这里先确认"检索这一层"有没有问题。
         </p>
         <KnowledgeSearchPanel kbId={kbId} />
+      </section>
+
+      {/* 写作 Copilot（参赛版 M6）：先确认检索质量，再基于检索结果写作。 */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-base font-semibold">写作 Copilot</h2>
+        <p className="text-muted-foreground mb-4 text-sm">
+          选一种体例，基于当前知识库的检索结果生成可以直接编辑的草稿；每个事实句都带
+          [n] 引用，点页码可以跳回原文核对。
+        </p>
+        <KnowledgeWritingPanel kbId={kbId} />
+      </section>
+
+      {/* 多篇对比（参赛版 A6）：横向比较不同论文在同一问题上的观点与证据。 */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-base font-semibold">多篇对比</h2>
+        <p className="text-muted-foreground mb-4 text-sm">
+          问一个需要横向比较的问题，系统从知识库检索证据，生成对照表 + 综合结论，
+          每条依据都带页码可回原文核对。
+        </p>
+        <KnowledgeComparePanel kbId={kbId} />
       </section>
 
       <DeleteDocumentDialog

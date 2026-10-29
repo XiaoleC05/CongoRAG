@@ -1,0 +1,305 @@
+{
+ "service": {
+  "status": "ok",
+  "version": "0.1.0",
+  "ocr_available": true
+ },
+ "cases": {
+  "v1": {
+   "filename": "1706.03762v1.pdf",
+   "doc_id": "0a9bff1be3575cf9",
+   "page_count": 15,
+   "pages": 15,
+   "wall_s": 1.04,
+   "parse_ms": 1020,
+   "blocks": 434,
+   "block_types": {
+    "caption": 10,
+    "formula": 25,
+    "heading": 26,
+    "paragraph": 302,
+    "reference": 69,
+    "table": 2
+   },
+   "headings": 26,
+   "tables": 2,
+   "formulas": 25,
+   "captions": 10,
+   "lists": 0,
+   "references": 36,
+   "outline_entries": 22,
+   "ocr_pages": 0,
+   "cache": "miss",
+   "ocr_header": "available",
+   "toc": {
+    "toc_entries_in_range": 22,
+    "toc_matched": 22,
+    "toc_recall": 1.0,
+    "extracted_headings": 26,
+    "extra_headings": [
+     "Attention Is All You Need",
+     "Attention Visualizations"
+    ],
+    "extra_count": 2,
+    "missing": []
+   }
+  },
+  "v1_img": {
+   "filename": "1706.03762v1_img.pdf",
+   "doc_id": "eb74637ce6960977",
+   "page_count": 15,
+   "pages": 15,
+   "wall_s": 87.66,
+   "parse_ms": 87616,
+   "blocks": 513,
+   "block_types": {
+    "caption": 6,
+    "heading": 12,
+    "list": 3,
+    "paragraph": 291,
+    "reference": 201
+   },
+   "headings": 12,
+   "tables": 0,
+   "formulas": 0,
+   "captions": 6,
+   "lists": 3,
+   "references": 34,
+   "outline_entries": 0,
+   "ocr_pages": 15,
+   "cache": "miss",
+   "ocr_header": "available",
+   "toc": {
+    "toc_entries_in_range": 0,
+    "toc_matched": 0,
+    "toc_recall": null,
+    "extracted_headings": 12,
+    "extra_headings": [
+     "1 Introduction",
+     "2 Background",
+     "3 ModelArchitecture",
+     "3.1 Encoder and DecoderStacks",
+     "3.2 Attention",
+     "3.2.1 ScaledDot-ProductAttention",
+     "5.3 Optimizer",
+     "6 Results",
+     "6.1 Machine Translation",
+     "7 Conclusion"
+    ],
+    "extra_count": 10,
+    "missing": []
+   }
+  },
+  "v7": {
+   "filename": "1706.03762v7.pdf",
+   "doc_id": "bdfaa68d8984f0dc",
+   "page_count": 15,
+   "pages": 15,
+   "wall_s": 1.12,
+   "parse_ms": 1102,
+   "blocks": 445,
+   "block_types": {
+    "caption": 10,
+    "formula": 26,
+    "heading": 26,
+    "paragraph": 304,
+    "reference": 77,
+    "table": 2
+   },
+   "headings": 26,
+   "tables": 2,
+   "formulas": 26,
+   "captions": 10,
+   "lists": 0,
+   "references": 40,
+   "outline_entries": 22,
+   "ocr_pages": 0,
+   "cache": "miss",
+   "ocr_header": "available",
+   "toc": {
+    "toc_entries_in_range": 22,
+    "toc_matched": 22,
+    "toc_recall": 1.0,
+    "extracted_headings": 26,
+    "extra_headings": [
+     "Attention Is All You Need",
+     "Attention Visualizations"
+    ],
+    "extra_count": 2,
+    "missing": []
+   }
+  },
+  "udl": {
+   "filename": "UnderstandingDeepLearning_02_09_26_C.pdf",
+   "doc_id": "f8237d393163900f",
+   "page_count": 541,
+   "pages": 20,
+   "wall_s": 0.95,
+   "parse_ms": 867,
+   "blocks": 94,
+   "block_types": {
+    "caption": 6,
+    "heading": 12,
+    "list": 21,
+    "paragraph": 55
+   },
+   "headings": 12,
+   "tables": 0,
+   "formulas": 0,
+   "captions": 6,
+   "lists": 21,
+   "references": 0,
+   "outline_entries": 181,
+   "ocr_pages": 0,
+   "cache": "miss",
+   "ocr_header": "available",
+   "toc": {
+    "toc_entries_in_range": 4,
+    "toc_matched": 4,
+    "toc_recall": 1.0,
+    "extracted_headings": 12,
+    "extra_headings": [
+     "Understanding Deep Learning",
+     "Chapter 1",
+     "1.1.1 Regression and classification problems",
+     "1.1.2 Inputs",
+     "1.1.3 Machine learning models",
+     "1.1.5 Structured outputs"
+    ],
+    "extra_count": 6,
+    "missing": []
+   }
+  }
+ },
+ "started_at": "2026-10-29 19:06:26",
+ "ocr_accuracy": {
+  "pages_compared": 15,
+  "figure_pages": [
+   3,
+   4
+  ],
+  "char_accuracy_space_insensitive": 0.9041,
+  "char_accuracy_page_avg": 0.8661,
+  "char_accuracy_body_pages": 0.9514,
+  "body_pages": [
+   1,
+   2,
+   5,
+   6,
+   7,
+   10,
+   11,
+   12
+  ],
+  "graphic_pages": [
+   3,
+   4,
+   8,
+   9,
+   13,
+   14,
+   15
+  ],
+  "word_accuracy_page_avg": 0.5074,
+  "gt_chars": 31034,
+  "ocr_chars": 29834,
+  "length_ratio": 0.961,
+  "per_page": [
+   {
+    "page": 1,
+    "char_acc": 0.9117,
+    "gt_chars": 2311,
+    "ocr_chars": 2153
+   },
+   {
+    "page": 2,
+    "char_acc": 0.9616,
+    "gt_chars": 3524,
+    "ocr_chars": 3275
+   },
+   {
+    "page": 3,
+    "char_acc": 0.8565,
+    "gt_chars": 1154,
+    "ocr_chars": 1396
+   },
+   {
+    "page": 4,
+    "char_acc": 0.9278,
+    "gt_chars": 2156,
+    "ocr_chars": 2248
+   },
+   {
+    "page": 5,
+    "char_acc": 0.9978,
+    "gt_chars": 2782,
+    "ocr_chars": 2782
+   },
+   {
+    "page": 6,
+    "char_acc": 0.8902,
+    "gt_chars": 3290,
+    "ocr_chars": 2965
+   },
+   {
+    "page": 7,
+    "char_acc": 0.9486,
+    "gt_chars": 2404,
+    "ocr_chars": 2186
+   },
+   {
+    "page": 8,
+    "char_acc": 0.8131,
+    "gt_chars": 3088,
+    "ocr_chars": 2788
+   },
+   {
+    "page": 9,
+    "char_acc": 0.8061,
+    "gt_chars": 2084,
+    "ocr_chars": 2084
+   },
+   {
+    "page": 10,
+    "char_acc": 0.9724,
+    "gt_chars": 2872,
+    "ocr_chars": 2858
+   },
+   {
+    "page": 11,
+    "char_acc": 0.968,
+    "gt_chars": 2874,
+    "ocr_chars": 2715
+   },
+   {
+    "page": 12,
+    "char_acc": 0.9966,
+    "gt_chars": 590,
+    "ocr_chars": 590
+   },
+   {
+    "page": 13,
+    "char_acc": 0.6964,
+    "gt_chars": 667,
+    "ocr_chars": 634
+   },
+   {
+    "page": 14,
+    "char_acc": 0.6084,
+    "gt_chars": 617,
+    "ocr_chars": 573
+   },
+   {
+    "page": 15,
+    "char_acc": 0.6358,
+    "gt_chars": 621,
+    "ocr_chars": 587
+   }
+  ]
+ },
+ "cache_test": {
+  "x_pdf_cache": "hit",
+  "wall_s": 0.02,
+  "parse_ms": "1020"
+ }
+}

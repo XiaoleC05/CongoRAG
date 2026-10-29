@@ -50,7 +50,6 @@ type Usage struct {
 	CreatedAt        time.Time
 }
 
-
 // Capabilities 记录一个模型声明支持的能力。
 //
 // 全部由用户在引导页手工勾选,不是探测出来的——OpenAI 兼容 API 不保证

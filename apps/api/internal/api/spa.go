@@ -3,11 +3,21 @@ package api
 import (
 	"fmt"
 	"io/fs"
+	"mime"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 )
+
+// spaMimeOnce 只在第一次 MountSPA 时注册一次静态资源的 MIME 类型。
+//
+// 【为什么需要它】Go 的 mime 包按扩展名查表，Windows 上还会读注册表；
+// .mjs 不在标准表里，于是 pdf.worker.min-*.mjs 被以 text/plain 发出去，
+// 浏览器对 module script 做严格 MIME 校验，直接拒绝加载——表现是阅读器
+// 报 "Setting up fake worker failed"。
+var spaMimeOnce sync.Once
 
 // apiPrefixes 是不该被前端兜底接管的路径前缀。
 //
@@ -94,6 +104,12 @@ func cacheControlFor(name string) string {
 // webFS 声明成 fs.FS 而不是 embed.FS——这里只用到 fs.Sub 和 fs.Stat，
 // 依赖接口让测试能塞 fstest.MapFS 进来，不必构造真的 embed.FS。
 func MountSPA(r *gin.Engine, webFS fs.FS) error {
+	spaMimeOnce.Do(func() {
+		// .mjs 是 ES module 脚本；.wasm 在将来的 PDF.js/模型资源里也会用到。
+		_ = mime.AddExtensionType(".mjs", "text/javascript; charset=utf-8")
+		_ = mime.AddExtensionType(".wasm", "application/wasm")
+	})
+
 	// main.go 里写的是 //go:embed all:web，内嵌文件系统的最外层是 "web/"。
 	// fs.Sub 把根切到 web/ 里，之后 Open("index.html") 拿到的就是 web/index.html。
 	sub, err := fs.Sub(webFS, "web")

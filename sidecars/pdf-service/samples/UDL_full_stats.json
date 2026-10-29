@@ -1,0 +1,31 @@
+{
+ "pdf": "UnderstandingDeepLearning_02_09_26_C.pdf",
+ "size_mb": 21.31,
+ "max_pages": null,
+ "ocr": "auto",
+ "elapsed_s": 122.31,
+ "stats": {
+  "pages_parsed": 541,
+  "blocks": 9511,
+  "ocr_pages": 0,
+  "elapsed_ms": 121952
+ },
+ "blocks": 9511,
+ "block_types": {
+  "caption": 279,
+  "formula": 2411,
+  "heading": 511,
+  "list": 57,
+  "paragraph": 6247,
+  "table": 6
+ },
+ "headings": 511,
+ "tables": 6,
+ "formulas": 2411,
+ "references": 0,
+ "outline_entries": 181,
+ "rss_before_mb": 69.8,
+ "rss_after_mb": 261.4,
+ "peak_rss_mb": 757.6,
+ "tracemalloc_peak_mb": 177.7
+}

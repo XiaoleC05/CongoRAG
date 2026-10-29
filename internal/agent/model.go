@@ -253,8 +253,8 @@ const CurrentStateSchemaVersion = 1
 // 和恢复时（参数从 `agent_run_steps.tool_args` 读回来，而那一列是 **jsonb**
 // ——Postgres 会重写它：冒号与逗号后加空格、键按长度重排）。
 //
-//    写入 {"a":1,"b":2,"operator":"+"}
-//    读回 {"a": 1, "b": 2, "operator": "+"}
+//	写入 {"a":1,"b":2,"operator":"+"}
+//	读回 {"a": 1, "b": 2, "operator": "+"}
 //
 // 两者直接哈希必然不同，于是恢复时 `ToolEffectApplied` **永远返回 false**，
 // 那一步被排进重放列表、工具真的被执行第二次，而且因为两边算出的键不同，

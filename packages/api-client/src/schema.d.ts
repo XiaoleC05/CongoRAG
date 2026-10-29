@@ -135,6 +135,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge-bases/{id}/writing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 基于知识库检索结果生成论文写作草稿（相关工作/摘要/提纲） */
+        post: operations["generateWritingDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge-bases/{id}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 基于知识库的多篇论文对比（表格 + 结论 + 引用） */
+        post: operations["comparePapers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{id}": {
         parameters: {
             query?: never;
@@ -168,6 +206,80 @@ export interface paths {
         put?: never;
         /** 重新索引一份文档（重新切分、向量化、入库） */
         post: operations["reindexDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/outline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** 取一份文档的章节大纲（heading 分块 → 阅读器目录） */
+        get: operations["getDocumentOutline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** 取一份文档的参考文献并标注库内命中 */
+        get: operations["listDocumentReferences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/documents/{id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** 下载文档的原始文件（PDF 阅读器用） */
+        get: operations["downloadDocumentFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/translate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 翻译一段论文文本（学术术语保留，只输出译文） */
+        post: operations["translateText"];
         delete?: never;
         options?: never;
         head?: never;
@@ -600,6 +712,20 @@ export interface components {
             /** @example ConGoRAG 的默认端口是多少？ */
             text: string;
         };
+        MessageCitation: {
+            /** Format: uuid */
+            chunkId: string;
+            /** Format: uuid */
+            documentId: string;
+            filename: string;
+            snippet: string;
+            /** Format: double */
+            score: number;
+            page: number | null;
+            pageEnd: number | null;
+            bbox: number[] | null;
+            sectionPath: string[] | null;
+        };
         Message: {
             /** Format: uuid */
             id: string;
@@ -614,6 +740,17 @@ export interface components {
             sequenceNo: number;
             /** Format: date-time */
             createdAt: string;
+            /** @description 这一轮回答的引用（总是数组；没有引用时为空） */
+            citations: components["schemas"]["MessageCitation"][];
+            /** @description 引用落地检查结果；流式中/失败的消息为 null */
+            grounding?: {
+                sentences: number;
+                cited: number;
+                unsupported: number;
+                refs: number;
+                validRefs: number;
+                valid: boolean;
+            } | null;
         };
         /**
          * @example {
@@ -646,6 +783,90 @@ export interface components {
              * @description 余弦相似度，越大越相关
              */
             score: number;
+            /** @description 1-based 物理页码；md/txt 文档为 null */
+            page: number | null;
+            /** @description 跨页分块的结束页码；未跨页时等于 page */
+            pageEnd: number | null;
+            /**
+             * @description 归一化 [x0, y0, x1, y1]，0~1，左上原点。前端 PDF.js 叠层
+             *     按百分比定位，不处理缩放/旋转。md/txt 文档为 null。
+             */
+            bbox: number[] | null;
+            /** @description 章节路径（如 ["3 Model Architecture", "3.2 Attention"]）；md/txt 为 null */
+            sectionPath: string[] | null;
+            /**
+             * Format: double
+             * @description 向量余弦相似度（0~1）；这一路没命中时为 null
+             */
+            vectorScore: number | null;
+            /**
+             * Format: double
+             * @description 词法 ts_rank_cd（>=0）；这一路没命中时为 null
+             */
+            lexicalScore: number | null;
+        };
+        /** @description 参考文献的一条（参赛版 M5） */
+        ReferenceEntry: {
+            /** @description 引文编号（[n] 里的 n）；解析不出来时为 0 */
+            index: number;
+            /** @description 参考文献原文 */
+            text: string;
+            /** @description 所在页码（PDF）；md/txt 为 0 */
+            page: number;
+            /** @description 同库里命中的文档 id；未命中为 null */
+            matchedDocumentId: string | null;
+            /** @description 同库里命中的文档文件名；未命中为 null */
+            matchedFilename: string | null;
+        };
+        TranslateRequest: {
+            /** @description 要翻译的原文（字符数上限与后端 maxTranslateRunes 一致） */
+            text: string;
+            /**
+             * @description 目标语言，默认 zh-CN
+             * @example zh-CN
+             */
+            targetLang?: string;
+        };
+        TranslateResponse: {
+            /** @description 译文；模型只输出译文本身 */
+            translation: string;
+        };
+        /** @description 论文阅读器目录的一行 */
+        OutlineEntry: {
+            /** @description 章节标题（heading 分块原文） */
+            title: string;
+            /** @description 1-based 物理页码，点击目录跳这一页 */
+            page: number;
+            /** @description 层级（1 = 一级标题），前端按它缩进 */
+            level: number;
+        };
+        CompareRequest: {
+            /** @description 要对比的问题（如"这些论文如何解决长距离依赖"） */
+            question: string;
+            /** @description 检索多少条依据（默认 8；对比至少需要 2 条） */
+            topK?: number;
+        };
+        CompareResponse: {
+            /** @description Markdown 对比表 + 综合结论，每句带 [n] */
+            answer: string;
+            citations: components["schemas"]["KnowledgeSearchHit"][];
+        };
+        WritingRequest: {
+            /** @description 写作主题（如"Transformer 的高效注意力机制"） */
+            topic: string;
+            /**
+             * @description related_work = 相关工作综述段；summary = 摘要/要点总结；
+             *     outline = 章节提纲
+             * @enum {string}
+             */
+            kind: "related_work" | "summary" | "outline";
+            /** @description 检索多少条依据（默认 6） */
+            topK?: number;
+        };
+        WritingResponse: {
+            /** @description Markdown 草稿，每个事实句带 [n] 引用 */
+            draft: string;
+            citations: components["schemas"]["KnowledgeSearchHit"][];
         };
         KnowledgeSearchResult: {
             /**
@@ -687,6 +908,13 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            /**
+             * @description PDF 页数；md/txt 文档是 0（不是 null——"没有页概念"与"未知"
+             *     对前端是同一个分支，少一个空态）。
+             */
+            pageCount: number;
+            /** @description 解析器版本（如 pdf-service-0.1.0）；md/txt 为空串 */
+            parser: string;
         };
         ReindexAccepted: {
             /**
@@ -1337,6 +1565,82 @@ export interface operations {
             };
         };
     };
+    generateWritingDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WritingRequest"];
+            };
+        };
+        responses: {
+            /** @description 草稿 + 依据的引用列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WritingResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            /** @description 上游模型服务出错 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    comparePapers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompareRequest"];
+            };
+        };
+        responses: {
+            /** @description 对比结果与引用来源 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompareResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            /** @description 上游模型服务出错 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getDocument: {
         parameters: {
             query?: never;
@@ -1405,6 +1709,104 @@ export interface operations {
             };
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getDocumentOutline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按原文顺序排列的章节列表；还没解析出 heading 时为空数组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutlineEntry"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listDocumentReferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按原文顺序排列的参考文献；没有解析出文献时为空数组 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceEntry"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    downloadDocumentFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 原始文件字节 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    translateText: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TranslateRequest"];
+            };
+        };
+        responses: {
+            /** @description 译文 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranslateResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
             500: components["responses"]["InternalError"];
         };
     };

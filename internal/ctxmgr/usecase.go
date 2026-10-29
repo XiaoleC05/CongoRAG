@@ -195,6 +195,12 @@ func finalize(fixed, compressible, chunkItems, memoryItems []Item, survivingChun
 		citations = append(citations, domain.Citation{
 			ChunkID: c.ID, DocumentID: c.DocumentID,
 			Filename: c.Filename, Snippet: c.Content, Score: c.Score,
+			// 参赛版：把学术定位字段带进 citation。漏了这四个，
+			// SSE 的 citation 帧里 page 永远是 null——而分块里其实有页码。
+			Page:        c.PageStart,
+			PageEnd:     c.PageEnd,
+			BBox:        c.BBox,
+			SectionPath: c.SectionPath,
 		})
 	}
 

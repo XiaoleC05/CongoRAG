@@ -50,6 +50,8 @@ const doc: Document = {
   status: 'ready',
   byteSize: 1024,
   chunkCount: 8,
+  pageCount: 0,
+  parser: '',
   createdAt: '2026-09-21T00:00:00Z',
   updatedAt: '2026-09-21T00:00:00Z',
 }
@@ -61,6 +63,8 @@ const failedDoc: Document = {
   status: 'failed',
   byteSize: 128,
   chunkCount: 3,
+  pageCount: 0,
+  parser: '',
   createdAt: '2026-09-21T00:00:01Z',
   updatedAt: '2026-09-21T00:00:01Z',
 }
@@ -337,12 +341,19 @@ describe('排序与筛选（issue #92）', () => {
 })
 
 describe('检索调试视图（issue #77）', () => {
+  // 参赛版 M2：命中条目多了页码/坐标/章节 + 两路原始分（融合前）。
   const hit = {
     chunkId: '44444444-4444-4444-8444-444444444444',
     documentId: doc.id,
     filename: '手册.md',
     snippet: '向量检索用的是 HNSW 索引。',
-    score: 0.87,
+    score: 0.016,
+    page: null,
+    pageEnd: null,
+    bbox: null,
+    sectionPath: null,
+    vectorScore: 0.87,
+    lexicalScore: null,
   }
 
   function mockSearch(result: unknown) {
@@ -370,7 +381,9 @@ describe('检索调试视图（issue #77）', () => {
 
     expect(await screen.findByText(hit.snippet)).toBeTruthy()
     expect(screen.getByText('手册.md')).toBeTruthy()
-    expect(screen.getByText('相似度 87%')).toBeTruthy()
+    // score 是 RRF 融合分，界面按"融合 x.xxx + 向量 87%"显示
+    expect(screen.getByText('向量 87%')).toBeTruthy()
+    expect(screen.getByText(/融合 0\.0/)).toBeTruthy()
     expect(postMock).toHaveBeenCalledWith(SEARCH_PATH, {
       params: { path: { id: KB_ID } },
       body: { query: '向量检索用什么索引？', topK: 10 },

@@ -124,7 +124,7 @@ func (e *riverEnqueuer) EnqueueProcessing(ctx context.Context, q platform.Querie
 // INSERT。InsertManyTx 同样要求传入事务，事务性入队这条性质不变。
 //
 // 【空列表直接返回】批量重建时"一个可重建的文档都没有"是完全正常的情况
-//（新库、或者所有文档都还没处理过），不该因此报错。
+// （新库、或者所有文档都还没处理过），不该因此报错。
 func (e *riverEnqueuer) EnqueueProcessingBatch(ctx context.Context, q platform.Querier, documentIDs []uuid.UUID) error {
 	if len(documentIDs) == 0 {
 		return nil

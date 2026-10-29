@@ -5,6 +5,7 @@ package retrieval
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
+	"github.com/XiaoleC05/CongoRAG/internal/tokenize"
 )
 
 var _ Repo = (*PgRepo)(nil)
@@ -74,20 +76,59 @@ func (r *PgRepo) InsertChunks(ctx context.Context, q platform.Querier, docID uui
 // id 和它自己的向量。
 func (r *PgRepo) insertChunkBatch(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk, vecs [][]float32, model string) error {
 	var sql strings.Builder
-	sql.WriteString(`INSERT INTO document_chunks (id, document_id, content, embedding, embedding_model) VALUES `)
+	// 参赛版加了五列学术结构（migration 0015）：page_start/page_end/bbox/
+	// section_path/block_type。md/txt 文档这五列是 NULL/默认值，行为与原来一致。
+	sql.WriteString(`INSERT INTO document_chunks
+		(id, document_id, content, embedding, embedding_model,
+		 page_start, page_end, bbox, section_path, block_type, search_text) VALUES `)
 
-	args := make([]any, 0, len(chunks)*5)
+	args := make([]any, 0, len(chunks)*11)
 	for i, c := range chunks {
 		if i > 0 {
 			sql.WriteString(", ")
 		}
-		p := i * 5
-		fmt.Fprintf(&sql, "($%d, $%d, $%d, $%d, $%d)", p+1, p+2, p+3, p+4, p+5)
+		p := i * 11
+		fmt.Fprintf(&sql, "($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+			p+1, p+2, p+3, p+4, p+5, p+6, p+7, p+8, p+9, p+10, p+11)
+
+		// 页码/坐标/章节/类型：没有学术结构的文档块保持 NULL，
+		// 让"没有页码"和"第 0 页"在库里能区分开。
+		var pageStart, pageEnd any
+		if c.PageStart > 0 {
+			pageStart, pageEnd = c.PageStart, c.PageEnd
+			if c.PageEnd < c.PageStart {
+				pageEnd = c.PageStart
+			}
+		}
+		var bbox, section any
+		if len(c.BBox) == 4 {
+			b, err := json.Marshal(c.BBox)
+			if err != nil {
+				return fmt.Errorf("encode bbox of chunk %d: %w", i, err)
+			}
+			bbox = b
+		}
+		if len(c.SectionPath) > 0 {
+			b, err := json.Marshal(c.SectionPath)
+			if err != nil {
+				return fmt.Errorf("encode section path of chunk %d: %w", i, err)
+			}
+			section = b
+		}
+		blockType := c.BlockType
+		if blockType == "" {
+			blockType = "paragraph"
+		}
 
 		// pgvector.NewHalfVector 把 []float32 包成 pgx 的 halfvec 编解码器
 		// 认识的类型；真正的二进制编码发生在 q.Exec 内部（pgxvec.RegisterTypes
 		// 已经在装配根注册过，见 apps/worker/internal/app/app.go）。
-		args = append(args, uuid.New(), docID, c.Content, pgvector.NewHalfVector(vecs[i]), model)
+		// search_text 是词法检索的切词结果（CJK 单字+bigram、英文小写）。
+		// 在写入时算一次，查询时用同一套规则拼 tsquery。
+		searchText := tokenize.Text(c.Content)
+
+		args = append(args, uuid.New(), docID, c.Content, pgvector.NewHalfVector(vecs[i]), model,
+			pageStart, pageEnd, bbox, section, blockType, searchText)
 	}
 
 	// 错误原样返回：包装留给 InsertChunks，那里知道这是第几条到第几条。
@@ -145,6 +186,41 @@ func (r *PgRepo) Search(ctx context.Context, q platform.Querier, kbID uuid.UUID,
 	return exact, nil
 }
 
+// SearchLexical 是混合检索的第二路：Postgres 全文检索（FTS）。
+//
+// 【为什么它与向量检索分开、不放进同一条 SQL】两路的召回范围、排序依据、
+// 甚至"需不需要模型"都不同：词法这一路不依赖 embedding 模型，换模型后
+// 仍然可用。分开查再在 usecase 里融合（RRF），是业界标准形状，也便于
+// 调试面板分别显示两路分数。
+//
+// 【为什么 WHERE 里不加 embedding IS NOT NULL】词法检索只关心文本；
+// 分块表里的行一定是索引成功的（否则不会插入），不需要再过滤。
+func (r *PgRepo) SearchLexical(ctx context.Context, q platform.Querier, kbID uuid.UUID, tsQuery string, topK int) ([]domain.Chunk, error) {
+	if tsQuery == "" {
+		return nil, nil
+	}
+	rows, err := q.Query(ctx,
+		`SELECT dc.id, dc.document_id, dc.content, d.filename,
+		        dc.page_start, dc.page_end, dc.bbox, dc.section_path, dc.block_type,
+		        ts_rank_cd(dc.search_tsv, to_tsquery('simple', $2)) AS score
+		 FROM document_chunks dc
+		 JOIN documents d ON d.id = dc.document_id
+		 WHERE d.knowledge_base_id = $1
+		   AND dc.search_tsv @@ to_tsquery('simple', $2)
+		 ORDER BY score DESC
+		 LIMIT $3`,
+		kbID, tsQuery, topK,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("lexical search in knowledge base %s: %w", kbID, platform.WrapPgErr(err))
+	}
+	out, err := scanChunks(rows)
+	if err != nil {
+		return nil, fmt.Errorf("lexical search in knowledge base %s: %w", kbID, err)
+	}
+	return out, nil
+}
+
 // searchANN 是主路径：全局 HNSW 索引取近似 Top-K。
 //
 // 三个 WHERE 条件各自的理由：
@@ -159,6 +235,7 @@ func (r *PgRepo) Search(ctx context.Context, q platform.Querier, kbID uuid.UUID,
 func (r *PgRepo) searchANN(ctx context.Context, q platform.Querier, kbID uuid.UUID, vec []float32, model string, topK int) ([]domain.Chunk, error) {
 	rows, err := q.Query(ctx,
 		`SELECT dc.id, dc.document_id, dc.content, d.filename,
+		        dc.page_start, dc.page_end, dc.bbox, dc.section_path, dc.block_type,
 		        1 - (dc.embedding <=> $3::halfvec) AS score
 		 FROM document_chunks dc
 		 JOIN documents d ON d.id = dc.document_id
@@ -192,7 +269,8 @@ func (r *PgRepo) searchANN(ctx context.Context, q platform.Querier, kbID uuid.UU
 func (r *PgRepo) searchExact(ctx context.Context, q platform.Querier, kbID uuid.UUID, vec []float32, model string, topK int) ([]domain.Chunk, error) {
 	rows, err := q.Query(ctx,
 		`WITH candidates AS MATERIALIZED (
-		     SELECT dc.id, dc.document_id, dc.content, dc.embedding, d.filename
+		     SELECT dc.id, dc.document_id, dc.content, dc.embedding, d.filename,
+		            dc.page_start, dc.page_end, dc.bbox, dc.section_path, dc.block_type
 		     FROM document_chunks dc
 		     JOIN documents d ON d.id = dc.document_id
 		     WHERE d.knowledge_base_id = $1
@@ -200,6 +278,7 @@ func (r *PgRepo) searchExact(ctx context.Context, q platform.Querier, kbID uuid.
 		       AND dc.embedding_model = $2
 		 )
 		 SELECT id, document_id, content, filename,
+		        page_start, page_end, bbox, section_path, block_type,
 		        1 - (embedding <=> $3::halfvec) AS score
 		 FROM candidates
 		 ORDER BY embedding <=> $3::halfvec
@@ -216,16 +295,42 @@ func (r *PgRepo) searchExact(ctx context.Context, q platform.Querier, kbID uuid.
 	return out, nil
 }
 
-// scanChunks 把两个查询共用的五列读成 []domain.Chunk。
+// scanChunks 把两个查询共用的列读成 []domain.Chunk。
 // 列的顺序必须和上面两条 SELECT 一致。
+//
+// 【JSONB 先扫成 []byte 再解】pgx 不会把 jsonb 直接扫进 []float64/[]string；
+// 先拿到原始字节再 json.Unmarshal，NULL 自然得到 nil（md/txt 文档就是这样）。
 func scanChunks(rows pgx.Rows) ([]domain.Chunk, error) {
 	defer rows.Close()
 
 	var out []domain.Chunk
 	for rows.Next() {
-		c := domain.Chunk{}
-		if err := rows.Scan(&c.ID, &c.DocumentID, &c.Content, &c.Filename, &c.Score); err != nil {
+		var (
+			c          domain.Chunk
+			pageStart  *int
+			pageEnd    *int
+			bboxRaw    []byte
+			sectionRaw []byte
+		)
+		if err := rows.Scan(&c.ID, &c.DocumentID, &c.Content, &c.Filename,
+			&pageStart, &pageEnd, &bboxRaw, &sectionRaw, &c.BlockType, &c.Score); err != nil {
 			return nil, fmt.Errorf("scan chunk: %w", err)
+		}
+		if pageStart != nil {
+			c.PageStart = *pageStart
+		}
+		if pageEnd != nil {
+			c.PageEnd = *pageEnd
+		}
+		if len(bboxRaw) > 0 {
+			if err := json.Unmarshal(bboxRaw, &c.BBox); err != nil {
+				return nil, fmt.Errorf("decode bbox of chunk %s: %w", c.ID, err)
+			}
+		}
+		if len(sectionRaw) > 0 {
+			if err := json.Unmarshal(sectionRaw, &c.SectionPath); err != nil {
+				return nil, fmt.Errorf("decode section path of chunk %s: %w", c.ID, err)
+			}
 		}
 		out = append(out, c)
 	}

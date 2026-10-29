@@ -34,6 +34,23 @@ import type { DisplayCitation } from '@/hooks/useMessages'
 export function CitationBadge({ index, citation }: { index: number; citation: DisplayCitation }) {
   const [open, setOpen] = useState(false)
 
+  // 「在原文中查看」的地址：页码 + bbox + 章节。没有页码的引用（md/txt）
+  // 不渲染这个链接——阅读器只对 PDF 有意义。
+  const readerHref =
+    citation.page != null && citation.page > 0
+      ? '/documents/' +
+        citation.documentId +
+        '/reader?page=' +
+        citation.page +
+        (citation.bbox != null && citation.bbox.length === 4
+          ? '&bbox=' + citation.bbox.join(',')
+          : '') +
+        (citation.sectionPath != null && citation.sectionPath.length > 0
+          ? '&section=' +
+            encodeURIComponent(citation.sectionPath[citation.sectionPath.length - 1])
+          : '')
+      : null
+
   return (
     <HoverCard open={open} onOpenChange={setOpen} openDelay={100}>
       <HoverCardTrigger asChild>
@@ -75,9 +92,33 @@ export function CitationBadge({ index, citation }: { index: number; citation: Di
             <p className="text-muted-foreground mt-1 line-clamp-4 text-xs whitespace-pre-wrap">
               {citation.snippet}
             </p>
-            <div className="text-muted-foreground mt-1.5 text-xs">
-              相似度 {(citation.score * 100).toFixed(0)}%
+            <div className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+              <span>相似度 {(citation.score * 100).toFixed(0)}%</span>
+              {citation.page != null && citation.page > 0 ? (
+                <span className="text-foreground/80">
+                  {/* 参赛版：PDF 分块才有页码。跳转由阅读器接手（见 ReaderPage） */}
+                  第 {citation.page} 页
+                  {citation.pageEnd != null && citation.pageEnd > citation.page
+                    ? '–' + citation.pageEnd
+                    : ''}
+                </span>
+              ) : null}
+              {citation.sectionPath != null && citation.sectionPath.length > 0 ? (
+                <span className="truncate" title={citation.sectionPath.join(' / ')}>
+                  {citation.sectionPath[citation.sectionPath.length - 1]}
+                </span>
+              ) : null}
             </div>
+            {readerHref ? (
+              <a
+                href={readerHref}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary mt-1.5 inline-block text-xs font-medium hover:underline"
+              >
+                在原文中查看 →
+              </a>
+            ) : null}
           </div>
         </div>
       </HoverCardContent>

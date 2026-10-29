@@ -12,8 +12,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -38,6 +40,11 @@ type Deps struct {
 	LLM          *llm.Usecase
 	Conversation *conversation.Usecase
 	Agent        *agent.Usecase
+
+	// Files 是原始文件存储，只有下载端点（GET /documents/{id}/file）用。
+	// 类型是接口而不是 *knowledge.LocalFileStore：HTTP 边界不该知道文件是
+	// 落在本地磁盘还是对象存储（将来换 S3 只换装配根）。
+	Files knowledge.FileStore
 
 	// Retrieval 是检索调试视图（POST /knowledge-bases/{id}/search）用的。
 	// 它和 knowledge 是不同的关注点：knowledge 管知识库与文档的 CRUD，
@@ -321,6 +328,8 @@ func toAPIDocument(d *knowledge.Document) Document {
 		Status:          DocumentStatus(d.Status),
 		ByteSize:        d.ByteSize,
 		ChunkCount:      d.ChunkCount,
+		PageCount:       d.PageCount,
+		Parser:          d.Parser,
 		CreatedAt:       d.CreatedAt,
 		UpdatedAt:       d.UpdatedAt,
 	}
@@ -400,6 +409,146 @@ func (s *Server) GetDocument(c *gin.Context, id openapi_types.UUID) {
 		return
 	}
 	c.JSON(http.StatusOK, toAPIDocument(doc))
+}
+
+// ListDocumentReferences 返回参考文献并标注库内命中（参赛版 M5）。
+func (s *Server) ListDocumentReferences(c *gin.Context, id openapi_types.UUID) {
+	entries, err := s.deps.Knowledge.References(c.Request.Context(), id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	out := make([]ReferenceEntry, 0, len(entries))
+	for _, e := range entries {
+		item := ReferenceEntry{
+			Index: e.Index,
+			Text:  e.Text,
+			Page:  e.Page,
+		}
+		if e.MatchedDocumentID != "" {
+			docID := e.MatchedDocumentID
+			name := e.MatchedFilename
+			item.MatchedDocumentId = &docID
+			item.MatchedFilename = &name
+		}
+		out = append(out, item)
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// TranslateText 翻译一段论文文本（参赛版 M3 阅读器翻译）。
+func (s *Server) TranslateText(c *gin.Context) {
+	var req TranslateRequest
+	if !s.bindJSON(c, &req) {
+		return
+	}
+	target := ""
+	if req.TargetLang != nil {
+		target = *req.TargetLang
+	}
+	out, err := s.deps.LLM.Translate(c.Request.Context(), req.Text, target)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, TranslateResponse{Translation: out})
+}
+
+// GetDocumentOutline 返回阅读器目录（参赛版 M3）。
+func (s *Server) GetDocumentOutline(c *gin.Context, id openapi_types.UUID) {
+	entries, err := s.deps.Knowledge.Outline(c.Request.Context(), id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	out := make([]OutlineEntry, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, OutlineEntry{Title: e.Title, Page: e.Page, Level: e.Level})
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// intPtrOrNil 把"0 表示没有"的整数转成契约里的 nullable 字段。
+//
+// 【为什么不是直接传 int 的地址】0 是一个合法的值（页数从 1 开始，页码 0
+// 不是合法页码），但零值语义是"没有页码"。直接取地址会让前端拿到 page=0，
+// 分不清"第 0 页"和"没有页"。
+func intPtrOrNil(v int) *int {
+	if v == 0 {
+		return nil
+	}
+	return &v
+}
+
+// floatPtrOrNil 与 intPtrOrNil 同理：0 表示"这一路没命中"。
+// 余弦相似度恰好 0 等价于不相关，ts_rank_cd 为 0 不进结果集，
+// 所以用 0 当"没有"不会丢真实信息。
+func floatPtrOrNil(v float64) *float64 {
+	if v == 0 {
+		return nil
+	}
+	return &v
+}
+
+func floatSlicePtrOrNil(v []float64) *[]float64 {
+	if len(v) == 0 {
+		return nil
+	}
+	out := append([]float64(nil), v...)
+	return &out
+}
+
+func stringSlicePtrOrNil(v []string) *[]string {
+	if len(v) == 0 {
+		return nil
+	}
+	out := append([]string(nil), v...)
+	return &out
+}
+
+// DownloadDocumentFile 把原始文件字节流给阅读器（PDF.js）。
+//
+// 【为什么不缓存】本地单机应用、文件几 MB，每次从磁盘读比维护一层缓存
+// 简单；真要缓存留给公网部署那层（反向代理）去做。
+func (s *Server) DownloadDocumentFile(c *gin.Context, id openapi_types.UUID) {
+	ctx := c.Request.Context()
+
+	doc, err := s.deps.Knowledge.GetDocument(ctx, id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	rc, err := s.deps.Files.Open(ctx, doc.StorageKey)
+	if err != nil {
+		// 元信息还在、文件没了，是"数据库和磁盘不同步"的坏状态。
+		// 对客户端来说就是 404：它要的东西不在了。
+		if errors.Is(err, os.ErrNotExist) {
+			s.fail(c, fmt.Errorf("file of document %s is gone: %w", id, platform.ErrNotFound))
+			return
+		}
+		s.fail(c, fmt.Errorf("open file of document %s: %w", id, err))
+		return
+	}
+	defer func() { _ = rc.Close() }()
+
+	contentType := "application/octet-stream"
+	disposition := "attachment"
+	if strings.HasSuffix(strings.ToLower(doc.Filename), ".pdf") {
+		contentType = "application/pdf"
+		// inline：浏览器内置 PDF 查看器直接打开，不弹下载框
+		disposition = "inline"
+	}
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Disposition", fmt.Sprintf("%s; filename=%q", disposition, doc.Filename))
+	c.Header("Cache-Control", "private, max-age=300")
+
+	if _, err := io.Copy(c.Writer, rc); err != nil {
+		// 响应头已经发出去了，这里只能记日志——客户端会看到截断的响应，
+		// 那是网络侧的失败，不是我们能改写的 HTTP 错误。
+		s.deps.Logger.Warn("stream document file failed",
+			"document_id", id, "error", err)
+	}
 }
 
 func (s *Server) DeleteDocument(c *gin.Context, id openapi_types.UUID) {
@@ -606,7 +755,24 @@ func toAPIConversation(c *conversation.Conversation) Conversation {
 }
 
 func toAPIMessage(m *conversation.Message) Message {
-	return Message{
+	// 引用与 grounding 是参赛版持久化字段（migration 0017）：空切片不是 nil，
+	// 契约里 citations 是数组，nil 会序列化成 null（前端 .map() 会崩）。
+	citations := make([]MessageCitation, 0, len(m.Citations))
+	for _, c := range m.Citations {
+		citations = append(citations, MessageCitation{
+			ChunkId:     c.ChunkID,
+			DocumentId:  c.DocumentID,
+			Filename:    c.Filename,
+			Snippet:     c.Snippet,
+			Score:       c.Score,
+			Page:        intPtrOrNil(c.Page),
+			PageEnd:     intPtrOrNil(c.PageEnd),
+			Bbox:        floatSlice32PtrOrNil(c.BBox),
+			SectionPath: stringSlicePtrOrNil(c.SectionPath),
+		})
+	}
+
+	out := Message{
 		Id:             m.ID,
 		ConversationId: m.ConversationID,
 		Role:           MessageRole(m.Role),
@@ -614,7 +780,39 @@ func toAPIMessage(m *conversation.Message) Message {
 		Status:         MessageStatus(m.Status),
 		SequenceNo:     m.SequenceNo,
 		CreatedAt:      m.CreatedAt,
+		Citations:      citations,
 	}
+	if m.Grounding != nil {
+		out.Grounding = &struct {
+			Cited       int  `json:"cited"`
+			Refs        int  `json:"refs"`
+			Sentences   int  `json:"sentences"`
+			Unsupported int  `json:"unsupported"`
+			Valid       bool `json:"valid"`
+			ValidRefs   int  `json:"validRefs"`
+		}{
+			Cited:       m.Grounding.Cited,
+			Refs:        m.Grounding.Refs,
+			Sentences:   m.Grounding.Sentences,
+			Unsupported: m.Grounding.Unsupported,
+			Valid:       m.Grounding.Valid,
+			ValidRefs:   m.Grounding.ValidRefs,
+		}
+	}
+	return out
+}
+
+// floatSlice32PtrOrNil 与 floatSlicePtrOrNil 相同，只是目标类型是契约里的
+// float32（bbox 在 JSON 里是精度无关的归一化坐标，float32 足够）。
+func floatSlice32PtrOrNil(v []float64) *[]float32 {
+	if len(v) == 0 {
+		return nil
+	}
+	out := make([]float32, len(v))
+	for i, f := range v {
+		out[i] = float32(f)
+	}
+	return &out
 }
 
 func toAPIMessageList(msgs []*conversation.Message) []Message {
@@ -1201,19 +1399,208 @@ func (s *Server) SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 		return
 	}
 
+	c.JSON(http.StatusOK, KnowledgeSearchResult{Hits: toAPIKnowledgeHits(chunks)})
+}
+
+// GenerateWritingDraft 基于知识库检索结果生成写作草稿（参赛版 M6）。
+//
+// 【为什么是独立端点而不是复用聊天】输出形态不同：聊天是流式一问一答，
+// 写作要的是"一份可以继续编辑的 Markdown 草稿 + 引用来源"；前者用户
+// 通常不保存，后者会被粘进论文里，所以必须把 citations 一起返回，
+// 让前端把每条依据的页码/原文都摆出来。
+func (s *Server) GenerateWritingDraft(c *gin.Context, id openapi_types.UUID) {
+	var req WritingRequest
+	if !s.bindJSON(c, &req) {
+		return
+	}
+	if _, err := s.deps.Knowledge.Get(c.Request.Context(), id); err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	topK := writingDefaultTopK
+	if req.TopK != nil {
+		topK = *req.TopK
+	}
+	if topK < writingMinTopK || topK > writingMaxTopK {
+		s.fail(c, fmt.Errorf("topK must be between %d and %d, got %d: %w",
+			writingMinTopK, writingMaxTopK, topK, platform.ErrInvalid))
+		return
+	}
+
+	chunks, err := s.deps.Retrieval.Search(c.Request.Context(), domain.SearchRequest{
+		KnowledgeBaseID: id, Text: req.Topic, TopK: topK,
+	})
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	// 没有证据时不去调模型：返回固定说明 + 空引用，和聊天拒答同一个原则。
+	if len(chunks) == 0 {
+		c.JSON(http.StatusOK, WritingResponse{
+			Draft:     "没有在当前知识库里检索到与主题相关的内容，因此没有生成草稿。可以换一个主题，或先上传相关论文。",
+			Citations: []KnowledgeSearchHit{},
+		})
+		return
+	}
+
+	system, user := buildWritingPrompt(string(req.Kind), req.Topic, chunks)
+	draft, err := s.deps.LLM.Generate(c.Request.Context(), system, user)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, WritingResponse{
+		Draft:     draft,
+		Citations: toAPIKnowledgeHits(chunks),
+	})
+}
+
+// ComparePapers 生成多篇论文的对比分析（参赛版 A6）。
+//
+// 【和写作为什么分成两个端点】对比要求"按维度组织成表格 + 每篇论文的
+// 证据并排"，提示词与输出校验都不同；合成一个端点会让 kind 枚举变成
+// 一个隐式的模式开关，调用方和文档都会难讲清楚。
+func (s *Server) ComparePapers(c *gin.Context, id openapi_types.UUID) {
+	var req CompareRequest
+	if !s.bindJSON(c, &req) {
+		return
+	}
+	if _, err := s.deps.Knowledge.Get(c.Request.Context(), id); err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	topK := compareDefaultTopK
+	if req.TopK != nil {
+		topK = *req.TopK
+	}
+	if topK < compareMinTopK || topK > compareMaxTopK {
+		s.fail(c, fmt.Errorf("topK must be between %d and %d, got %d: %w",
+			compareMinTopK, compareMaxTopK, topK, platform.ErrInvalid))
+		return
+	}
+
+	chunks, err := s.deps.Retrieval.Search(c.Request.Context(), domain.SearchRequest{
+		KnowledgeBaseID: id, Text: req.Question, TopK: topK,
+	})
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	if len(chunks) == 0 {
+		c.JSON(http.StatusOK, CompareResponse{
+			Answer:    "没有在当前知识库里检索到与问题相关的内容，无法进行对比。可以换一个问法，或先上传要对比的论文。",
+			Citations: []KnowledgeSearchHit{},
+		})
+		return
+	}
+
+	system, user := buildComparePrompt(req.Question, chunks)
+	answer, err := s.deps.LLM.Generate(c.Request.Context(), system, user)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, CompareResponse{Answer: answer, Citations: toAPIKnowledgeHits(chunks)})
+}
+
+// buildComparePrompt 拼"多篇对比"的提示词。
+//
+// 【编号与 citations 顺序一致】citations 就是 chunks 顺序；提示词里的
+// [n] 由模型按资料编号生成，前端据此把 [n] 渲染成可点来源。
+func buildComparePrompt(question string, chunks []domain.Chunk) (system, user string) {
+	var b strings.Builder
+	b.WriteString("对比问题：")
+	b.WriteString(question)
+	b.WriteString("\n\n资料（每条前面的编号就是引用编号，括号里是来源文件与页码）：\n")
+	for i, ch := range chunks {
+		fmt.Fprintf(&b, "\n[%d] ", i+1)
+		if ch.PageStart > 0 {
+			fmt.Fprintf(&b, "（%s 第 %d 页）", ch.Filename, ch.PageStart)
+		}
+		b.WriteString(ch.Content)
+	}
+	system = "你是科研文献对比助手。只依据给出的编号资料回答；" +
+		"用 Markdown 表格对比不同论文/不同来源在同一问题上的观点、方法与证据（列可以按主题自拟），" +
+		"表格后用 2~3 句给综合结论；每个事实句末尾用 [n] 标注来源编号；" +
+		"资料不足时直接说明「根据现有资料无法完成对比」，不要编造。"
+	return system, b.String()
+}
+
+// 多篇对比的 topK 边界（与契约里的 minimum/maximum 一致）。
+const (
+	compareDefaultTopK = 8
+	compareMinTopK     = 2
+	compareMaxTopK     = 12
+)
+
+// buildWritingPrompt 把 kind/topic/检索片段拼成一次写作请求。
+//
+// 【片段编号必须和 citations 顺序一致】返回的 citations 就是 chunks 的
+// 顺序；草稿里的 [n] 由模型按提示词里的 [n] 生成，前端据此把 [n] 变成
+// 可点击的来源卡片。
+func buildWritingPrompt(kind, topic string, chunks []domain.Chunk) (system, user string) {
+	var task string
+	switch kind {
+	case "summary":
+		task = "写一段 200~300 字的摘要式总结，概括这些资料的核心方法与结论"
+	case "outline":
+		task = "写一份章节提纲（Markdown 多级列表），覆盖资料涉及的主要主题与它们之间的关系"
+	default: // related_work
+		task = "写一段 300~500 字的「相关工作」综述，按方法脉络组织（不要逐篇罗列），指出各方法的差异与联系"
+	}
+
+	var b strings.Builder
+	b.WriteString("写作主题：")
+	b.WriteString(topic)
+	b.WriteString("\n\n任务：")
+	b.WriteString(task)
+	b.WriteString("。\n\n可用资料（每条前面的编号就是引用编号）：\n")
+	for i, ch := range chunks {
+		fmt.Fprintf(&b, "\n[%d] %s", i+1, ch.Content)
+		if ch.PageStart > 0 {
+			fmt.Fprintf(&b, "（%s 第 %d 页）", ch.Filename, ch.PageStart)
+		}
+	}
+	system = "你是科研写作助手。只依据给出的编号资料写作；每个事实句末尾用 [n] 标注来源编号；" +
+		"输出 Markdown，不要输出与写作任务无关的解释。资料不足时直接说明" + "「根据现有资料无法完成」" + "，不要编造。"
+	return system, b.String()
+}
+
+// 写作 Copilot 的 topK 边界（与契约里的 minimum/maximum 一致）。
+const (
+	writingDefaultTopK = 6
+	writingMinTopK     = 1
+	writingMaxTopK     = 10
+)
+
+// toAPIKnowledgeHits 把检索结果映射成契约类型。
+//
+// 【抽出来是因为写作 Copilot 的 citations 用的是同一个 schema】两处
+// 各写一份映射，加字段时必然漏一处；而漏掉的那一处不会报错——只是
+// 某一条路径上的页码悄悄变成 null。
+func toAPIKnowledgeHits(chunks []domain.Chunk) []KnowledgeSearchHit {
 	// 空切片不是 nil：契约里 hits 是数组，nil 会序列化成 null
 	// （前端 .map() 会崩）——与 toAPIKBList 那条同一个约定。
 	hits := make([]KnowledgeSearchHit, 0, len(chunks))
 	for _, ch := range chunks {
 		hits = append(hits, KnowledgeSearchHit{
-			ChunkId:    ch.ID,
-			DocumentId: ch.DocumentID,
-			Filename:   ch.Filename,
-			Snippet:    ch.Content,
-			Score:      ch.Score,
+			ChunkId:      ch.ID,
+			DocumentId:   ch.DocumentID,
+			Filename:     ch.Filename,
+			Snippet:      ch.Content,
+			Score:        ch.Score,
+			Page:         intPtrOrNil(ch.PageStart),
+			PageEnd:      intPtrOrNil(ch.PageEnd),
+			Bbox:         floatSlicePtrOrNil(ch.BBox),
+			SectionPath:  stringSlicePtrOrNil(ch.SectionPath),
+			VectorScore:  floatPtrOrNil(ch.VectorScore),
+			LexicalScore: floatPtrOrNil(ch.LexicalScore),
 		})
 	}
-	c.JSON(http.StatusOK, KnowledgeSearchResult{Hits: hits})
+	return hits
 }
 
 // 检索调试的 topK 边界。契约里的 min/max 与它们必须一致——

@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
+	"github.com/XiaoleC05/CongoRAG/internal/grounding"
 )
 
 // MessageStatus 是一条消息的生成状态。
@@ -37,6 +38,12 @@ type Message struct {
 	SequenceNo     int64
 	TokenUsage     *domain.TokenUsage
 	CreatedAt      time.Time
+
+	// Citations / Grounding 是这一轮回答的引用与引用落地检查结果
+	//（参赛版，migration 0017）。刷新页面后前端靠它们渲染可点击的引用角标
+	// 与"已溯源/部分未溯源"徽标——SSE 只负责当轮实时性，持久化负责回看。
+	Citations []domain.Citation
+	Grounding *grounding.Report
 }
 
 // Conversation 是一个会话。

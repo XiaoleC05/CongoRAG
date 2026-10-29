@@ -214,6 +214,27 @@ func (e UsageByModelKind) Valid() bool {
 	}
 }
 
+// Defines values for WritingRequestKind.
+const (
+	Outline     WritingRequestKind = "outline"
+	RelatedWork WritingRequestKind = "related_work"
+	Summary     WritingRequestKind = "summary"
+)
+
+// Valid indicates whether the value is a known member of the WritingRequestKind enum.
+func (e WritingRequestKind) Valid() bool {
+	switch e {
+	case Outline:
+		return true
+	case RelatedWork:
+		return true
+	case Summary:
+		return true
+	default:
+		return false
+	}
+}
+
 // Agent defines model for Agent.
 type Agent struct {
 	CreatedAt   time.Time          `json:"createdAt"`
@@ -305,6 +326,22 @@ type ChatModelInput struct {
 
 	// TokenizerType Example: cl100k_base
 	TokenizerType string `json:"tokenizerType"`
+}
+
+// CompareRequest defines model for CompareRequest.
+type CompareRequest struct {
+	// Question 要对比的问题（如"这些论文如何解决长距离依赖"）
+	Question string `json:"question"`
+
+	// TopK 检索多少条依据（默认 8；对比至少需要 2 条）
+	TopK *int `json:"topK,omitempty"`
+}
+
+// CompareResponse defines model for CompareResponse.
+type CompareResponse struct {
+	// Answer Markdown 对比表 + 综合结论，每句带 [n]
+	Answer    string               `json:"answer"`
+	Citations []KnowledgeSearchHit `json:"citations"`
 }
 
 // Conversation defines model for Conversation.
@@ -404,6 +441,13 @@ type Document struct {
 	Id              openapi_types.UUID `json:"id"`
 	KnowledgeBaseId openapi_types.UUID `json:"knowledgeBaseId"`
 
+	// PageCount PDF 页数；md/txt 文档是 0（不是 null——"没有页概念"与"未知"
+	// 对前端是同一个分支，少一个空态）。
+	PageCount int `json:"pageCount"`
+
+	// Parser 解析器版本（如 pdf-service-0.1.0）；md/txt 为空串
+	Parser string `json:"parser"`
+
 	// Status 四态状态机（代码架构设计 §5.4）：queued → processing → ready，
 	// 任意阶段失败进 failed，failed 只能退回 queued 重试。
 	Status    DocumentStatus `json:"status"`
@@ -432,17 +476,35 @@ type KnowledgeBase struct {
 
 // KnowledgeSearchHit defines model for KnowledgeSearchHit.
 type KnowledgeSearchHit struct {
+	// Bbox 归一化 [x0, y0, x1, y1]，0~1，左上原点。前端 PDF.js 叠层
+	// 按百分比定位，不处理缩放/旋转。md/txt 文档为 null。
+	Bbox       *[]float64         `json:"bbox"`
 	ChunkId    openapi_types.UUID `json:"chunkId"`
 	DocumentId openapi_types.UUID `json:"documentId"`
 
 	// Filename 这个分块来自哪份文档（检索 SQL 里 JOIN documents 拿到）
 	Filename string `json:"filename"`
 
+	// LexicalScore 词法 ts_rank_cd（>=0）；这一路没命中时为 null
+	LexicalScore *float64 `json:"lexicalScore"`
+
+	// Page 1-based 物理页码；md/txt 文档为 null
+	Page *int `json:"page"`
+
+	// PageEnd 跨页分块的结束页码；未跨页时等于 page
+	PageEnd *int `json:"pageEnd"`
+
 	// Score 余弦相似度，越大越相关
 	Score float64 `json:"score"`
 
+	// SectionPath 章节路径（如 ["3 Model Architecture", "3.2 Attention"]）；md/txt 为 null
+	SectionPath *[]string `json:"sectionPath"`
+
 	// Snippet 分块正文
 	Snippet string `json:"snippet"`
+
+	// VectorScore 向量余弦相似度（0~1）；这一路没命中时为 null
+	VectorScore *float64 `json:"vectorScore"`
 }
 
 // KnowledgeSearchRequest Example: {"query":"ConGoRAG 的向量检索用的是什么类型？","topK":5}
@@ -467,13 +529,25 @@ type KnowledgeSearchResult struct {
 
 // Message defines model for Message.
 type Message struct {
+	// Citations 这一轮回答的引用（总是数组；没有引用时为空）
+	Citations      []MessageCitation  `json:"citations"`
 	Content        string             `json:"content"`
 	ConversationId openapi_types.UUID `json:"conversationId"`
 	CreatedAt      time.Time          `json:"createdAt"`
-	Id             openapi_types.UUID `json:"id"`
-	Role           MessageRole        `json:"role"`
-	SequenceNo     int64              `json:"sequenceNo"`
-	Status         MessageStatus      `json:"status"`
+
+	// Grounding 引用落地检查结果；流式中/失败的消息为 null
+	Grounding *struct {
+		Cited       int  `json:"cited"`
+		Refs        int  `json:"refs"`
+		Sentences   int  `json:"sentences"`
+		Unsupported int  `json:"unsupported"`
+		Valid       bool `json:"valid"`
+		ValidRefs   int  `json:"validRefs"`
+	} `json:"grounding,omitempty"`
+	Id         openapi_types.UUID `json:"id"`
+	Role       MessageRole        `json:"role"`
+	SequenceNo int64              `json:"sequenceNo"`
+	Status     MessageStatus      `json:"status"`
 }
 
 // MessageRole defines model for Message.Role.
@@ -481,6 +555,19 @@ type MessageRole string
 
 // MessageStatus defines model for Message.Status.
 type MessageStatus string
+
+// MessageCitation defines model for MessageCitation.
+type MessageCitation struct {
+	Bbox        *[]float32         `json:"bbox"`
+	ChunkId     openapi_types.UUID `json:"chunkId"`
+	DocumentId  openapi_types.UUID `json:"documentId"`
+	Filename    string             `json:"filename"`
+	Page        *int               `json:"page"`
+	PageEnd     *int               `json:"pageEnd"`
+	Score       float64            `json:"score"`
+	SectionPath *[]string          `json:"sectionPath"`
+	Snippet     string             `json:"snippet"`
+}
 
 // MessagePage defines model for MessagePage.
 type MessagePage struct {
@@ -516,6 +603,18 @@ type ModelSummary struct {
 // ModelSummaryKind defines model for ModelSummary.Kind.
 type ModelSummaryKind string
 
+// OutlineEntry 论文阅读器目录的一行
+type OutlineEntry struct {
+	// Level 层级（1 = 一级标题），前端按它缩进
+	Level int `json:"level"`
+
+	// Page 1-based 物理页码，点击目录跳这一页
+	Page int `json:"page"`
+
+	// Title 章节标题（heading 分块原文）
+	Title string `json:"title"`
+}
+
 // Problem defines model for Problem.
 type Problem struct {
 	// Detail 具体说明
@@ -548,6 +647,24 @@ type ProviderWithModels struct {
 	// 重建时才是一个数字；GET /providers 恒为 null——它描述的是"这一次
 	// 请求做了什么"，不是一个可以持久化的状态。
 	RequeuedDocuments *int `json:"requeuedDocuments,omitempty"`
+}
+
+// ReferenceEntry 参考文献的一条（参赛版 M5）
+type ReferenceEntry struct {
+	// Index 引文编号（[n] 里的 n）；解析不出来时为 0
+	Index int `json:"index"`
+
+	// MatchedDocumentId 同库里命中的文档 id；未命中为 null
+	MatchedDocumentId *string `json:"matchedDocumentId"`
+
+	// MatchedFilename 同库里命中的文档文件名；未命中为 null
+	MatchedFilename *string `json:"matchedFilename"`
+
+	// Page 所在页码（PDF）；md/txt 为 0
+	Page int `json:"page"`
+
+	// Text 参考文献原文
+	Text string `json:"text"`
 }
 
 // ReindexAccepted defines model for ReindexAccepted.
@@ -584,6 +701,23 @@ type ToolCatalogEntry struct {
 
 // ToolCatalogEntrySideEffectLevel defines model for ToolCatalogEntry.SideEffectLevel.
 type ToolCatalogEntrySideEffectLevel string
+
+// TranslateRequest defines model for TranslateRequest.
+type TranslateRequest struct {
+	// TargetLang 目标语言，默认 zh-CN
+	//
+	// Example: zh-CN
+	TargetLang *string `json:"targetLang,omitempty"`
+
+	// Text 要翻译的原文（字符数上限与后端 maxTranslateRunes 一致）
+	Text string `json:"text"`
+}
+
+// TranslateResponse defines model for TranslateResponse.
+type TranslateResponse struct {
+	// Translation 译文；模型只输出译文本身
+	Translation string `json:"translation"`
+}
 
 // UpdateAgentRequest defines model for UpdateAgentRequest.
 type UpdateAgentRequest struct {
@@ -637,6 +771,31 @@ type UsageSummary struct {
 	ByModel               []UsageByModel `json:"byModel"`
 	TotalCompletionTokens int64          `json:"totalCompletionTokens"`
 	TotalPromptTokens     int64          `json:"totalPromptTokens"`
+}
+
+// WritingRequest defines model for WritingRequest.
+type WritingRequest struct {
+	// Kind related_work = 相关工作综述段；summary = 摘要/要点总结；
+	// outline = 章节提纲
+	Kind WritingRequestKind `json:"kind"`
+
+	// TopK 检索多少条依据（默认 6）
+	TopK *int `json:"topK,omitempty"`
+
+	// Topic 写作主题（如"Transformer 的高效注意力机制"）
+	Topic string `json:"topic"`
+}
+
+// WritingRequestKind related_work = 相关工作综述段；summary = 摘要/要点总结；
+// outline = 章节提纲
+type WritingRequestKind string
+
+// WritingResponse defines model for WritingResponse.
+type WritingResponse struct {
+	Citations []KnowledgeSearchHit `json:"citations"`
+
+	// Draft Markdown 草稿，每个事实句带 [n] 引用
+	Draft string `json:"draft"`
 }
 
 // Cursor defines model for Cursor.
@@ -806,17 +965,26 @@ type CreateKnowledgeBaseJSONRequestBody = CreateKnowledgeBaseRequest
 // RenameKnowledgeBaseJSONRequestBody defines body for RenameKnowledgeBase for application/json ContentType.
 type RenameKnowledgeBaseJSONRequestBody = RenameKnowledgeBaseRequest
 
+// ComparePapersJSONRequestBody defines body for ComparePapers for application/json ContentType.
+type ComparePapersJSONRequestBody = CompareRequest
+
 // UploadDocumentMultipartRequestBody defines body for UploadDocument for multipart/form-data ContentType.
 type UploadDocumentMultipartRequestBody UploadDocumentMultipartBody
 
 // SearchKnowledgeBaseJSONRequestBody defines body for SearchKnowledgeBase for application/json ContentType.
 type SearchKnowledgeBaseJSONRequestBody = KnowledgeSearchRequest
 
+// GenerateWritingDraftJSONRequestBody defines body for GenerateWritingDraft for application/json ContentType.
+type GenerateWritingDraftJSONRequestBody = WritingRequest
+
 // UpdateModelJSONRequestBody defines body for UpdateModel for application/json ContentType.
 type UpdateModelJSONRequestBody = UpdateModelRequest
 
 // CreateProviderJSONRequestBody defines body for CreateProvider for application/json ContentType.
 type CreateProviderJSONRequestBody = CreateProviderRequest
+
+// TranslateTextJSONRequestBody defines body for TranslateText for application/json ContentType.
+type TranslateTextJSONRequestBody = TranslateRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -888,6 +1056,15 @@ type ServerInterface interface {
 	// GetDocument 查一份文档的当前状态（前端拿它做处理中的轮询）
 	// (GET /api/v1/documents/{id})
 	GetDocument(c *gin.Context, id openapi_types.UUID)
+	// DownloadDocumentFile 下载文档的原始文件（PDF 阅读器用）
+	// (GET /api/v1/documents/{id}/file)
+	DownloadDocumentFile(c *gin.Context, id openapi_types.UUID)
+	// GetDocumentOutline 取一份文档的章节大纲（heading 分块 → 阅读器目录）
+	// (GET /api/v1/documents/{id}/outline)
+	GetDocumentOutline(c *gin.Context, id openapi_types.UUID)
+	// ListDocumentReferences 取一份文档的参考文献并标注库内命中
+	// (GET /api/v1/documents/{id}/references)
+	ListDocumentReferences(c *gin.Context, id openapi_types.UUID)
 	// ReindexDocument 重新索引一份文档（重新切分、向量化、入库）
 	// (POST /api/v1/documents/{id}/reindex)
 	ReindexDocument(c *gin.Context, id openapi_types.UUID)
@@ -906,6 +1083,9 @@ type ServerInterface interface {
 	// RenameKnowledgeBase 改知识库的名字
 	// (PATCH /api/v1/knowledge-bases/{id})
 	RenameKnowledgeBase(c *gin.Context, id openapi_types.UUID)
+	// ComparePapers 基于知识库的多篇论文对比（表格 + 结论 + 引用）
+	// (POST /api/v1/knowledge-bases/{id}/compare)
+	ComparePapers(c *gin.Context, id openapi_types.UUID)
 	// ListDocuments 列出这个知识库下的文档（按创建时间倒序，keyset 分页）
 	// (GET /api/v1/knowledge-bases/{id}/documents)
 	ListDocuments(c *gin.Context, id openapi_types.UUID, params ListDocumentsParams)
@@ -918,6 +1098,9 @@ type ServerInterface interface {
 	// SearchKnowledgeBase 在指定知识库里做一次向量检索，返回命中的分块与相似度
 	// (POST /api/v1/knowledge-bases/{id}/search)
 	SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID)
+	// GenerateWritingDraft 基于知识库检索结果生成论文写作草稿（相关工作/摘要/提纲）
+	// (POST /api/v1/knowledge-bases/{id}/writing)
+	GenerateWritingDraft(c *gin.Context, id openapi_types.UUID)
 	// DeleteModel 删掉一个模型条目
 	// (DELETE /api/v1/models/{id})
 	DeleteModel(c *gin.Context, id openapi_types.UUID)
@@ -974,6 +1157,9 @@ type ServerInterface interface {
 	// ListToolCatalog 列出可用工具目录（创建 Agent 表单的勾选列表用）
 	// (GET /api/v1/tools)
 	ListToolCatalog(c *gin.Context)
+	// TranslateText 翻译一段论文文本（学术术语保留，只输出译文）
+	// (POST /api/v1/translate)
+	TranslateText(c *gin.Context)
 	// GetUsageSummary 按模型聚合的 token 用量
 	// (GET /api/v1/usage)
 	GetUsageSummary(c *gin.Context, params GetUsageSummaryParams)
@@ -1415,6 +1601,81 @@ func (siw *ServerInterfaceWrapper) GetDocument(c *gin.Context) {
 	siw.Handler.GetDocument(c, id)
 }
 
+// DownloadDocumentFile operation middleware
+func (siw *ServerInterfaceWrapper) DownloadDocumentFile(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DownloadDocumentFile(c, id)
+}
+
+// GetDocumentOutline operation middleware
+func (siw *ServerInterfaceWrapper) GetDocumentOutline(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetDocumentOutline(c, id)
+}
+
+// ListDocumentReferences operation middleware
+func (siw *ServerInterfaceWrapper) ListDocumentReferences(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListDocumentReferences(c, id)
+}
+
 // ReindexDocument operation middleware
 func (siw *ServerInterfaceWrapper) ReindexDocument(c *gin.Context) {
 
@@ -1541,6 +1802,31 @@ func (siw *ServerInterfaceWrapper) RenameKnowledgeBase(c *gin.Context) {
 	siw.Handler.RenameKnowledgeBase(c, id)
 }
 
+// ComparePapers operation middleware
+func (siw *ServerInterfaceWrapper) ComparePapers(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ComparePapers(c, id)
+}
+
 // ListDocuments operation middleware
 func (siw *ServerInterfaceWrapper) ListDocuments(c *gin.Context) {
 
@@ -1658,6 +1944,31 @@ func (siw *ServerInterfaceWrapper) SearchKnowledgeBase(c *gin.Context) {
 	}
 
 	siw.Handler.SearchKnowledgeBase(c, id)
+}
+
+// GenerateWritingDraft operation middleware
+func (siw *ServerInterfaceWrapper) GenerateWritingDraft(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GenerateWritingDraft(c, id)
 }
 
 // DeleteModel operation middleware
@@ -1860,6 +2171,19 @@ func (siw *ServerInterfaceWrapper) ListToolCatalog(c *gin.Context) {
 	siw.Handler.ListToolCatalog(c)
 }
 
+// TranslateText operation middleware
+func (siw *ServerInterfaceWrapper) TranslateText(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.TranslateText(c)
+}
+
 // GetUsageSummary operation middleware
 func (siw *ServerInterfaceWrapper) GetUsageSummary(c *gin.Context) {
 
@@ -1959,9 +2283,15 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/documents", wrapper.UploadDocument)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/reindex", wrapper.ReindexKnowledgeBase)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/search", wrapper.SearchKnowledgeBase)
+	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/writing", wrapper.GenerateWritingDraft)
+	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/compare", wrapper.ComparePapers)
 	router.DELETE(options.BaseURL+"/api/v1/documents/:id", wrapper.DeleteDocument)
 	router.GET(options.BaseURL+"/api/v1/documents/:id", wrapper.GetDocument)
 	router.POST(options.BaseURL+"/api/v1/documents/:id/reindex", wrapper.ReindexDocument)
+	router.GET(options.BaseURL+"/api/v1/documents/:id/outline", wrapper.GetDocumentOutline)
+	router.GET(options.BaseURL+"/api/v1/documents/:id/references", wrapper.ListDocumentReferences)
+	router.GET(options.BaseURL+"/api/v1/documents/:id/file", wrapper.DownloadDocumentFile)
+	router.POST(options.BaseURL+"/api/v1/translate", wrapper.TranslateText)
 	router.GET(options.BaseURL+"/api/v1/conversations", wrapper.ListConversations)
 	router.POST(options.BaseURL+"/api/v1/conversations", wrapper.CreateConversation)
 	router.DELETE(options.BaseURL+"/api/v1/conversations/:id", wrapper.DeleteConversation)

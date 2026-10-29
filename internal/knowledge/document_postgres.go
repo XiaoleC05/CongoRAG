@@ -4,6 +4,7 @@ package knowledge
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
 )
 
@@ -45,6 +47,7 @@ func (r *PgDocRepo) Insert(ctx context.Context, q platform.Querier, d *Document)
 // 而先聚合全表"的形状，两种写法的计划没有区别，就没必要动。
 const documentByIDSQL = `SELECT d.id, d.knowledge_base_id, d.filename, d.storage_key,
 	        d.status, d.byte_size, d.created_at, d.updated_at,
+	        d.page_count, d.parser,
 	        count(c.id)
 	 FROM documents d
 	 LEFT JOIN document_chunks c ON c.document_id = d.id
@@ -56,7 +59,7 @@ func (r *PgDocRepo) ByID(ctx context.Context, q platform.Querier, id uuid.UUID) 
 	var status string
 	err := q.QueryRow(ctx, documentByIDSQL, id).Scan(
 		&d.ID, &d.KnowledgeBaseID, &d.Filename, &d.StorageKey, &status, &d.ByteSize,
-		&d.CreatedAt, &d.UpdatedAt, &d.ChunkCount)
+		&d.CreatedAt, &d.UpdatedAt, &d.PageCount, &d.Parser, &d.ChunkCount)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("document %s: %w", id, platform.ErrNotFound)
@@ -92,6 +95,21 @@ func (r *PgDocRepo) UpdateStatus(ctx context.Context, q platform.Querier, id uui
 	}
 	if tag.RowsAffected() == 0 {
 		return fmt.Errorf("document %s: expected status %s but no row matched: %w", id, from, platform.ErrConflict)
+	}
+	return nil
+}
+
+// UpdateParsedInfo 写入解析元信息（page_count / parser）。
+//
+// 【为什么不走 UpdateStatus】状态迁移有 CAS 和合法迁移表两层约束，
+// 这两列是"内容元信息"，与状态无关；混进状态迁移会让 CAS 语义变得含混。
+// 调用点在 ProcessDocument 的落库事务里，与分块写入同生共死。
+func (r *PgDocRepo) UpdateParsedInfo(ctx context.Context, q platform.Querier, id uuid.UUID, pageCount int, parser string) error {
+	_, err := q.Exec(ctx,
+		`UPDATE documents SET page_count = $2, parser = $3 WHERE id = $1`,
+		id, pageCount, parser)
+	if err != nil {
+		return fmt.Errorf("update parsed info of document %s: %w", id, platform.WrapPgErr(err))
 	}
 	return nil
 }
@@ -190,6 +208,7 @@ func (r *PgDocRepo) markForReindexReturningIDs(ctx context.Context, q platform.Q
 // 没有分块的文档要的正是 0。
 const documentsSelectCols = `SELECT d.id, d.knowledge_base_id, d.filename, d.storage_key,
 	        d.status, d.byte_size, d.created_at, d.updated_at,
+	        d.page_count, d.parser,
 	        (SELECT count(*) FROM document_chunks c WHERE c.document_id = d.id)
 	 FROM documents d`
 
@@ -260,7 +279,7 @@ func (r *PgDocRepo) ListByKnowledgeBase(ctx context.Context, q platform.Querier,
 		d := &Document{}
 		var status string
 		if err := rows.Scan(&d.ID, &d.KnowledgeBaseID, &d.Filename, &d.StorageKey, &status,
-			&d.ByteSize, &d.CreatedAt, &d.UpdatedAt, &d.ChunkCount); err != nil {
+			&d.ByteSize, &d.CreatedAt, &d.UpdatedAt, &d.PageCount, &d.Parser, &d.ChunkCount); err != nil {
 			return nil, false, fmt.Errorf("scan document: %w", err)
 		}
 		d.Status = Status(status)
@@ -339,6 +358,100 @@ func (r *PgDocRepo) ExistingStorageKeys(ctx context.Context, q platform.Querier,
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate storage keys: %w", err)
+	}
+	return out, nil
+}
+
+func (r *PgDocRepo) ListOutline(ctx context.Context, q platform.Querier, docID uuid.UUID) ([]domain.OutlineEntry, error) {
+	rows, err := q.Query(ctx,
+		`SELECT content, page_start, section_path
+		 FROM document_chunks
+		 WHERE document_id = $1 AND block_type = 'heading'
+		 ORDER BY page_start, id`, docID)
+	if err != nil {
+		return nil, fmt.Errorf("list outline of document %s: %w", docID, platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	var out []domain.OutlineEntry
+	for rows.Next() {
+		var (
+			title      string
+			page       *int
+			sectionRaw []byte
+		)
+		if err := rows.Scan(&title, &page, &sectionRaw); err != nil {
+			return nil, fmt.Errorf("scan outline row of document %s: %w", docID, err)
+		}
+		entry := domain.OutlineEntry{Title: title, Level: 1}
+		if page != nil {
+			entry.Page = *page
+		}
+		if len(sectionRaw) > 0 {
+			var path []string
+			if err := json.Unmarshal(sectionRaw, &path); err != nil {
+				return nil, fmt.Errorf("decode section path of outline row in document %s: %w", docID, err)
+			}
+			if len(path) > entry.Level {
+				entry.Level = len(path)
+			}
+		}
+		out = append(out, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate outline of document %s: %w", docID, err)
+	}
+	return out, nil
+}
+
+// ListReferences 返回参考文献分块（参赛版 M5）。Index/Matched* 由业务层填。
+func (r *PgDocRepo) ListReferences(ctx context.Context, q platform.Querier, docID uuid.UUID) ([]domain.ReferenceEntry, error) {
+	rows, err := q.Query(ctx,
+		`SELECT content, coalesce(page_start, 0)
+		 FROM document_chunks
+		 WHERE document_id = $1 AND block_type = 'reference'
+		 ORDER BY page_start, id`, docID)
+	if err != nil {
+		return nil, fmt.Errorf("list references of document %s: %w", docID, platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	var out []domain.ReferenceEntry
+	for rows.Next() {
+		var e domain.ReferenceEntry
+		if err := rows.Scan(&e.Text, &e.Page); err != nil {
+			return nil, fmt.Errorf("scan reference row of document %s: %w", docID, err)
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate references of document %s: %w", docID, err)
+	}
+	return out, nil
+}
+
+// ListChunkContents 取一个文档的全部分块（参赛版 M5 的兜底解析用）。
+func (r *PgDocRepo) ListChunkContents(ctx context.Context, q platform.Querier, docID uuid.UUID) ([]domain.Chunk, error) {
+	rows, err := q.Query(ctx,
+		`SELECT id, content, coalesce(page_start, 0)
+		 FROM document_chunks
+		 WHERE document_id = $1
+		 ORDER BY page_start, id`, docID)
+	if err != nil {
+		return nil, fmt.Errorf("list chunks of document %s: %w", docID, platform.WrapPgErr(err))
+	}
+	defer rows.Close()
+
+	var out []domain.Chunk
+	for rows.Next() {
+		var c domain.Chunk
+		if err := rows.Scan(&c.ID, &c.Content, &c.PageStart); err != nil {
+			return nil, fmt.Errorf("scan chunk row of document %s: %w", docID, err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate chunks of document %s: %w", docID, err)
 	}
 	return out, nil
 }

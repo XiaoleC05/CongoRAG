@@ -33,6 +33,8 @@ import NotFoundPage from '@/pages/NotFoundPage'
 // 只有几百字节，单独成 chunk 是净亏。
 const OnboardingPage = lazy(() => import('@/pages/OnboardingPage'))
 const KnowledgeBaseDetailPage = lazy(() => import('@/pages/KnowledgeBaseDetailPage'))
+// 参赛版：论文阅读器（点 citation 的页码跳进来，支持 bbox 高亮）
+const ReaderPage = lazy(() => import('@/pages/ReaderPage'))
 const ConversationsPage = lazy(() => import('@/pages/ConversationsPage'))
 const ConversationPage = lazy(() => import('@/pages/ConversationPage'))
 const AgentsPage = lazy(() => import('@/pages/AgentsPage'))
@@ -109,6 +111,7 @@ export function AppRouter() {
             <Route index element={<Navigate to="/knowledge-bases" replace />} />
             <Route path="knowledge-bases" element={<KnowledgeBasesPage />} />
             <Route path="knowledge-bases/:id" element={<KnowledgeBaseDetailPage />} />
+            <Route path="documents/:id/reader" element={<ReaderPage />} />
             {/* 【conversations 这条为什么是新增的（issue #78）】在这之前
                 路由表里只有 conversations/:id。侧栏「对话」那一项指向的是
                 /conversations，于是点它落到 `*` 上——用户看到的是 404。

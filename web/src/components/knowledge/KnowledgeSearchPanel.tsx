@@ -188,7 +188,20 @@ function SearchHitCard({ hit }: { hit: Hit }) {
           </span>
         </div>
         <span className="text-muted-foreground shrink-0 text-xs">
-          相似度 {(hit.score * 100).toFixed(0)}%
+          {/* score 是 RRF 融合分，不是余弦相似度——所以这里不再叫"相似度"。
+              两路原始分并排显示：答错时才能判断是向量没召回还是词法没召回。 */}
+          <span title="RRF 融合分（同一次查询内可比）">融合 {hit.score.toFixed(3)}</span>
+          {hit.vectorScore != null ? (
+            <span className="ml-2" title="向量余弦相似度">
+              向量 {(hit.vectorScore * 100).toFixed(0)}%
+            </span>
+          ) : null}
+          {hit.lexicalScore != null ? (
+            <span className="ml-2" title="词法 ts_rank_cd">
+              词法 {hit.lexicalScore.toFixed(2)}
+            </span>
+          ) : null}
+          {hit.page != null ? <span className="ml-2">第 {hit.page} 页</span> : null}
         </span>
       </div>
       <p className="text-muted-foreground mt-2 text-xs whitespace-pre-wrap">{hit.snippet}</p>
