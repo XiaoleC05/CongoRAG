@@ -135,6 +135,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge-bases/{id}/writing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 基于知识库检索结果生成论文写作草稿（相关工作/摘要/提纲） */
+        post: operations["generateWritingDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{id}": {
         parameters: {
             query?: never;
@@ -744,6 +763,23 @@ export interface components {
             page: number;
             /** @description 层级（1 = 一级标题），前端按它缩进 */
             level: number;
+        };
+        WritingRequest: {
+            /** @description 写作主题（如"Transformer 的高效注意力机制"） */
+            topic: string;
+            /**
+             * @description related_work = 相关工作综述段；summary = 摘要/要点总结；
+             *     outline = 章节提纲
+             * @enum {string}
+             */
+            kind: "related_work" | "summary" | "outline";
+            /** @description 检索多少条依据（默认 6） */
+            topK?: number;
+        };
+        WritingResponse: {
+            /** @description Markdown 草稿，每个事实句带 [n] 引用 */
+            draft: string;
+            citations: components["schemas"]["KnowledgeSearchHit"][];
         };
         KnowledgeSearchResult: {
             /**
@@ -1426,6 +1462,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KnowledgeSearchResult"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            /** @description 上游模型服务出错 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    generateWritingDraft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WritingRequest"];
+            };
+        };
+        responses: {
+            /** @description 草稿 + 依据的引用列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WritingResponse"];
                 };
             };
             400: components["responses"]["InvalidArgument"];

@@ -322,6 +322,50 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── 写作 Copilot（参赛版 M6）────────────────────────────────
+  #
+  # 【它和聊天的区别】聊天是"一问一答"；写作 Copilot 的输出是**可直接
+  # 编辑的草稿**——相关工作综述、章节提纲、摘要初稿。它复用同一套检索与
+  # 引用数据，但提示词要求模型按学术写作的体例组织段落并逐句标注 [n]。
+  /api/v1/knowledge-bases/{id}/writing:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: generateWritingDraft
+      summary: 基于知识库检索结果生成论文写作草稿（相关工作/摘要/提纲）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WritingRequest'
+      responses:
+        '200':
+          description: 草稿 + 依据的引用列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WritingResponse'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          description: 上游模型服务出错
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ── 文档：单个 ──────────────────────────────────────────────
   /api/v1/documents/{id}:
 
@@ -1447,6 +1491,39 @@ components:
           type: integer
           minimum: 1
           description: 层级（1 = 一级标题），前端按它缩进
+
+    WritingRequest:
+      type: object
+      required: [topic, kind]
+      properties:
+        topic:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: 写作主题（如"Transformer 的高效注意力机制"）
+        kind:
+          type: string
+          enum: [related_work, summary, outline]
+          description: |
+            related_work = 相关工作综述段；summary = 摘要/要点总结；
+            outline = 章节提纲
+        topK:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: 检索多少条依据（默认 6）
+
+    WritingResponse:
+      type: object
+      required: [draft, citations]
+      properties:
+        draft:
+          type: string
+          description: Markdown 草稿，每个事实句带 [n] 引用
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeSearchHit'
 
     KnowledgeSearchResult:
       type: object

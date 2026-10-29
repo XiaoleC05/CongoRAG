@@ -214,6 +214,27 @@ func (e UsageByModelKind) Valid() bool {
 	}
 }
 
+// Defines values for WritingRequestKind.
+const (
+	Outline     WritingRequestKind = "outline"
+	RelatedWork WritingRequestKind = "related_work"
+	Summary     WritingRequestKind = "summary"
+)
+
+// Valid indicates whether the value is a known member of the WritingRequestKind enum.
+func (e WritingRequestKind) Valid() bool {
+	switch e {
+	case Outline:
+		return true
+	case RelatedWork:
+		return true
+	case Summary:
+		return true
+	default:
+		return false
+	}
+}
+
 // Agent defines model for Agent.
 type Agent struct {
 	CreatedAt   time.Time          `json:"createdAt"`
@@ -693,6 +714,31 @@ type UsageSummary struct {
 	TotalPromptTokens     int64          `json:"totalPromptTokens"`
 }
 
+// WritingRequest defines model for WritingRequest.
+type WritingRequest struct {
+	// Kind related_work = 相关工作综述段；summary = 摘要/要点总结；
+	// outline = 章节提纲
+	Kind WritingRequestKind `json:"kind"`
+
+	// TopK 检索多少条依据（默认 6）
+	TopK *int `json:"topK,omitempty"`
+
+	// Topic 写作主题（如"Transformer 的高效注意力机制"）
+	Topic string `json:"topic"`
+}
+
+// WritingRequestKind related_work = 相关工作综述段；summary = 摘要/要点总结；
+// outline = 章节提纲
+type WritingRequestKind string
+
+// WritingResponse defines model for WritingResponse.
+type WritingResponse struct {
+	Citations []KnowledgeSearchHit `json:"citations"`
+
+	// Draft Markdown 草稿，每个事实句带 [n] 引用
+	Draft string `json:"draft"`
+}
+
 // Cursor defines model for Cursor.
 type Cursor = string
 
@@ -866,6 +912,9 @@ type UploadDocumentMultipartRequestBody UploadDocumentMultipartBody
 // SearchKnowledgeBaseJSONRequestBody defines body for SearchKnowledgeBase for application/json ContentType.
 type SearchKnowledgeBaseJSONRequestBody = KnowledgeSearchRequest
 
+// GenerateWritingDraftJSONRequestBody defines body for GenerateWritingDraft for application/json ContentType.
+type GenerateWritingDraftJSONRequestBody = WritingRequest
+
 // UpdateModelJSONRequestBody defines body for UpdateModel for application/json ContentType.
 type UpdateModelJSONRequestBody = UpdateModelRequest
 
@@ -981,6 +1030,9 @@ type ServerInterface interface {
 	// SearchKnowledgeBase 在指定知识库里做一次向量检索，返回命中的分块与相似度
 	// (POST /api/v1/knowledge-bases/{id}/search)
 	SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID)
+	// GenerateWritingDraft 基于知识库检索结果生成论文写作草稿（相关工作/摘要/提纲）
+	// (POST /api/v1/knowledge-bases/{id}/writing)
+	GenerateWritingDraft(c *gin.Context, id openapi_types.UUID)
 	// DeleteModel 删掉一个模型条目
 	// (DELETE /api/v1/models/{id})
 	DeleteModel(c *gin.Context, id openapi_types.UUID)
@@ -1776,6 +1828,31 @@ func (siw *ServerInterfaceWrapper) SearchKnowledgeBase(c *gin.Context) {
 	siw.Handler.SearchKnowledgeBase(c, id)
 }
 
+// GenerateWritingDraft operation middleware
+func (siw *ServerInterfaceWrapper) GenerateWritingDraft(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GenerateWritingDraft(c, id)
+}
+
 // DeleteModel operation middleware
 func (siw *ServerInterfaceWrapper) DeleteModel(c *gin.Context) {
 
@@ -2088,6 +2165,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/documents", wrapper.UploadDocument)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/reindex", wrapper.ReindexKnowledgeBase)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/search", wrapper.SearchKnowledgeBase)
+	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/writing", wrapper.GenerateWritingDraft)
 	router.DELETE(options.BaseURL+"/api/v1/documents/:id", wrapper.DeleteDocument)
 	router.GET(options.BaseURL+"/api/v1/documents/:id", wrapper.GetDocument)
 	router.POST(options.BaseURL+"/api/v1/documents/:id/reindex", wrapper.ReindexDocument)

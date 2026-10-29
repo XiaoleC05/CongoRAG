@@ -1325,6 +1325,110 @@ func (s *Server) SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 		return
 	}
 
+	c.JSON(http.StatusOK, KnowledgeSearchResult{Hits: toAPIKnowledgeHits(chunks)})
+}
+
+// GenerateWritingDraft 基于知识库检索结果生成写作草稿（参赛版 M6）。
+//
+// 【为什么是独立端点而不是复用聊天】输出形态不同：聊天是流式一问一答，
+// 写作要的是"一份可以继续编辑的 Markdown 草稿 + 引用来源"；前者用户
+// 通常不保存，后者会被粘进论文里，所以必须把 citations 一起返回，
+// 让前端把每条依据的页码/原文都摆出来。
+func (s *Server) GenerateWritingDraft(c *gin.Context, id openapi_types.UUID) {
+	var req WritingRequest
+	if !s.bindJSON(c, &req) {
+		return
+	}
+	if _, err := s.deps.Knowledge.Get(c.Request.Context(), id); err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	topK := writingDefaultTopK
+	if req.TopK != nil {
+		topK = *req.TopK
+	}
+	if topK < writingMinTopK || topK > writingMaxTopK {
+		s.fail(c, fmt.Errorf("topK must be between %d and %d, got %d: %w",
+			writingMinTopK, writingMaxTopK, topK, platform.ErrInvalid))
+		return
+	}
+
+	chunks, err := s.deps.Retrieval.Search(c.Request.Context(), domain.SearchRequest{
+		KnowledgeBaseID: id, Text: req.Topic, TopK: topK,
+	})
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	// 没有证据时不去调模型：返回固定说明 + 空引用，和聊天拒答同一个原则。
+	if len(chunks) == 0 {
+		c.JSON(http.StatusOK, WritingResponse{
+			Draft:     "没有在当前知识库里检索到与主题相关的内容，因此没有生成草稿。可以换一个主题，或先上传相关论文。",
+			Citations: []KnowledgeSearchHit{},
+		})
+		return
+	}
+
+	system, user := buildWritingPrompt(string(req.Kind), req.Topic, chunks)
+	draft, err := s.deps.LLM.Generate(c.Request.Context(), system, user)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, WritingResponse{
+		Draft:     draft,
+		Citations: toAPIKnowledgeHits(chunks),
+	})
+}
+
+// buildWritingPrompt 把 kind/topic/检索片段拼成一次写作请求。
+//
+// 【片段编号必须和 citations 顺序一致】返回的 citations 就是 chunks 的
+// 顺序；草稿里的 [n] 由模型按提示词里的 [n] 生成，前端据此把 [n] 变成
+// 可点击的来源卡片。
+func buildWritingPrompt(kind, topic string, chunks []domain.Chunk) (system, user string) {
+	var task string
+	switch kind {
+	case "summary":
+		task = "写一段 200~300 字的摘要式总结，概括这些资料的核心方法与结论"
+	case "outline":
+		task = "写一份章节提纲（Markdown 多级列表），覆盖资料涉及的主要主题与它们之间的关系"
+	default: // related_work
+		task = "写一段 300~500 字的「相关工作」综述，按方法脉络组织（不要逐篇罗列），指出各方法的差异与联系"
+	}
+
+	var b strings.Builder
+	b.WriteString("写作主题：")
+	b.WriteString(topic)
+	b.WriteString("\n\n任务：")
+	b.WriteString(task)
+	b.WriteString("。\n\n可用资料（每条前面的编号就是引用编号）：\n")
+	for i, ch := range chunks {
+		fmt.Fprintf(&b, "\n[%d] %s", i+1, ch.Content)
+		if ch.PageStart > 0 {
+			fmt.Fprintf(&b, "（%s 第 %d 页）", ch.Filename, ch.PageStart)
+		}
+	}
+	system = "你是科研写作助手。只依据给出的编号资料写作；每个事实句末尾用 [n] 标注来源编号；" +
+		"输出 Markdown，不要输出与写作任务无关的解释。资料不足时直接说明" + "「根据现有资料无法完成」" + "，不要编造。"
+	return system, b.String()
+}
+
+// 写作 Copilot 的 topK 边界（与契约里的 minimum/maximum 一致）。
+const (
+	writingDefaultTopK = 6
+	writingMinTopK     = 1
+	writingMaxTopK     = 10
+)
+
+// toAPIKnowledgeHits 把检索结果映射成契约类型。
+//
+// 【抽出来是因为写作 Copilot 的 citations 用的是同一个 schema】两处
+// 各写一份映射，加字段时必然漏一处；而漏掉的那一处不会报错——只是
+// 某一条路径上的页码悄悄变成 null。
+func toAPIKnowledgeHits(chunks []domain.Chunk) []KnowledgeSearchHit {
 	// 空切片不是 nil：契约里 hits 是数组，nil 会序列化成 null
 	// （前端 .map() 会崩）——与 toAPIKBList 那条同一个约定。
 	hits := make([]KnowledgeSearchHit, 0, len(chunks))
@@ -1343,7 +1447,7 @@ func (s *Server) SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 			LexicalScore: floatPtrOrNil(ch.LexicalScore),
 		})
 	}
-	c.JSON(http.StatusOK, KnowledgeSearchResult{Hits: hits})
+	return hits
 }
 
 // 检索调试的 topK 边界。契约里的 min/max 与它们必须一致——

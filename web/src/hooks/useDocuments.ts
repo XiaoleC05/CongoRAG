@@ -4,6 +4,38 @@ import { api } from '@congorag/api-client'
 import type { Schemas } from '@congorag/api-client'
 import { flattenPages, nextPageParam } from '@/lib/pagination'
 
+/** 写作草稿的类型（与契约的 enum 一致）。 */
+export type WritingKind = 'related_work' | 'summary' | 'outline'
+
+/**
+ * 写作 Copilot（参赛版 M6）：POST /knowledge-bases/{id}/writing。
+ *
+ * 【为什么用 useMutation】它是"点一次生成一次"的写操作（虽然不改库，
+ * 但语义上是一次任务提交），没有"页面打开就该有草稿"的概念，用 mutation
+ * 比 query 更贴合；失败也按写操作处理（页内 Alert，不用 toast——
+ * 这个组件就在页面上，失败原因要能停留着让人读）。
+ */
+export function useWritingDraft(kbId: string) {
+  return useMutation({
+    mutationFn: async (input: {
+      topic: string
+      kind: WritingKind
+      topK?: number
+    }): Promise<Schemas['WritingResponse']> => {
+      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/writing`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      return (await res.json()) as Schemas['WritingResponse']
+    },
+  })
+}
+
 /**
  * 阅读器目录（参赛版 M3）：GET /documents/{id}/outline。
  *
