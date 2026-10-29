@@ -116,6 +116,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge-bases/{id}/arxiv-recommendations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 根据知识库主题推荐 arXiv 最新论文 */
+        post: operations["getArxivRecommendations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge-bases/{id}/arxiv-feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 对一条推荐点赞/踩（down 的不再推荐） */
+        post: operations["submitArxivFeedback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge-bases/{id}/arxiv-ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 下载 arXiv 论文 PDF 并入库（走既有解析流水线） */
+        post: operations["ingestArxivPaper"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/knowledge-bases/{id}/reindex": {
         parameters: {
             query?: never;
@@ -910,6 +967,48 @@ export interface components {
             nodes: components["schemas"]["CitationNode"][];
             edges: components["schemas"]["CitationEdge"][];
         };
+        ArxivRecommendationRequest: {
+            /**
+             * @description 返回条数（默认 8）
+             * @default 8
+             */
+            limit: number;
+        };
+        ArxivRecommendation: {
+            arxivId: string;
+            title: string;
+            authors: string[];
+            abstract: string;
+            published: string;
+            url: string;
+            pdfUrl: string;
+            /** @description 摘要/comment 里检测到的 GitHub 链接；没有为空串 */
+            githubUrl: string;
+            /** @description 为什么推荐（相关性关键词/新近度/开源代码） */
+            reason: string;
+            /** Format: double */
+            score: number;
+            /**
+             * @description 当前用户对这条推荐的反馈；无记录为空串
+             * @enum {string}
+             */
+            vote: "" | "up" | "down";
+        };
+        ArxivRecommendationList: {
+            items: components["schemas"]["ArxivRecommendation"][];
+        };
+        ArxivFeedbackRequest: {
+            arxivId: string;
+            /** @enum {string} */
+            vote: "up" | "down";
+        };
+        ArxivIngestRequest: {
+            arxivId?: string;
+            /** @description 必须是 arxiv.org 域名下的 PDF 链接（服务端会校验） */
+            pdfUrl: string;
+            /** @description 用作入库文件名（可空，服务端会兜底） */
+            title?: string;
+        };
         VisualizeRequest: {
             /** @description CSV 文本（首行可选表头） */
             csv: string;
@@ -1676,6 +1775,88 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getArxivRecommendations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArxivRecommendationRequest"];
+            };
+        };
+        responses: {
+            /** @description 推荐列表（已按相关性排序） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArxivRecommendationList"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    submitArxivFeedback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArxivFeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description 记录成功 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidArgument"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    ingestArxivPaper: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArxivIngestRequest"];
+            };
+        };
+        responses: {
+            /** @description 已接收，进入处理队列 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Document"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
             500: components["responses"]["InternalError"];
         };
     };

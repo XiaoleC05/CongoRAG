@@ -8,6 +8,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -24,11 +27,13 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/XiaoleC05/CongoRAG/internal/agent"
+	"github.com/XiaoleC05/CongoRAG/internal/arxiv"
 	"github.com/XiaoleC05/CongoRAG/internal/conversation"
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/knowledge"
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
+	"github.com/XiaoleC05/CongoRAG/internal/recommend"
 	"github.com/XiaoleC05/CongoRAG/internal/retrieval"
 	"github.com/XiaoleC05/CongoRAG/internal/visualize"
 )
@@ -51,6 +56,12 @@ type Deps struct {
 	// 它和 knowledge 是不同的关注点：knowledge 管知识库与文档的 CRUD，
 	// 检索是它下面那一层（retrieval 才是向量的读写方）。
 	Retrieval *retrieval.Usecase
+
+	// Arxiv / ArxivVotes / Querier 是 M4 的 arXiv 推荐、反馈与下钻入库用的。
+	// Arxiv 由装配根构造（可注入假实现做测试），Votes 只需要一个 pg 查询器。
+	Arxiv      *arxiv.Client
+	ArxivVotes *recommend.Store
+	Querier    platform.Querier
 
 	// MaxUploadBytes 是上传接口允许的最大请求体字节数（platform.Config
 	// 的对应项）。只有 UploadDocument 用它，<=0 表示不限——生产装配里
@@ -664,6 +675,118 @@ func (s *Server) ReindexDocument(c *gin.Context, id openapi_types.UUID) {
 	}
 
 	doc, err := s.deps.Knowledge.GetDocument(c.Request.Context(), id)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, toAPIDocument(doc))
+}
+
+// GetArxivRecommendations 根据知识库主题推荐 arXiv 最新论文（M4）。
+func (s *Server) GetArxivRecommendations(c *gin.Context, id openapi_types.UUID) {
+	var req ArxivRecommendationRequest
+	if !s.bindJSON(c, &req) {
+		return
+	}
+	limit := 8
+	if req.Limit != nil && *req.Limit >= 1 && *req.Limit <= 20 {
+		limit = *req.Limit
+	}
+	ctx := c.Request.Context()
+	docs, _, err := s.deps.Knowledge.ListDocuments(ctx, id, "", 50)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	titles := make([]string, 0, len(docs))
+	for _, d := range docs {
+		title := strings.TrimSuffix(d.Filename, filepath.Ext(d.Filename))
+		if outline, oerr := s.deps.Knowledge.Outline(ctx, d.ID); oerr == nil {
+			for _, e := range outline {
+				if t := strings.TrimSpace(e.Title); t != "" {
+					title = t
+					break
+				}
+			}
+		}
+		titles = append(titles, title)
+	}
+	if len(titles) == 0 {
+		c.JSON(http.StatusOK, ArxivRecommendationList{Items: []ArxivRecommendation{}})
+		return
+	}
+	papers, err := s.deps.Arxiv.Search(ctx, recommend.QueryForTitles(titles), 15)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	ids := make([]string, 0, len(papers))
+	for _, p := range papers {
+		ids = append(ids, p.ID)
+	}
+	votes, _ := s.deps.ArxivVotes.Votes(ctx, s.deps.Querier, id, ids)
+	results := recommend.Build(titles, papers, votes, limit)
+	items := make([]ArxivRecommendation, 0, len(results))
+	for _, r := range results {
+		items = append(items, ArxivRecommendation{
+			ArxivId:   r.Paper.ID,
+			Title:     r.Paper.Title,
+			Authors:   r.Paper.Authors,
+			Abstract:  r.Paper.Abstract,
+			Published: r.Paper.Published,
+			Url:       r.Paper.URL,
+			PdfUrl:    r.Paper.PDFURL,
+			GithubUrl: r.GithubURL,
+			Reason:    r.Reason,
+			Score:     r.Score,
+			Vote:      ArxivRecommendationVote(votes[r.Paper.ID]),
+		})
+	}
+	c.JSON(http.StatusOK, ArxivRecommendationList{Items: items})
+}
+
+// SubmitArxivFeedback 记录用户对一条推荐的赞/踩（M4）。
+func (s *Server) SubmitArxivFeedback(c *gin.Context, id openapi_types.UUID) {
+	var req ArxivFeedbackRequest
+	if !s.bindJSON(c, &req) {
+		return
+	}
+	if err := s.deps.ArxivVotes.Vote(c.Request.Context(), s.deps.Querier, id, req.ArxivId, string(req.Vote)); err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// arxivFileName 把论文标题变成安全的入库文件名。
+var arxivUnsafeNamePattern = regexp.MustCompile(`[^\p{L}\p{Nd}._-]+`)
+
+// IngestArxivPaper 下载 arXiv PDF 并交给既有上传/解析流水线（M4 的"下钻入库"）。
+func (s *Server) IngestArxivPaper(c *gin.Context, id openapi_types.UUID) {
+	var req ArxivIngestRequest
+	if !s.bindJSON(c, &req) {
+		return
+	}
+	data, err := s.deps.Arxiv.DownloadPDF(c.Request.Context(), req.PdfUrl)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	name := ""
+	if req.Title != nil {
+		name = strings.TrimSpace(*req.Title)
+	}
+	if name == "" && req.ArxivId != nil {
+		name = *req.ArxivId
+	}
+	if name == "" {
+		name = "arxiv-paper"
+	}
+	name = strings.TrimSpace(arxivUnsafeNamePattern.ReplaceAllString(name, "_"))
+	if !strings.HasSuffix(strings.ToLower(name), ".pdf") {
+		name += ".pdf"
+	}
+	doc, err := s.deps.Knowledge.Upload(c.Request.Context(), id, name, bytes.NewReader(data))
 	if err != nil {
 		s.fail(c, err)
 		return

@@ -471,3 +471,56 @@ export function useVisualizeCSV() {
     },
   })
 }
+
+/** arXiv 推荐（M4）：POST /knowledge-bases/{id}/arxiv-recommendations。 */
+export function useArxivRecommendations(kbId: string) {
+  return useMutation({
+    mutationFn: async (): Promise<Schemas['ArxivRecommendationList']> => {
+      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/arxiv-recommendations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ limit: 6 }),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      return (await res.json()) as Schemas['ArxivRecommendationList']
+    },
+  })
+}
+
+/** 赞/踩（M4）：POST /knowledge-bases/{id}/arxiv-feedback。 */
+export function useArxivFeedback(kbId: string) {
+  return useMutation({
+    mutationFn: async (input: { arxivId: string; vote: 'up' | 'down' }) => {
+      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/arxiv-feedback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+    },
+  })
+}
+
+/** 下钻入库（M4）：POST /knowledge-bases/{id}/arxiv-ingest，后端下载 PDF 并入队。 */
+export function useArxivIngest(kbId: string) {
+  return useMutation({
+    mutationFn: async (input: { arxivId: string; pdfUrl: string; title: string }) => {
+      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/arxiv-ingest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      return (await res.json()) as Schemas['Document']
+    },
+  })
+}

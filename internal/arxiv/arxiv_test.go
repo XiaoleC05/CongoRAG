@@ -60,7 +60,7 @@ func TestSearch_ClampsMaxResults(t *testing.T) {
 
 	_, err := c.Search(context.Background(), "all:rag", 100)
 	require.NoError(t, err)
-	assert.Equal(t, "10", gotMax)
+	assert.Equal(t, "25", gotMax)
 }
 
 func TestSearch_RejectsEmptyQuery(t *testing.T) {

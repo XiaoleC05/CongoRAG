@@ -270,6 +270,100 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  # ── arXiv 推荐 / 反馈 / 下钻入库（参赛版 M4）──────────────
+  #
+  # 推荐：用库内标题关键词查 arXiv 最新论文，服务端按相关性/新近度/开源代码
+  # 重新排序并给出理由；反馈：赞/踩会持久化（migration 0019），down 的不再
+  # 出现；入库：下载 arXiv PDF 走既有上传/解析流水线。
+  /api/v1/knowledge-bases/{id}/arxiv-recommendations:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: getArxivRecommendations
+      summary: 根据知识库主题推荐 arXiv 最新论文
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArxivRecommendationRequest'
+      responses:
+        '200':
+          description: 推荐列表（已按相关性排序）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArxivRecommendationList'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/knowledge-bases/{id}/arxiv-feedback:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: submitArxivFeedback
+      summary: 对一条推荐点赞/踩（down 的不再推荐）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArxivFeedbackRequest'
+      responses:
+        '204':
+          description: 记录成功
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/knowledge-bases/{id}/arxiv-ingest:
+
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      operationId: ingestArxivPaper
+      summary: 下载 arXiv 论文 PDF 并入库（走既有解析流水线）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArxivIngestRequest'
+      responses:
+        '202':
+          description: 已接收，进入处理队列
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          $ref: '#/components/responses/InvalidArgument'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   # ── 知识库：整库重新索引 ────────────────────────────────────
   #
   # 粒度与单文档那条的区别只在范围：一个库里的全部文档一起重排。
@@ -1769,6 +1863,82 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CitationEdge'
+
+    ArxivRecommendationRequest:
+      type: object
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 8
+          description: 返回条数（默认 8）
+
+    ArxivRecommendation:
+      type: object
+      required: [arxivId, title, authors, abstract, published, url, pdfUrl, githubUrl, reason, score, vote]
+      properties:
+        arxivId:
+          type: string
+        title:
+          type: string
+        authors:
+          type: array
+          items:
+            type: string
+        abstract:
+          type: string
+        published:
+          type: string
+        url:
+          type: string
+        pdfUrl:
+          type: string
+        githubUrl:
+          type: string
+          description: 摘要/comment 里检测到的 GitHub 链接；没有为空串
+        reason:
+          type: string
+          description: 为什么推荐（相关性关键词/新近度/开源代码）
+        score:
+          type: number
+          format: double
+        vote:
+          type: string
+          enum: ['', up, down]
+          description: 当前用户对这条推荐的反馈；无记录为空串
+
+    ArxivRecommendationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArxivRecommendation'
+
+    ArxivFeedbackRequest:
+      type: object
+      required: [arxivId, vote]
+      properties:
+        arxivId:
+          type: string
+        vote:
+          type: string
+          enum: [up, down]
+
+    ArxivIngestRequest:
+      type: object
+      required: [pdfUrl]
+      properties:
+        arxivId:
+          type: string
+        pdfUrl:
+          type: string
+          description: 必须是 arxiv.org 域名下的 PDF 链接（服务端会校验）
+        title:
+          type: string
+          description: 用作入库文件名（可空，服务端会兜底）
 
     VisualizeRequest:
       type: object

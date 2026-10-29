@@ -14,6 +14,7 @@ import { KnowledgeWritingPanel } from '@/components/knowledge/KnowledgeWritingPa
 import { KnowledgeComparePanel } from '@/components/knowledge/KnowledgeComparePanel'
 import { KnowledgeCitationGraphPanel } from '@/components/knowledge/KnowledgeCitationGraphPanel'
 import { KnowledgeVisualizePanel } from '@/components/knowledge/KnowledgeVisualizePanel'
+import { KnowledgeArxivPanel } from '@/components/knowledge/KnowledgeArxivPanel'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -451,6 +452,16 @@ export default function KnowledgeBaseDetailPage() {
           粘贴论文表格 CSV，自动生成图表、学术图注和 Mermaid / TikZ 代码，可直接放进论文或汇报。
         </p>
         <KnowledgeVisualizePanel />
+      </section>
+
+      {/* arXiv 推荐（参赛版 M4）：按库内主题推荐最新论文，可赞/踩/下载入库。 */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-base font-semibold">arXiv 推荐</h2>
+        <p className="text-muted-foreground mb-4 text-sm">
+          用库内论文标题关键词检索 arXiv 最新结果，按相关性、新近度与是否附 GitHub
+          代码排序；可以下载 PDF 直接入库，赞/踩会记住偏好。
+        </p>
+        <KnowledgeArxivPanel kbId={kbId} />
       </section>
 
       <DeleteDocumentDialog

@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -27,9 +28,10 @@ const DefaultBaseURL = "https://export.arxiv.org/api/query"
 
 // maxResultsLimit 是单次检索的返回条数上限。
 //
-// 【为什么是 10】Agent 的工具结果要进模型上下文；一次塞 50 条摘要会把
-// 预算吃光，而且模型也读不完。10 条足够让它判断"哪几篇值得展开"。
-const maxResultsLimit = 10
+// 【为什么是 25】Agent 的工具结果要进模型上下文，10 条足够；但 M4 的
+// "最新论文推荐"要在本地做相关性排序，候选池大一点排序才有意义。
+// 上限仍由调用方按场景控制（工具传 10、推荐传 15）。
+const maxResultsLimit = 25
 
 // Paper 是一篇 arXiv 论文的展示字段（也是工具返回的 JSON 形状）。
 type Paper struct {
@@ -39,6 +41,8 @@ type Paper struct {
 	Abstract  string   `json:"abstract"`  // 摘要（空白已折叠）
 	Published string   `json:"published"` // ISO8601 发布时间
 	URL       string   `json:"url"`       // abs 页面链接
+	PDFURL    string   `json:"pdfUrl"`    // PDF 链接（ingest 用）
+	Comment   string   `json:"comment"`   // arXiv comment（常含代码/GitHub 链接）
 }
 
 // Client 访问 arXiv API。
@@ -119,13 +123,57 @@ func (c *Client) Search(ctx context.Context, query string, maxResults int) ([]Pa
 			if l.Rel == "alternate" && l.Type == "text/html" {
 				p.URL = l.HREF
 			}
+			if l.Type == "application/pdf" {
+				p.PDFURL = strings.Replace(l.HREF, "http://", "https://", 1)
+			}
 		}
+		p.Comment = collapseSpace(e.Comment)
 		if p.ID == "" || p.Title == "" {
 			continue
 		}
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+// DownloadPDF 下载一篇 arXiv 论文的 PDF 原始字节（M4 的"下钻入库"用）。
+//
+// 【只允许 arXiv 域名】这是服务端发起的出站请求，URL 来自前端/模型时
+// 必须做 host 白名单，否则就是一个 SSRF 入口。
+// 【大小上限】论文 PDF 一般几 MB，60MB 上限挡住异常大文件。
+func (c *Client) DownloadPDF(ctx context.Context, pdfURL string) ([]byte, error) {
+	u, err := url.Parse(strings.TrimSpace(pdfURL))
+	if err != nil || u.Host == "" {
+		return nil, fmt.Errorf("invalid pdf url: %w", platform.ErrInvalid)
+	}
+	host := strings.ToLower(u.Hostname())
+	if host != "arxiv.org" && host != "www.arxiv.org" && host != "export.arxiv.org" {
+		return nil, fmt.Errorf("refuse to download non-arxiv pdf host %q: %w", host, platform.ErrInvalid)
+	}
+	u.Scheme = "https"
+	u.Host = host
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("build pdf request: %w", err)
+	}
+	req.Header.Set("User-Agent", "CongoRAG/0.1 (competition demo)")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download arxiv pdf: %w: %v", platform.ErrUpstream, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("arxiv pdf returned status %d: %w", resp.StatusCode, platform.ErrUpstream)
+	}
+	const maxPDFBytes = 60 << 20
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxPDFBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read arxiv pdf: %w: %v", platform.ErrUpstream, err)
+	}
+	if len(data) > maxPDFBytes {
+		return nil, fmt.Errorf("arxiv pdf exceeds %d bytes: %w", maxPDFBytes, platform.ErrInvalid)
+	}
+	return data, nil
 }
 
 // atomFeed 只声明用得到的字段；arXiv 的其它元素被忽略。
@@ -138,6 +186,7 @@ type atomEntry struct {
 	Title     string     `xml:"title"`
 	Summary   string     `xml:"summary"`
 	Published string     `xml:"published"`
+	Comment   string     `xml:"http://arxiv.org/schemas/atom comment"`
 	Authors   []atomName `xml:"author"`
 	Links     []atomLink `xml:"link"`
 }

@@ -88,6 +88,45 @@ func (e AgentRunStepType) Valid() bool {
 	}
 }
 
+// Defines values for ArxivFeedbackRequestVote.
+const (
+	ArxivFeedbackRequestVoteDown ArxivFeedbackRequestVote = "down"
+	ArxivFeedbackRequestVoteUp   ArxivFeedbackRequestVote = "up"
+)
+
+// Valid indicates whether the value is a known member of the ArxivFeedbackRequestVote enum.
+func (e ArxivFeedbackRequestVote) Valid() bool {
+	switch e {
+	case ArxivFeedbackRequestVoteDown:
+		return true
+	case ArxivFeedbackRequestVoteUp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ArxivRecommendationVote.
+const (
+	ArxivRecommendationVoteDown  ArxivRecommendationVote = "down"
+	ArxivRecommendationVoteEmpty ArxivRecommendationVote = ""
+	ArxivRecommendationVoteUp    ArxivRecommendationVote = "up"
+)
+
+// Valid indicates whether the value is a known member of the ArxivRecommendationVote enum.
+func (e ArxivRecommendationVote) Valid() bool {
+	switch e {
+	case ArxivRecommendationVoteDown:
+		return true
+	case ArxivRecommendationVoteEmpty:
+		return true
+	case ArxivRecommendationVoteUp:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DocumentStatus.
 const (
 	DocumentStatusFailed     DocumentStatus = "failed"
@@ -358,6 +397,61 @@ type AgentRunStepStatus string
 
 // AgentRunStepType defines model for AgentRunStep.Type.
 type AgentRunStepType string
+
+// ArxivFeedbackRequest defines model for ArxivFeedbackRequest.
+type ArxivFeedbackRequest struct {
+	ArxivId string                   `json:"arxivId"`
+	Vote    ArxivFeedbackRequestVote `json:"vote"`
+}
+
+// ArxivFeedbackRequestVote defines model for ArxivFeedbackRequest.Vote.
+type ArxivFeedbackRequestVote string
+
+// ArxivIngestRequest defines model for ArxivIngestRequest.
+type ArxivIngestRequest struct {
+	ArxivId *string `json:"arxivId,omitempty"`
+
+	// PdfUrl 必须是 arxiv.org 域名下的 PDF 链接（服务端会校验）
+	PdfUrl string `json:"pdfUrl"`
+
+	// Title 用作入库文件名（可空，服务端会兜底）
+	Title *string `json:"title,omitempty"`
+}
+
+// ArxivRecommendation defines model for ArxivRecommendation.
+type ArxivRecommendation struct {
+	Abstract string   `json:"abstract"`
+	ArxivId  string   `json:"arxivId"`
+	Authors  []string `json:"authors"`
+
+	// GithubUrl 摘要/comment 里检测到的 GitHub 链接；没有为空串
+	GithubUrl string `json:"githubUrl"`
+	PdfUrl    string `json:"pdfUrl"`
+	Published string `json:"published"`
+
+	// Reason 为什么推荐（相关性关键词/新近度/开源代码）
+	Reason string  `json:"reason"`
+	Score  float64 `json:"score"`
+	Title  string  `json:"title"`
+	Url    string  `json:"url"`
+
+	// Vote 当前用户对这条推荐的反馈；无记录为空串
+	Vote ArxivRecommendationVote `json:"vote"`
+}
+
+// ArxivRecommendationVote 当前用户对这条推荐的反馈；无记录为空串
+type ArxivRecommendationVote string
+
+// ArxivRecommendationList defines model for ArxivRecommendationList.
+type ArxivRecommendationList struct {
+	Items []ArxivRecommendation `json:"items"`
+}
+
+// ArxivRecommendationRequest defines model for ArxivRecommendationRequest.
+type ArxivRecommendationRequest struct {
+	// Limit 返回条数（默认 8）
+	Limit *int `json:"limit,omitempty"`
+}
 
 // Capabilities 模型声明支持的能力，全部由用户手动勾选——OpenAI 兼容 API
 // 不保证能自动查询这些（技术方案 §五）。embedding 这一位不在这里：
@@ -1149,6 +1243,15 @@ type CreateKnowledgeBaseJSONRequestBody = CreateKnowledgeBaseRequest
 // RenameKnowledgeBaseJSONRequestBody defines body for RenameKnowledgeBase for application/json ContentType.
 type RenameKnowledgeBaseJSONRequestBody = RenameKnowledgeBaseRequest
 
+// SubmitArxivFeedbackJSONRequestBody defines body for SubmitArxivFeedback for application/json ContentType.
+type SubmitArxivFeedbackJSONRequestBody = ArxivFeedbackRequest
+
+// IngestArxivPaperJSONRequestBody defines body for IngestArxivPaper for application/json ContentType.
+type IngestArxivPaperJSONRequestBody = ArxivIngestRequest
+
+// GetArxivRecommendationsJSONRequestBody defines body for GetArxivRecommendations for application/json ContentType.
+type GetArxivRecommendationsJSONRequestBody = ArxivRecommendationRequest
+
 // ComparePapersJSONRequestBody defines body for ComparePapers for application/json ContentType.
 type ComparePapersJSONRequestBody = CompareRequest
 
@@ -1273,6 +1376,15 @@ type ServerInterface interface {
 	// RenameKnowledgeBase 改知识库的名字
 	// (PATCH /api/v1/knowledge-bases/{id})
 	RenameKnowledgeBase(c *gin.Context, id openapi_types.UUID)
+	// SubmitArxivFeedback 对一条推荐点赞/踩（down 的不再推荐）
+	// (POST /api/v1/knowledge-bases/{id}/arxiv-feedback)
+	SubmitArxivFeedback(c *gin.Context, id openapi_types.UUID)
+	// IngestArxivPaper 下载 arXiv 论文 PDF 并入库（走既有解析流水线）
+	// (POST /api/v1/knowledge-bases/{id}/arxiv-ingest)
+	IngestArxivPaper(c *gin.Context, id openapi_types.UUID)
+	// GetArxivRecommendations 根据知识库主题推荐 arXiv 最新论文
+	// (POST /api/v1/knowledge-bases/{id}/arxiv-recommendations)
+	GetArxivRecommendations(c *gin.Context, id openapi_types.UUID)
 	// GetCitationGraph 获取知识库的局域引用图谱（节点、边、PageRank）
 	// (GET /api/v1/knowledge-bases/{id}/citation-graph)
 	GetCitationGraph(c *gin.Context, id openapi_types.UUID)
@@ -2023,6 +2135,81 @@ func (siw *ServerInterfaceWrapper) RenameKnowledgeBase(c *gin.Context) {
 	siw.Handler.RenameKnowledgeBase(c, id)
 }
 
+// SubmitArxivFeedback operation middleware
+func (siw *ServerInterfaceWrapper) SubmitArxivFeedback(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.SubmitArxivFeedback(c, id)
+}
+
+// IngestArxivPaper operation middleware
+func (siw *ServerInterfaceWrapper) IngestArxivPaper(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.IngestArxivPaper(c, id)
+}
+
+// GetArxivRecommendations operation middleware
+func (siw *ServerInterfaceWrapper) GetArxivRecommendations(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetArxivRecommendations(c, id)
+}
+
 // GetCitationGraph operation middleware
 func (siw *ServerInterfaceWrapper) GetCitationGraph(c *gin.Context) {
 
@@ -2541,6 +2728,9 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/api/v1/knowledge-bases/:id/documents", wrapper.ListDocuments)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/documents", wrapper.UploadDocument)
 	router.GET(options.BaseURL+"/api/v1/knowledge-bases/:id/citation-graph", wrapper.GetCitationGraph)
+	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/arxiv-recommendations", wrapper.GetArxivRecommendations)
+	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/arxiv-feedback", wrapper.SubmitArxivFeedback)
+	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/arxiv-ingest", wrapper.IngestArxivPaper)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/reindex", wrapper.ReindexKnowledgeBase)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/search", wrapper.SearchKnowledgeBase)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/writing", wrapper.GenerateWritingDraft)

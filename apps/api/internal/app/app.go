@@ -34,6 +34,7 @@ import (
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
 	"github.com/XiaoleC05/CongoRAG/internal/pdfparse"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
+	"github.com/XiaoleC05/CongoRAG/internal/recommend"
 	"github.com/XiaoleC05/CongoRAG/internal/retrieval"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -200,7 +201,9 @@ func Run(webFS embed.FS) error {
 	toolReg.Register(agent.NewCalculator())
 	toolReg.Register(agent.NewKnowledgeSearch(retrievalUC))
 	// 参赛版 M4：arXiv 论文检索（联网工具，只读、可重试）。
-	toolReg.Register(agent.NewArxivSearch(arxiv.NewClient()))
+	// 同一个客户端也给 HTTP 的"推荐/下钻入库"用，避免两处各建一个超时配置。
+	arxivClient := arxiv.NewClient()
+	toolReg.Register(agent.NewArxivSearch(arxivClient))
 	toolReg.Register(agent.NewConversationSearch(convUC))
 	agentUC := agent.NewUsecase(
 		agentRepo,
@@ -258,6 +261,9 @@ func Run(webFS embed.FS) error {
 		Agent:          agentUC,
 		Files:          files,
 		Retrieval:      retrievalUC,
+		Arxiv:          arxivClient,
+		ArxivVotes:     recommend.NewStore(),
+		Querier:        pool,
 		MaxUploadBytes: cfg.MaxUploadBytes,
 		// pool 是 *pgxpool.Pool，结构性地满足 platform.Pinger；/readyz 用它
 		// 探数据库（上面那个 Ping 只在启动时跑一次，数据库中途挂掉它看不出来）。
