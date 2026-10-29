@@ -328,6 +328,22 @@ type ChatModelInput struct {
 	TokenizerType string `json:"tokenizerType"`
 }
 
+// CompareRequest defines model for CompareRequest.
+type CompareRequest struct {
+	// Question 要对比的问题（如"这些论文如何解决长距离依赖"）
+	Question string `json:"question"`
+
+	// TopK 检索多少条依据（默认 8；对比至少需要 2 条）
+	TopK *int `json:"topK,omitempty"`
+}
+
+// CompareResponse defines model for CompareResponse.
+type CompareResponse struct {
+	// Answer Markdown 对比表 + 综合结论，每句带 [n]
+	Answer    string               `json:"answer"`
+	Citations []KnowledgeSearchHit `json:"citations"`
+}
+
 // Conversation defines model for Conversation.
 type Conversation struct {
 	CreatedAt time.Time          `json:"createdAt"`
@@ -949,6 +965,9 @@ type CreateKnowledgeBaseJSONRequestBody = CreateKnowledgeBaseRequest
 // RenameKnowledgeBaseJSONRequestBody defines body for RenameKnowledgeBase for application/json ContentType.
 type RenameKnowledgeBaseJSONRequestBody = RenameKnowledgeBaseRequest
 
+// ComparePapersJSONRequestBody defines body for ComparePapers for application/json ContentType.
+type ComparePapersJSONRequestBody = CompareRequest
+
 // UploadDocumentMultipartRequestBody defines body for UploadDocument for multipart/form-data ContentType.
 type UploadDocumentMultipartRequestBody UploadDocumentMultipartBody
 
@@ -1064,6 +1083,9 @@ type ServerInterface interface {
 	// RenameKnowledgeBase 改知识库的名字
 	// (PATCH /api/v1/knowledge-bases/{id})
 	RenameKnowledgeBase(c *gin.Context, id openapi_types.UUID)
+	// ComparePapers 基于知识库的多篇论文对比（表格 + 结论 + 引用）
+	// (POST /api/v1/knowledge-bases/{id}/compare)
+	ComparePapers(c *gin.Context, id openapi_types.UUID)
 	// ListDocuments 列出这个知识库下的文档（按创建时间倒序，keyset 分页）
 	// (GET /api/v1/knowledge-bases/{id}/documents)
 	ListDocuments(c *gin.Context, id openapi_types.UUID, params ListDocumentsParams)
@@ -1780,6 +1802,31 @@ func (siw *ServerInterfaceWrapper) RenameKnowledgeBase(c *gin.Context) {
 	siw.Handler.RenameKnowledgeBase(c, id)
 }
 
+// ComparePapers operation middleware
+func (siw *ServerInterfaceWrapper) ComparePapers(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", c.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter id: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ComparePapers(c, id)
+}
+
 // ListDocuments operation middleware
 func (siw *ServerInterfaceWrapper) ListDocuments(c *gin.Context) {
 
@@ -2237,6 +2284,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/reindex", wrapper.ReindexKnowledgeBase)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/search", wrapper.SearchKnowledgeBase)
 	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/writing", wrapper.GenerateWritingDraft)
+	router.POST(options.BaseURL+"/api/v1/knowledge-bases/:id/compare", wrapper.ComparePapers)
 	router.DELETE(options.BaseURL+"/api/v1/documents/:id", wrapper.DeleteDocument)
 	router.GET(options.BaseURL+"/api/v1/documents/:id", wrapper.GetDocument)
 	router.POST(options.BaseURL+"/api/v1/documents/:id/reindex", wrapper.ReindexDocument)

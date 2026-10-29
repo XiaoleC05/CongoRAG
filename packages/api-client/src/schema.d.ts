@@ -154,6 +154,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge-bases/{id}/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 基于知识库的多篇论文对比（表格 + 结论 + 引用） */
+        post: operations["comparePapers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/{id}": {
         parameters: {
             query?: never;
@@ -820,6 +839,17 @@ export interface components {
             page: number;
             /** @description 层级（1 = 一级标题），前端按它缩进 */
             level: number;
+        };
+        CompareRequest: {
+            /** @description 要对比的问题（如"这些论文如何解决长距离依赖"） */
+            question: string;
+            /** @description 检索多少条依据（默认 8；对比至少需要 2 条） */
+            topK?: number;
+        };
+        CompareResponse: {
+            /** @description Markdown 对比表 + 综合结论，每句带 [n] */
+            answer: string;
+            citations: components["schemas"]["KnowledgeSearchHit"][];
         };
         WritingRequest: {
             /** @description 写作主题（如"Transformer 的高效注意力机制"） */
@@ -1557,6 +1587,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WritingResponse"];
+                };
+            };
+            400: components["responses"]["InvalidArgument"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            /** @description 上游模型服务出错 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    comparePapers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompareRequest"];
+            };
+        };
+        responses: {
+            /** @description 对比结果与引用来源 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompareResponse"];
                 };
             };
             400: components["responses"]["InvalidArgument"];

@@ -30,6 +30,7 @@
 | 4 | arXiv 文献检索 | 自研 Atom 客户端 + Agent 工具 `arxiv_search`（模型自主决定检索词，返回标题/作者/摘要/链接） | `internal/arxiv/`、`internal/agent/tool_arxiv_search.go` |
 | 5 | 引用图谱 | 参考文献抽取（reference 分块，md/txt 按行兜底）→ 与同库文档标题归一化匹配 → 阅读器"参考文献"面板标出库内命中 | `GET /documents/{id}/references`、`internal/knowledge/usecase.go` |
 | 6 | 写作 Copilot | 基于知识库检索结果生成「相关工作 / 摘要 / 提纲」Markdown 草稿，逐句 [n] + 引用列表（可点页码回原文） | `POST /knowledge-bases/{id}/writing`、`web/src/components/knowledge/KnowledgeWritingPanel.tsx` |
+| 6+ | 多篇对比（评分项 A6） | 横向比较不同论文在同一问题上的观点/方法：Markdown 对照表 + 综合结论 + 逐条证据页码 | `POST /knowledge-bases/{id}/compare`、`web/src/components/knowledge/KnowledgeComparePanel.tsx` |
 
 ## 3. 参赛增量（相对 v5.0.2 基线）
 

@@ -11,6 +11,7 @@ import { DocumentRowActions } from '@/components/knowledge/DocumentRowActions'
 import { DocumentStatusBadge } from '@/components/knowledge/DocumentStatusBadge'
 import { KnowledgeSearchPanel } from '@/components/knowledge/KnowledgeSearchPanel'
 import { KnowledgeWritingPanel } from '@/components/knowledge/KnowledgeWritingPanel'
+import { KnowledgeComparePanel } from '@/components/knowledge/KnowledgeComparePanel'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -364,6 +365,16 @@ export default function KnowledgeBaseDetailPage() {
           [n] 引用，点页码可以跳回原文核对。
         </p>
         <KnowledgeWritingPanel kbId={kbId} />
+      </section>
+
+      {/* 多篇对比（参赛版 A6）：横向比较不同论文在同一问题上的观点与证据。 */}
+      <section className="mt-8">
+        <h2 className="mb-3 text-base font-semibold">多篇对比</h2>
+        <p className="text-muted-foreground mb-4 text-sm">
+          问一个需要横向比较的问题，系统从知识库检索证据，生成对照表 + 综合结论，
+          每条依据都带页码可回原文核对。
+        </p>
+        <KnowledgeComparePanel kbId={kbId} />
       </section>
 
       <DeleteDocumentDialog

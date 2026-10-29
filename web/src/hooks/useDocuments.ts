@@ -66,6 +66,29 @@ export function useDocumentReferences(docId: string) {
 }
 
 /**
+ * 多篇对比（参赛版 A6）：POST /knowledge-bases/{id}/compare。
+ *
+ * 输出是"对照表 + 综合结论 + 引用列表"，和写作草稿的形态不同，所以单独
+ * 一个 mutation，不复用写作的 hook（两者的错误文案与结果渲染都不一样）。
+ */
+export function useCompareDraft(kbId: string) {
+  return useMutation({
+    mutationFn: async (input: { question: string; topK?: number }): Promise<Schemas['CompareResponse']> => {
+      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/compare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text || `HTTP ${res.status}`)
+      }
+      return (await res.json()) as Schemas['CompareResponse']
+    },
+  })
+}
+
+/**
  * 阅读器目录（参赛版 M3）：GET /documents/{id}/outline。
  *
  * 【为什么单独一个 hook】目录只有在阅读器打开时才需要，且与文档列表的

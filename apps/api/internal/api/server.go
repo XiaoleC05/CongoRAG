@@ -1457,6 +1457,85 @@ func (s *Server) GenerateWritingDraft(c *gin.Context, id openapi_types.UUID) {
 	})
 }
 
+// ComparePapers 生成多篇论文的对比分析（参赛版 A6）。
+//
+// 【和写作为什么分成两个端点】对比要求"按维度组织成表格 + 每篇论文的
+// 证据并排"，提示词与输出校验都不同；合成一个端点会让 kind 枚举变成
+// 一个隐式的模式开关，调用方和文档都会难讲清楚。
+func (s *Server) ComparePapers(c *gin.Context, id openapi_types.UUID) {
+	var req CompareRequest
+	if !s.bindJSON(c, &req) {
+		return
+	}
+	if _, err := s.deps.Knowledge.Get(c.Request.Context(), id); err != nil {
+		s.fail(c, err)
+		return
+	}
+
+	topK := compareDefaultTopK
+	if req.TopK != nil {
+		topK = *req.TopK
+	}
+	if topK < compareMinTopK || topK > compareMaxTopK {
+		s.fail(c, fmt.Errorf("topK must be between %d and %d, got %d: %w",
+			compareMinTopK, compareMaxTopK, topK, platform.ErrInvalid))
+		return
+	}
+
+	chunks, err := s.deps.Retrieval.Search(c.Request.Context(), domain.SearchRequest{
+		KnowledgeBaseID: id, Text: req.Question, TopK: topK,
+	})
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	if len(chunks) == 0 {
+		c.JSON(http.StatusOK, CompareResponse{
+			Answer:    "没有在当前知识库里检索到与问题相关的内容，无法进行对比。可以换一个问法，或先上传要对比的论文。",
+			Citations: []KnowledgeSearchHit{},
+		})
+		return
+	}
+
+	system, user := buildComparePrompt(req.Question, chunks)
+	answer, err := s.deps.LLM.Generate(c.Request.Context(), system, user)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, CompareResponse{Answer: answer, Citations: toAPIKnowledgeHits(chunks)})
+}
+
+// buildComparePrompt 拼"多篇对比"的提示词。
+//
+// 【编号与 citations 顺序一致】citations 就是 chunks 顺序；提示词里的
+// [n] 由模型按资料编号生成，前端据此把 [n] 渲染成可点来源。
+func buildComparePrompt(question string, chunks []domain.Chunk) (system, user string) {
+	var b strings.Builder
+	b.WriteString("对比问题：")
+	b.WriteString(question)
+	b.WriteString("\n\n资料（每条前面的编号就是引用编号，括号里是来源文件与页码）：\n")
+	for i, ch := range chunks {
+		fmt.Fprintf(&b, "\n[%d] ", i+1)
+		if ch.PageStart > 0 {
+			fmt.Fprintf(&b, "（%s 第 %d 页）", ch.Filename, ch.PageStart)
+		}
+		b.WriteString(ch.Content)
+	}
+	system = "你是科研文献对比助手。只依据给出的编号资料回答；" +
+		"用 Markdown 表格对比不同论文/不同来源在同一问题上的观点、方法与证据（列可以按主题自拟），" +
+		"表格后用 2~3 句给综合结论；每个事实句末尾用 [n] 标注来源编号；" +
+		"资料不足时直接说明「根据现有资料无法完成对比」，不要编造。"
+	return system, b.String()
+}
+
+// 多篇对比的 topK 边界（与契约里的 minimum/maximum 一致）。
+const (
+	compareDefaultTopK = 8
+	compareMinTopK     = 2
+	compareMaxTopK     = 12
+)
+
 // buildWritingPrompt 把 kind/topic/检索片段拼成一次写作请求。
 //
 // 【片段编号必须和 citations 顺序一致】返回的 citations 就是 chunks 的
