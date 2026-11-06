@@ -1,6 +1,6 @@
-name: Site & Daily Release
+name: Site Release
 
-# 站点和日报工具的发布产物。服务器只下载，不在服务器上编译。
+# 站点发布产物。服务器只下载，不在服务器上编译。
 on:
   push:
     tags: ['site-v*']
@@ -38,19 +38,9 @@ jobs:
           pnpm build
           tar -czf ../site.tar.gz -C dist .
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: tools/daily/go.mod
-          cache-dependency-path: tools/daily/go.sum
-
-      - name: Build daily binary
-        working-directory: tools/daily
-        run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../../congorag-daily-linux-amd64 .
-
       - name: Checksums
         run: |
-          sha256sum site.tar.gz congorag-daily-linux-amd64 > SHA256SUMS
+          sha256sum site.tar.gz > SHA256SUMS
           cp ops/deploy-site.sh deploy-site.sh
 
       - name: Publish release
@@ -64,9 +54,9 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
           fi
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" site.tar.gz congorag-daily-linux-amd64 SHA256SUMS deploy-site.sh --clobber
+            gh release upload "$TAG" site.tar.gz SHA256SUMS deploy-site.sh --clobber
           else
-            gh release create "$TAG" site.tar.gz congorag-daily-linux-amd64 SHA256SUMS deploy-site.sh \
+            gh release create "$TAG" site.tar.gz SHA256SUMS deploy-site.sh \
               --title "Site $TAG" \
-              --notes "Static site and daily digest binary. Deploy with ops/deploy-site.sh."
+              --notes "Static site. Deploy with ops/deploy-site.sh."
           fi

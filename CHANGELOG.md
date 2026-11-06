@@ -26,6 +26,14 @@
 
 ---
 
+## [Unreleased]
+
+### 变更
+
+- **日报工具拆分为独立项目 DSP**：`tools/daily` 及 `congorag-daily` 二进制的
+  构建与部署配置一并从本仓库移除（`site-release.yml` 只发布站点产物，
+  `ops/deploy-site.sh` 只部署站点）。日报此后由独立项目 DSP 维护。
+
 ## [5.0.2] - 2026-09-22
 
 v5.0.1 修掉了集成测试的失败，CI 于是跑到了下一步，又暴露出第二个问题。
@@ -398,6 +406,7 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
+[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0.2...HEAD
 [5.0.2]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0.1...v5.0.2
 [5.0.1]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0...v5.0.1
 [5.0]: https://github.com/XiaoleC05/CongoRAG/compare/v3.0...v5.0

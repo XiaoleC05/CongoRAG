@@ -29,4 +29,4 @@ pnpm preview
 
 ## 部署
 
-站点由 `.github/workflows/site-release.yml` 构建成 `site.tar.gz`，和 `congorag-daily` 二进制一起挂到 Release。服务器只下载产物，不在服务器上编译。
+站点由 `.github/workflows/site-release.yml` 构建成 `site.tar.gz`，与 `SHA256SUMS`、`deploy-site.sh` 一起挂到 Release。服务器只下载产物，不在服务器上编译。

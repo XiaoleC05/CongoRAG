@@ -19,7 +19,6 @@ data/
 
 # ── 本地构建产物 ──
 site-dist.tar.gz
-tools/daily/congorag-daily-linux-amd64
 
 # ── 本地运维/密钥（绝不入库） ──
 .secrets/
