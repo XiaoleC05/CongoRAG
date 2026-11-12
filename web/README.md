@@ -1,4 +1,4 @@
-# ConGoRAG 前端
+# CongoRAG 前端
 
 React SPA。产物被 `go:embed` 打进 api 二进制，由 Go 进程在 `:3210` 直接提供——**没有 Node 服务器，没有 SSR**。
 

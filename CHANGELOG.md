@@ -48,6 +48,26 @@
 - 无数据库结构变更（自 5.0.2 以来的科研助手迁移 0015–0019 已在旧版本中包含）；
 - 仓库路径变化：旧链接 `docs/competition/...`、`deployments/competition` 不再存在。
 
+## [6.1.0] - 2026-11-13
+
+网站与品牌统一版本。
+
+### 变更
+
+- **项目名统一为 CongoRAG**：应用侧栏、页面标题、favicon、公开首页、README、技术文档与提交材料
+  中的 `ConGoRAG` 全部改为 `CongoRAG`。
+- **公开首页重做**：从通用深色渐变 + 四张功能卡，改为“论文页 + 页边批注”的纸张版式；
+  六张真实界面截图做 Figure，滚动分节讲解析、证据、图谱、写作；移动端改成独立的单列顺序。
+- **应用壳层**：侧栏品牌两行（CongoRAG / 科研助手）、当前页标题、移动端品牌、跳到主要内容、
+  每页动态 document.title；知识库卡片收紧高度、换文件图标、支持两行标题、补 focus 样式。
+- **性能与可访问性**：首页无外部字体/JS 依赖，首图 eager、其余 lazy + 宽高；静态资源走
+  `/landing/` 缓存；补 canonical、OG、JSON-LD、theme-color；正文最小 13px，修正对比度。
+
+### 升级说明
+
+- 无数据库结构变更；
+- 首页静态资源路径新增 `/landing/`，生产 nginx 已配置公开缓存。
+
 ## [Unreleased]
 
 ### 变更
@@ -428,7 +448,8 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
-[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.0.0...HEAD
+[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.1.0...HEAD
+[6.1.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0.2...v6.0.0
 [5.0.2]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0.1...v5.0.2
 [5.0.1]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0...v5.0.1

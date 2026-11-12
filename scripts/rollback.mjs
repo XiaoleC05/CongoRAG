@@ -51,7 +51,7 @@ const hasFlag = (name) => argv.includes(name)
 if (hasFlag('--help') || hasFlag('-h')) {
   console.log(
     [
-      '回滚 ConGoRAG 启动包：还原数据库 + 还原数据卷 + 退回镜像 tag。',
+      '回滚 CongoRAG 启动包：还原数据库 + 还原数据卷 + 退回镜像 tag。',
       '',
       '  --dir 目录        含 docker-compose.yml 与 .env 的目录（默认 "."）',
       '  --backup 目录     要还原哪一份备份（默认 backups/ 下最新的那份）',

@@ -853,13 +853,13 @@ export interface components {
             updatedAt: string;
         };
         CreateConversationRequest: {
-            /** @example 关于 ConGoRAG 的问答 */
+            /** @example 关于 CongoRAG 的问答 */
             title?: string;
             /** Format: uuid */
             knowledgeBaseId?: string | null;
         };
         SendMessageRequest: {
-            /** @example ConGoRAG 的默认端口是多少？ */
+            /** @example CongoRAG 的默认端口是多少？ */
             text: string;
         };
         MessageCitation: {
@@ -904,7 +904,7 @@ export interface components {
         };
         /**
          * @example {
-         *       "query": "ConGoRAG 的向量检索用的是什么类型？",
+         *       "query": "CongoRAG 的向量检索用的是什么类型？",
          *       "topK": 5
          *     }
          */

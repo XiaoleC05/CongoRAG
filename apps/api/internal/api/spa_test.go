@@ -22,7 +22,7 @@ import (
 // 产物根，名字里没有哈希——缓存判据必须能把这两类分开。
 func fakeWebFS() fs.FS {
 	return fstest.MapFS{
-		"web/index.html":                                    {Data: []byte("<!doctype html><title>ConGoRAG</title>")},
+		"web/index.html":                                    {Data: []byte("<!doctype html><title>CongoRAG</title>")},
 		"web/assets/index-BjyFRYsa.js":                      {Data: []byte("console.log(1)")},
 		"web/assets/index-DEB1x6pO.css":                     {Data: []byte("body{}")},
 		"web/assets/geist-latin-wght-normal-BgDaEnEv.woff2": {Data: []byte("font-bytes")},
@@ -51,7 +51,7 @@ func realWebTree(t *testing.T) (fs.FS, string) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "sentinel.txt"), []byte(sentinel), 0o600))
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "web", "assets"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "web", "index.html"),
-		[]byte("<!doctype html><title>ConGoRAG</title>"), 0o600))
+		[]byte("<!doctype html><title>CongoRAG</title>"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "web", "assets", "index-BjyFRYsa.js"),
 		[]byte("console.log(1)"), 0o600))
 
@@ -90,7 +90,7 @@ func TestSPA_ServesRealFiles(t *testing.T) {
 	r := newSPARouter(t, fakeWebFS())
 
 	for _, tc := range []struct{ path, wantBody string }{
-		{"/", "ConGoRAG"},
+		{"/", "CongoRAG"},
 		{"/assets/index-BjyFRYsa.js", "console.log(1)"},
 		{"/assets/index-DEB1x6pO.css", "body{}"},
 		{"/favicon.svg", "<svg/>"},
@@ -119,7 +119,7 @@ func TestSPA_FallsBackToIndexForUnknownPaths(t *testing.T) {
 	for _, p := range []string{"/knowledge-bases", "/agents/42", "/anything/deep/path"} {
 		code, body := do(r, http.MethodGet, p, "")
 		assert.Equal(t, http.StatusOK, code, p)
-		assert.Contains(t, body, "ConGoRAG", p)
+		assert.Contains(t, body, "CongoRAG", p)
 	}
 }
 
@@ -136,7 +136,7 @@ func TestSPA_DoesNotListDirectories(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, code)
 	assert.NotContains(t, body, "index-BjyFRYsa.js", "目录内容不该被列出来")
-	assert.Contains(t, body, "ConGoRAG")
+	assert.Contains(t, body, "CongoRAG")
 }
 
 func TestSPA_UnknownAPIPathReturnsProblemNotHTML(t *testing.T) {
@@ -195,7 +195,7 @@ func TestSPA_TrailingSlashOnFrontendPathStillServesIndex(t *testing.T) {
 	code, body := do(r, http.MethodGet, "/knowledge-bases/", "")
 
 	require.Equal(t, http.StatusOK, code, body)
-	assert.Contains(t, body, "ConGoRAG")
+	assert.Contains(t, body, "CongoRAG")
 }
 
 func TestSPA_MissingBuildGivesInstructionsNotBlankPage(t *testing.T) {
@@ -353,7 +353,7 @@ func TestSPA_AssetsDirectoryRequestIsNotImmutable(t *testing.T) {
 	w := doWithHeader(r, http.MethodGet, "/assets/")
 
 	require.Equal(t, http.StatusOK, w.Code)
-	assert.Contains(t, w.Body.String(), "ConGoRAG")
+	assert.Contains(t, w.Body.String(), "CongoRAG")
 
 	got := w.Header().Get("Cache-Control")
 	assert.Equal(t, cacheRevalidate, got,

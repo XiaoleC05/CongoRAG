@@ -206,7 +206,7 @@ func (r *registry) ProbeEmbeddingDimension(ctx context.Context, baseURL, apiKey,
 	}
 
 	// 探测文本内容不重要,只要上游把它当成一次合法的 embedding 请求处理。
-	vecs, err := emb.EmbedStrings(ctx, []string{"ConGoRAG embedding dimension probe"})
+	vecs, err := emb.EmbedStrings(ctx, []string{"CongoRAG embedding dimension probe"})
 	if err != nil {
 		return 0, fmt.Errorf("%w: probe request: %v", platform.ErrUpstream, err)
 	}

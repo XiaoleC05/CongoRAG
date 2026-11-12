@@ -1,4 +1,4 @@
-# ConGoRAG 开发期依赖服务
+# CongoRAG 开发期依赖服务
 #
 # 【这个文件只管"依赖"，不管"应用"】
 # 开发期只有 PostgreSQL 跑在 Docker 里，api / worker / 前端都跑在宿主机上——

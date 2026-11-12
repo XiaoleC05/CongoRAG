@@ -18,10 +18,10 @@ func TestTiktokenTokenizer_MatchesReferenceCounts(t *testing.T) {
 		wantCount     int
 	}{
 		{"cl100k_base", "Hello, world! This is a test of the tokenizer.", 12},
-		{"cl100k_base", "ConGoRAG is a local-first knowledge base and RAG platform, using PostgreSQL for vector storage.", 21},
+		{"cl100k_base", "CongoRAG is a local-first knowledge base and RAG platform, using PostgreSQL for vector storage.", 21},
 		{"cl100k_base", "The quick brown fox jumps over 42 lazy dogs.", 11},
 		{"o200k_base", "Hello, world! This is a test of the tokenizer.", 12},
-		{"o200k_base", "ConGoRAG is a local-first knowledge base and RAG platform, using PostgreSQL for vector storage.", 22},
+		{"o200k_base", "CongoRAG is a local-first knowledge base and RAG platform, using PostgreSQL for vector storage.", 22},
 		{"o200k_base", "The quick brown fox jumps over 42 lazy dogs.", 11},
 	}
 

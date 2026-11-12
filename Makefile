@@ -1,4 +1,4 @@
-# ConGoRAG 开发命令入口
+# CongoRAG 开发命令入口
 #
 # 【这个 Makefile 必须同时能在 cmd.exe 和 bash 里跑】
 # Windows 上 make 是原生版，它找不到 /bin/bash 就会退回 cmd.exe。
@@ -65,7 +65,7 @@ SPECTRAL := npx --yes --no-fund --no-audit @stoplight/spectral-cli@6.15.0
         lint-spec crash-probe startup-package upgrade rollback
 
 help:
-	@echo ConGoRAG 开发命令
+	@echo CongoRAG 开发命令
 	@echo   make up                 起 PostgreSQL
 	@echo   make down               停 PostgreSQL（不加 -v，数据保留）
 	@echo   make logs               看 PostgreSQL 日志

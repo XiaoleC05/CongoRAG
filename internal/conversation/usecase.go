@@ -1214,7 +1214,7 @@ func (u *Usecase) emitEvent(ctx context.Context, convID uuid.UUID, sink EventSin
 // 【故意不做成可配置】技术方案没有把"系统提示词可配置"列为 M2 的验收项——
 // Agent 的 system_prompt 才是数据库字段（agents 表，M4-A），普通聊天
 // 现在只需要一个够用的默认值。
-const defaultSystemPrompt = "你是 ConGoRAG 的科研助手。只依据提供的检索片段回答用户问题。" +
+const defaultSystemPrompt = "你是 CongoRAG 的科研助手。只依据提供的检索片段回答用户问题。" +
 	"回答里的每一句话末尾都必须用方括号标注它依赖的片段编号，例如 [1]、[2]（编号就是片段前面的序号，从 1 开始）；" +
 	"不要输出任何没有引用编号的句子。片段里没有相关信息时，直接回答「根据现有资料无法回答」，" +
 	"不要使用片段之外的知识，不要编造引用编号。"

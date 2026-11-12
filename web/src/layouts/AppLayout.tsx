@@ -32,18 +32,33 @@ import { NAV } from '@/layouts/nav'
 export default function AppLayout() {
   const { pathname } = useLocation()
   const { theme, toggle } = useTheme()
+  const current = NAV.find((item) => pathname === item.to || pathname.startsWith(item.to + '/'))?.label
+  useEffect(() => {
+    document.title = current ? `${current} · CongoRAG` : 'CongoRAG 科研助手'
+  }, [current])
   // 主内容容器。除了当滚动容器，它还是路由切换后的焦点落点之一（见 RouteFocus）。
   const contentRef = useRef<HTMLDivElement>(null)
 
   return (
-    <SidebarProvider>
+    <>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:shadow"
+      >
+        跳到主要内容
+      </a>
+      <SidebarProvider>
       <Sidebar collapsible="icon">
         <SidebarHeader>
           <div className="flex items-center gap-2 px-2 py-1.5 text-sm font-semibold">
-            <span className="bg-primary text-primary-foreground flex size-6 items-center justify-center rounded-md text-xs">
+            <span className="bg-primary text-primary-foreground relative flex size-6 items-center justify-center rounded-md font-serif text-xs font-bold">
               C
+              <span className="bg-accent absolute -right-1 -top-1 size-1.5 rounded-full" />
             </span>
-            <span className="group-data-[collapsible=icon]:hidden">ConGoRAG</span>
+            <div className="flex min-w-0 flex-col leading-tight group-data-[collapsible=icon]:hidden">
+              <span className="truncate">CongoRAG</span>
+              <span className="text-muted-foreground text-[10px] font-normal tracking-wide">科研助手</span>
+            </div>
           </div>
         </SidebarHeader>
 
@@ -93,11 +108,15 @@ export default function AppLayout() {
         <SidebarRail />
       </Sidebar>
 
-      <SidebarInset>
+      <SidebarInset id="main-content">
         {/* 主区域的容器必须是 min-w-0 的 flex 列：
             侧栏用固定宽度，主区域里有长表格/长代码块时不会把它撑变形。 */}
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
+          <span className="font-serif text-sm font-semibold sm:hidden">CongoRAG</span>
+          <span className="text-muted-foreground hidden text-xs sm:inline">CongoRAG /</span>
+          <span className="truncate text-sm font-medium">{current ?? '科研助手'}</span>
+          <span className="text-muted-foreground ml-auto hidden text-xs md:inline">可溯源 · 抗幻觉</span>
         </header>
         {/* 【为什么是 div 而不是 <main>（issue #94 顺手修的）】页面上已经有一个
             <main> 了：shadcn 的 SidebarInset 自己就渲染一个 `<main>`（见
@@ -130,7 +149,7 @@ export default function AppLayout() {
         </div>
         {/* 备案号展示在页面底部并链接工信部（ICP 备案要求）；公安备案通过后在此补链接。 */}
         <footer className="text-muted-foreground flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t px-4 py-2 text-[11px] leading-tight">
-          <span>ConGoRAG 科研助手 · 个人技术展示</span>
+          <span>CongoRAG 科研助手 · 个人技术展示</span>
           <span className="flex flex-wrap items-center gap-3">
             <a
               href="https://beian.miit.gov.cn/"
@@ -143,7 +162,8 @@ export default function AppLayout() {
           </span>
         </footer>
       </SidebarInset>
-    </SidebarProvider>
+      </SidebarProvider>
+    </>
   )
 }
 

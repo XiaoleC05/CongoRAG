@@ -1,5 +1,5 @@
 #!/bin/sh
-# ConGoRAG 交付形态的迁移入口（issue #73 / #74）。
+# CongoRAG 交付形态的迁移入口（issue #73 / #74）。
 #
 # 【它是什么】Dockerfile 的 migrate 这个 target 的 ENTRYPOINT。在启动包里
 # 它是一个一次性容器：

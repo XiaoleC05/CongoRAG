@@ -111,7 +111,8 @@ describe('AppLayout 的 Suspense 边界', () => {
 
     // (b) 侧栏没有被一起拿掉。两条断言必须同时成立才说明边界在 <main> 里面：
     //     把边界套到 <Routes> 外面时 (a) 照样过，但 (b) 会挂。
-    expect(screen.getByText('ConGoRAG')).toBeTruthy()
+    // 侧栏 + 移动端顶栏各有一处品牌名，因此用 getAllByText。
+    expect(screen.getAllByText('CongoRAG').length).toBeGreaterThan(0)
     expect(screen.getByText('知识库')).toBeTruthy()
   })
 })

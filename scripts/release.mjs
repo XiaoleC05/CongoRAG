@@ -301,14 +301,14 @@ const existing = await api(cred.token, 'GET', `/releases/tags/${tag}`)
 if (existing.ok) {
   const patched = await api(cred.token, 'PATCH', `/releases/${existing.json.id}`, {
     body: releaseBody,
-    name: `ConGoRAG ${tag}`,
+    name: `CongoRAG ${tag}`,
   })
   if (!patched.ok) fail(`更新 Release 失败：HTTP ${patched.status}\n${JSON.stringify(patched.json, null, 2)}`)
   console.log(`✓ 更新了已有的 Release ${tag}\n  ${patched.json.html_url}`)
 } else if (existing.status === 404) {
   const created = await api(cred.token, 'POST', '/releases', {
     tag_name: tag,
-    name: `ConGoRAG ${tag}`,
+    name: `CongoRAG ${tag}`,
     body: releaseBody,
     draft: false,
     prerelease: false,

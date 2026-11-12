@@ -65,7 +65,7 @@ const hasFlag = (name) => argv.includes(name)
 if (hasFlag('--help') || hasFlag('-h')) {
   console.log(
     [
-      '升级 ConGoRAG 启动包：先备份、校验通过才迁移、任一步失败即中止。',
+      '升级 CongoRAG 启动包：先备份、校验通过才迁移、任一步失败即中止。',
       '',
       '  --dir 目录        含 docker-compose.yml 与 .env 的目录（默认 "."）',
       '  --to 版本         目标镜像 tag。默认取 .env 里的 CONGORAG_VERSION。',
@@ -229,7 +229,7 @@ const tableCount = Number(
   pgSql(pgContainer, "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'"),
 )
 if (!Number.isFinite(tableCount) || tableCount === 0) {
-  fail('数据库里一张表都没有。这个库看起来不是 ConGoRAG 的库，升级中止（什么都没改）。')
+  fail('数据库里一张表都没有。这个库看起来不是 CongoRAG 的库，升级中止（什么都没改）。')
 }
 ok(`库里 ${tableCount} 张表`)
 

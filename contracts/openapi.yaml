@@ -1,7 +1,7 @@
 openapi: 3.0.4
 
 info:
-  title: ConGoRAG API
+  title: CongoRAG API
   # 契约版本跟产品版本走，由发布脚本在发布前断言它与 tag 一致（ADR-002）。
   #
   # 【兼容性承诺的边界是路径里的 /api/v1，不是这个号】它标记的是"这份契约
@@ -9,7 +9,7 @@ info:
   #
   # 【必须加引号】不加的话 YAML 会把 2.0 解析成浮点数，而 info.version 的
   # 类型是 string——校验会报 "Incorrect type. Expected string"。
-  version: "6.0.0"
+  version: "6.1.0"
   description: |
     依靠上下文提供 RAG 服务的全栈开源工具
 
@@ -1653,7 +1653,7 @@ components:
         title:
           type: string
           maxLength: 200
-          example: 关于 ConGoRAG 的问答
+          example: 关于 CongoRAG 的问答
         knowledgeBaseId:
           type: string
           format: uuid
@@ -1671,7 +1671,7 @@ components:
           # 正文会原样进模型上下文，超长在这里就按 invalid_argument 拒掉，
           # 而不是等上游模型报错、被归到 upstream_llm_error（issue #109）。
           maxLength: 8000
-          example: ConGoRAG 的默认端口是多少？
+          example: CongoRAG 的默认端口是多少？
 
     # 科研助手：消息上持久化的引用与引用校验结果（migration 0017）。
     #
@@ -1784,7 +1784,7 @@ components:
             【越界返回 400，不静默夹取】夹取会让人以为"只命中这么多"，
             而实际是被服务端截断了——调试视图上这个区别很关键。
       example:
-        query: ConGoRAG 的向量检索用的是什么类型？
+        query: CongoRAG 的向量检索用的是什么类型？
         topK: 5
 
     # 命中分块。字段与 SSE 的 citation 事件逐个对应（chunkId/documentId/

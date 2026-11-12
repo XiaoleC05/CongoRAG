@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CongoRAG 科研助手 · 把论文读成证据</title>
+<meta name="description" content="CongoRAG 是一个可溯源的论文阅读与写作工作台：回答带页码和原文位置，支持双语阅读、arXiv 追踪、引用图谱与写作草稿。" />
+<meta property="og:title" content="CongoRAG 科研助手" />
+<meta property="og:description" content="把论文读成证据：每条回答都能回到 PDF 页码与原文位置。" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://congorag.cloud/" />
+<meta property="og:image" content="https://congorag.cloud/landing/assets/chat.jpg" />
+<meta name="twitter:card" content="summary" />
+<link rel="canonical" href="https://congorag.cloud/" />
+<link rel="icon" type="image/svg+xml" href="/landing/favicon.svg" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"CongoRAG","applicationCategory":"ResearchApplication","operatingSystem":"Web","url":"https://congorag.cloud/","description":"可溯源的论文阅读与写作工作台：回答带页码与原文位置，支持双语阅读、arXiv 追踪、引用图谱与写作草稿。","author":{"@type":"Person","name":"陈晓乐"},"offers":{"@type":"Offer","price":"0","priceCurrency":"CNY"}}
+</script>
+<style>
+  :root {
+    --paper: #f3eee3;
+    --paper-deep: #e9e1d2;
+    --ink: #1a1713;
+    --ink-soft: #4f473c;
+    --muted: #655b4a;
+    --rule: #d3c7b2;
+    --accent: #ad3a29;
+    --accent-dark: #7f2418;
+    --dark: #14120e;
+    --serif: Georgia, "Songti SC", "SimSun", "Times New Roman", serif;
+    --sans: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 16px/1.75 var(--sans);
+    -webkit-font-smoothing: antialiased;
+    background-image: linear-gradient(90deg, rgba(26,23,19,.035) 1px, transparent 1px);
+    background-size: 64px 100%;
+  }
+  a { color: inherit; }
+  img { max-width: 100%; display: block; }
+  .skip { position: absolute; left: 16px; top: -60px; z-index: 20; background: var(--ink); color: var(--paper); padding: 10px 16px; text-decoration: none; }
+  .skip:focus { top: 16px; }
+  .frame { width: min(1180px, calc(100% - 48px)); margin: 0 auto; }
+  header.top { border-bottom: 1px solid var(--rule); background: var(--paper); position: sticky; top: 0; z-index: 10; }
+  .top-inner { display: flex; align-items: center; gap: 24px; height: 68px; }
+  .wordmark { display: flex; align-items: baseline; gap: 10px; text-decoration: none; }
+  .wordmark b { font-family: var(--serif); font-size: 22px; letter-spacing: -.2px; }
+  .wordmark span { color: var(--muted); font-size: 12px; letter-spacing: .12em; }
+  .top nav { margin-left: auto; display: flex; gap: 22px; font-size: 14px; }
+  .top nav a { text-decoration: none; color: var(--ink-soft); }
+  .top nav a:hover { color: var(--accent); }
+  .top .cta { text-decoration: none; background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 2px; font-size: 13px; }
+  .top .cta:hover { background: var(--accent); }
+  main { padding-bottom: 0; }
+  .hero { padding: 54px 0 58px; border-bottom: 1px solid var(--rule); }
+  .hero-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 52px; align-items: end; }
+  h1 { font-family: var(--serif); font-weight: 700; font-size: clamp(44px, 6.4vw, 86px); line-height: 1.02; letter-spacing: -.045em; margin: 0 0 18px; text-wrap: balance; }
+  h1 .mark { color: var(--accent); border-bottom: 6px solid var(--accent); }
+  h1 sup { font-family: var(--sans); font-size: 13px; letter-spacing: 0; color: var(--muted); vertical-align: super; margin-left: 6px; }
+  .lead { font-size: 18px; color: var(--ink-soft); max-width: 33em; margin: 0 0 24px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .btn { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; padding: 12px 18px; border: 1px solid var(--ink); border-radius: 2px; font-weight: 700; font-size: 14px; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff7f0; }
+  .btn.primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
+  .btn.ghost:hover { background: var(--ink); color: var(--paper); }
+  .note { color: var(--muted); font-size: 13px; margin-top: 16px; }
+  .hero-fig { position: relative; margin: 0; }
+  .browser { border: 1px solid var(--ink); background: #0a0a0a; padding: 10px; }
+  .browser .bar { display: flex; gap: 5px; padding: 0 0 9px; }
+  .browser .bar i { width: 7px; height: 7px; border-radius: 50%; background: #4c4a44; display: block; }
+  .browser img { width: 100%; height: auto; }
+  .figcap { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+  .figcap b { color: var(--accent); font-family: var(--serif); white-space: nowrap; flex: 0 0 auto; }
+  .marginal { position: absolute; right: -28px; top: 34%; writing-mode: vertical-rl; letter-spacing: .18em; color: var(--muted); font-size: 10px; text-transform: uppercase; }
+  .rail { display: flex; gap: 26px; padding: 14px 0 0; color: var(--muted); font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
+  .rail span::before { content: "— "; color: var(--accent); }
+  .module { padding: 64px 0; border-bottom: 1px solid var(--rule); }
+  .module-grid { display: grid; grid-template-columns: .9fr 1.1fr; gap: 56px; align-items: start; }
+  .module-grid.flip { grid-template-columns: 1.1fr .9fr; }
+  .module-copy { position: sticky; top: 94px; }
+  .num { font-family: var(--serif); font-size: 14px; color: var(--accent); border-top: 2px solid var(--accent); padding-top: 8px; width: 38px; }
+  h2 { font-family: var(--serif); font-size: clamp(30px, 3.6vw, 46px); line-height: 1.12; letter-spacing: -.02em; margin: 14px 0 16px; text-wrap: balance; }
+  .module p { color: var(--ink-soft); max-width: 31em; }
+  .facts { list-style: none; padding: 0; margin: 22px 0 0; font-size: 14px; }
+  .facts li { padding: 9px 0; border-top: 1px solid var(--rule); color: var(--ink-soft); }
+  .facts b { color: var(--ink); }
+  .fig-stack { display: grid; gap: 26px; }
+  .figure { margin: 0; }
+  .quote { margin: 34px 0 0; padding: 18px 20px; border-left: 4px solid var(--accent); background: var(--paper-deep); font-family: var(--serif); font-size: 21px; line-height: 1.5; }
+  .quote small { display: block; font-family: var(--sans); font-size: 13px; color: var(--muted); margin-top: 10px; letter-spacing: .08em; }
+  .band { background: var(--dark); color: var(--paper); padding: 64px 0; }
+  .band .frame { display: grid; grid-template-columns: 1.15fr .85fr; gap: 56px; align-items: center; }
+  .band h2 { color: var(--paper); margin-top: 0; }
+  .band p { color: #bfb6a5; }
+  .band .btn { border-color: var(--paper); color: var(--paper); }
+  .band .btn.primary { border-color: var(--accent); }
+  .band .refs { border-top: 1px solid #3b352b; padding-top: 18px; font-size: 13px; color: #948a78; line-height: 2; }
+  .band .refs a { color: #d8cbb6; text-decoration: none; border-bottom: 1px dotted #6e6250; }
+  footer { padding: 26px 0 34px; color: var(--muted); font-size: 13px; }
+  .foot-inner { display: flex; flex-wrap: wrap; gap: 10px 24px; justify-content: space-between; }
+  footer a { color: var(--muted); }
+  a:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-grid > div, .hero-fig { animation: rise .65s cubic-bezier(.2,.7,.2,1) both; }
+    .hero-fig { animation-delay: .08s; }
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) { .hero-grid > div, .hero-fig { animation: none; } }
+  @media (max-width: 900px) {
+    .hero-grid, .module-grid, .module-grid.flip, .band .frame { grid-template-columns: 1fr; gap: 32px; }
+    .module-copy { position: static; order: -1; }
+    .marginal { display: none; }
+    .hero { padding-top: 34px; }
+    .top nav { display: none; }
+    h1 { font-size: clamp(40px, 12vw, 64px); }
+  }
+  @media (max-width: 560px) {
+    .frame { width: calc(100% - 32px); }
+    .hero-grid { gap: 26px; }
+    .top-inner { height: 60px; }
+    .wordmark span { display: none; }
+    .top .cta { margin-left: auto; }
+    .module { padding: 44px 0; }
+    .browser { padding: 6px; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="top">
+  <div class="frame top-inner">
+    <a class="wordmark" href="/"><b>CongoRAG</b><span>RESEARCH WORKBENCH</span></a>
+    <nav aria-label="页面导航">
+      <a href="#modules">模块</a>
+      <a href="#graph">图谱</a>
+      <a href="https://github.com/XiaoleC05/CongoRAG">代码</a>
+    </nav>
+    <a class="cta" href="#demo">在线演示</a>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero frame" aria-labelledby="hero-title">
+    <div class="hero-grid">
+      <div>
+        <h1 id="hero-title">把论文，<br />读成<span class="mark">证据</span><sup>[1]</sup>。</h1>
+        <p class="lead">上传一篇论文，问它问题。回答会给出页码和原文位置，点一下就回到 PDF 那一页。读、译、查引用、写综述，都在同一个工作台里完成。</p>
+        <div class="actions">
+          <a class="btn primary" href="#demo">打开在线演示</a>
+          <a class="btn ghost" href="https://github.com/XiaoleC05/CongoRAG">查看源码</a>
+        </div>
+        <p class="note">评审账号 reviewer / CongoRAG2026 · 无需注册</p>
+        <div class="rail"><span>Parse</span><span>Trace</span><span>Read</span><span>Write</span></div>
+      </div>
+      <figure class="hero-fig">
+        <div class="browser" data-ui="true">
+          <div class="bar"><i></i><i></i><i></i></div>
+          <img src="/landing/assets/chat.jpg" width="1400" height="788" fetchpriority="high" decoding="async" alt="CongoRAG 对话界面：回答 GPU 数量并标注引用页码" />
+        </div>
+        <figcaption class="figcap"><b>Fig. 1</b><span>真实界面：回答“训练用了多少块 GPU”，数字后面带引用，下方是逐句引用校验。</span></figcaption>
+        <div class="marginal">Each answer has a page</div>
+      </figure>
+    </div>
+  </section>
+
+  <div id="modules"></div>
+  <section class="module frame" aria-labelledby="m1">
+    <div class="module-grid">
+      <div class="module-copy">
+        <div class="num">01 / 解析</div>
+        <h2 id="m1">先把 PDF 拆成<br />能定位的块。</h2>
+        <p>解析结果不是一段纯文本，而是带页码、坐标和章节路径的块。扫描件走 OCR，五百多页的教材也能进入同一条流水线。</p>
+        <ul class="facts">
+          <li><b>v1 / v7 同时上传</b>：按正文指纹发现重合，距离 6 时告警。</li>
+          <li><b>版本差异</b>：模型总结两版修订点，保留/覆盖由你决定。</li>
+          <li><b>首页元信息</b>：作者与机构单独成块，问“作者是谁”也有出处。</li>
+        </ul>
+      </div>
+      <figure class="figure">
+        <div class="browser" data-ui="true">
+          <div class="bar"><i></i><i></i><i></i></div>
+          <img src="/landing/assets/dedupe.jpg" width="1400" height="788" loading="lazy" decoding="async" alt="版本去重界面：v1 与 v7 高度重合，显示差异摘要" />
+        </div>
+        <figcaption class="figcap"><b>Fig. 2</b><span>官方用例 v1 / v7：正文指纹命中后，直接在页面里对比修订差异。</span></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="module frame" aria-labelledby="m2">
+    <div class="module-grid flip">
+      <div class="fig-stack">
+        <figure class="figure">
+          <div class="browser" data-ui="true">
+            <div class="bar"><i></i><i></i><i></i></div>
+            <img src="/landing/assets/reader.jpg" width="1400" height="788" loading="lazy" decoding="async" alt="阅读器双语对照：左侧 PDF，右侧原文与译文" />
+          </div>
+          <figcaption class="figcap"><b>Fig. 3</b><span>阅读器：目录、引用跳转、双语对照；滚动与划词/悬停翻译都在同一页完成。</span></figcaption>
+        </figure>
+        <blockquote class="quote">“没有证据时，它直接说不知道。”<small>无证据拒答 · grounding 校验 · 引用落地检查</small></blockquote>
+      </div>
+      <div class="module-copy">
+        <div class="num">02 / 证据</div>
+        <h2 id="m2">答案和出处<br />一起出现。</h2>
+        <p>检索先走两条路：向量召回语义相近的段落，中文 bigram 全文召回精确的词和编号，再用 RRF 合并。生成时每个事实句都带 [n]，回答结束后逐句检查引用是否落在资料里。</p>
+        <ul class="facts">
+          <li><b>页码范围</b>：引用带 page / bbox / sectionPath，点开就是原文高亮。</li>
+          <li><b>拒答</b>：检索不到证据时返回固定说明，不调用模型。</li>
+          <li><b>多篇对比</b>：横向问题生成带引用的对照表。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="module frame" id="graph" aria-labelledby="m3">
+    <div class="module-grid">
+      <div class="module-copy">
+        <div class="num">03 / 图谱</div>
+        <h2 id="m3">顺着引用，<br />找到那篇基石论文。</h2>
+        <p>参考文献标题与库内文档归一化匹配，聚合成有向图；PageRank 选出基石论文。再基于图谱生成领域综述和 Future Work，结合年份线索只保留仍然开放的方向。</p>
+        <ul class="facts">
+          <li><b>演示库 20 篇</b>：Attention、BERT 系、ViT/Swin、T5、LLaMA 等。</li>
+          <li><b>点节点回原文</b>：图谱不是装饰，是阅读入口。</li>
+          <li><b>综述可核对</b>：材料不足时明确说明。</li>
+        </ul>
+      </div>
+      <figure class="figure">
+        <div class="browser" data-ui="true">
+          <div class="bar"><i></i><i></i><i></i></div>
+          <img src="/landing/assets/graph.jpg" width="1400" height="788" loading="lazy" decoding="async" alt="引用图谱：节点按 PageRank 大小排列，右侧基石论文表格" />
+        </div>
+        <figcaption class="figcap"><b>Fig. 4</b><span>引用图谱：节点大小是 PageRank，点击任意节点回到对应论文。</span></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="module frame" aria-labelledby="m4">
+    <div class="module-grid flip">
+      <div class="fig-stack">
+        <figure class="figure">
+          <div class="browser" data-ui="true">
+            <div class="bar"><i></i><i></i><i></i></div>
+            <img src="/landing/assets/writing.jpg" width="1400" height="788" loading="lazy" decoding="async" alt="写作 Copilot：完整论文框架与 Graphviz 代码" />
+          </div>
+          <figcaption class="figcap"><b>Fig. 5</b><span>写作 Copilot：完整论文框架，逐句引用，另外给出 Graphviz 拓扑脚本。</span></figcaption>
+        </figure>
+      </div>
+      <div class="module-copy">
+        <div class="num">04 / 写作</div>
+        <h2 id="m4">读到的，<br />直接变成草稿。</h2>
+        <p>写作 Copilot 根据知识库检索结果生成相关工作、摘要或完整论文框架；每个事实句带 [n]，引用列表的页码可以点回原文。它不替你编参考文献。</p>
+        <ul class="facts">
+          <li><b>完整框架</b>：Abstract / Introduction / Related Work / Method / Experiments / Conclusion。</li>
+          <li><b>Graphviz</b>：结构图脚本随框架一起给出。</li>
+          <li><b>数据可视化</b>：表格到论文图表，不用手写三套代码。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="demo">
+    <div class="frame">
+      <div>
+        <h2>现在就可以<br />打开读一篇论文。</h2>
+        <p>公开演示入口，评审账号已预置示例库；也可以直接看演示视频和技术文档。</p>
+        <div class="actions" style="margin-top:20px">
+          <a class="btn primary" href="https://congorag.cloud/?token=0d728319beef03b7da2a812591bf74ae">进入在线演示</a>
+          <a class="btn" href="https://github.com/XiaoleC05/CongoRAG/tree/main/docs/submission">提交材料</a>
+        </div>
+      </div>
+      <div class="refs">
+        <div><a href="https://github.com/XiaoleC05/CongoRAG">GitHub · XiaoleC05/CongoRAG</a></div>
+        <div>技术文档 · 演示视频 · 评测报告</div>
+        <div>ICP 备案号：鲁ICP备2026038838号-2</div>
+        <div>个人技术展示 · 非经营性</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="frame foot-inner">
+    <span>© 2026 陈先生的技术分享 · CongoRAG 科研助手</span>
+    <span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">鲁ICP备2026038838号-2</a></span>
+  </div>
+</footer>
+</body>
+</html>

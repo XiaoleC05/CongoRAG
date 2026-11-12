@@ -63,7 +63,7 @@ const hasFlag = (name) => argv.includes(name)
 if (hasFlag('--help') || hasFlag('-h')) {
   console.log(
     [
-      '打包 ConGoRAG 启动包（zip：compose + .env.example + 镜像 tarball + 升级脚本）。',
+      '打包 CongoRAG 启动包（zip：compose + .env.example + 镜像 tarball + 升级脚本）。',
       '',
       '  --version 版本    镜像 tag 与包名里用的版本（默认取契约的 info.version）',
       '  --arch 架构       amd64 | arm64（默认按本机 Docker 的架构）',

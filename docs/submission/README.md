@@ -7,9 +7,9 @@
 
 | # | 材料 | 文件 / 链接 |
 |---|---|---|
-| 1 | 代码仓库 | https://github.com/XiaoleC05/CongoRAG（main，Public，tag `v6.0.0`） |
-| 2 | 演示视频（5:29，1920×1080，中文字幕） | [ConGoRAG科研助手_演示视频_陈晓乐_传智杯2026.mp4](ConGoRAG科研助手_演示视频_陈晓乐_传智杯2026.mp4)（字幕：[.srt](ConGoRAG科研助手_演示视频_陈晓乐_传智杯2026.srt)） |
-| 3 | 技术文档（PDF，27 页） | [ConGoRAG科研助手_技术文档_陈晓乐.pdf](ConGoRAG科研助手_技术文档_陈晓乐.pdf) |
+| 1 | 代码仓库 | https://github.com/XiaoleC05/CongoRAG（main，Public，tag `v6.1.0`） |
+| 2 | 演示视频（5:29，1920×1080，中文字幕） | [CongoRAG科研助手_演示视频_陈晓乐_传智杯2026.mp4](CongoRAG科研助手_演示视频_陈晓乐_传智杯2026.mp4)（字幕：[.srt](CongoRAG科研助手_演示视频_陈晓乐_传智杯2026.srt)） |
+| 3 | 技术文档（PDF，27 页） | [CongoRAG科研助手_技术文档_陈晓乐.pdf](CongoRAG科研助手_技术文档_陈晓乐.pdf) |
 | 4 | 在线演示 | <https://congorag.cloud>（公开首页；演示入口见下方） |
 
 ## 二、支撑材料

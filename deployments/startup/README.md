@@ -1,4 +1,4 @@
-# ConGoRAG 启动包
+# CongoRAG 启动包
 
 这个包里是四个已经打包好的镜像和一份 compose 文件。**不需要装 Go、不需要
 装 Node、不需要在本机编译**——只要能跑 Docker。

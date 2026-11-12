@@ -1,4 +1,4 @@
-// Command api 是 ConGoRAG 的对外服务进程。
+// Command api 是 CongoRAG 的对外服务进程。
 //
 // 这个文件只做两件事：声明 go:embed（embed 指令只能嵌同目录及以下，
 // 所以它必须写在这里），然后调用 app.Run。

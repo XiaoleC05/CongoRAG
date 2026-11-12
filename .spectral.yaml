@@ -1,4 +1,4 @@
-# ConGoRAG 契约 lint 规则集（issue #68）
+# CongoRAG 契约 lint 规则集（issue #68）
 #
 # 【这份文件是规则集，不是配置片段】`make lint-spec` 只跑一条命令：
 #   spectral lint contracts/openapi.yaml --ruleset .spectral.yaml --fail-severity=warn

@@ -1,4 +1,4 @@
-// Command worker 是 ConGoRAG 的异步任务消费端。
+// Command worker 是 CongoRAG 的异步任务消费端。
 //
 // 和 apps/api/main.go 同一个理由——这个文件只做一件事：调用装配根。
 // 不要往这里加东西，装配在 internal/app/app.go。

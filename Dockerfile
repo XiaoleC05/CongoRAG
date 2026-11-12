@@ -1,4 +1,4 @@
-# ConGoRAG 交付期镜像（issue #73）
+# CongoRAG 交付期镜像（issue #73）
 #
 # 【这个 Dockerfile 属于"交付形态"，不是开发形态】
 # 开发期只有 PostgreSQL 跑在容器里（deployments/docker/docker-compose.yml），

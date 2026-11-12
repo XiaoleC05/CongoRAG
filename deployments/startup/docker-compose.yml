@@ -1,4 +1,4 @@
-# ConGoRAG 启动包 —— docker compose 一键部署（issue #73）
+# CongoRAG 启动包 —— docker compose 一键部署（issue #73）
 #
 # 【它和 deployments/docker/docker-compose.yml 是两个东西，别拿错】
 #   · deployments/docker/docker-compose.yml  ← 开发期依赖服务，**只有 postgres**，

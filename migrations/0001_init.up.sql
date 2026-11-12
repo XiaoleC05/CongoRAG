@@ -1,6 +1,6 @@
 -- 0001_init
 --
--- ConGoRAG 的初始表结构。四张表：
+-- CongoRAG 的初始表结构。四张表：
 --   knowledge_bases   知识库
 --   documents         文档（属于某个知识库）
 --   document_chunks   文档分块（属于某个文档，向量存在这里）

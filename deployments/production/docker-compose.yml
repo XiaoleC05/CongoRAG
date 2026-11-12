@@ -1,4 +1,4 @@
-# ConGoRAG 科研助手一键部署（demo / 省赛评审用）
+# CongoRAG 科研助手一键部署（demo / 省赛评审用）
 #
 # 【和另外两份 compose 的区别】
 #   · deployments/docker/docker-compose.yml   开发期依赖（只有 postgres）

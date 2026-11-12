@@ -1,4 +1,4 @@
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { FileText, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router'
 
 import type { Schemas } from '@congorag/api-client'
@@ -43,14 +43,14 @@ export function KnowledgeCard({ kb, onRename, onDelete }: Props) {
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') navigate(`/knowledge-bases/${kb.id}`)
       }}
-      className="group border-border bg-card hover:bg-accent/40 relative flex h-40 cursor-pointer flex-col justify-between rounded-xl border p-4 transition-colors"
+      className="group border-border bg-card hover:border-primary/50 hover:bg-accent/30 focus-visible:ring-ring relative flex min-h-32 cursor-pointer flex-col gap-4 rounded-xl border p-4 transition-colors focus-visible:ring-2 focus-visible:outline-none"
     >
       <div className="flex items-start gap-3">
-        <span className="bg-primary/10 flex size-10 shrink-0 items-center justify-center rounded-lg text-lg">
-          📙
+        <span className="bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-lg">
+          <FileText className="size-5" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="truncate font-medium" title={kb.name}>
+          <div className="line-clamp-2 font-medium leading-snug" title={kb.name}>
             {kb.name}
           </div>
           <div className="text-muted-foreground mt-1 text-xs">
@@ -59,7 +59,7 @@ export function KnowledgeCard({ kb, onRename, onDelete }: Props) {
         </div>
       </div>
 
-      <div className="text-muted-foreground text-xs">
+      <div className="text-muted-foreground mt-auto text-xs">
         创建于 {formatDateTime(kb.createdAt)}
       </div>
 

@@ -595,7 +595,7 @@ type CreateAgentRequest struct {
 type CreateConversationRequest struct {
 	KnowledgeBaseId *openapi_types.UUID `json:"knowledgeBaseId,omitempty"`
 
-	// Title Example: 关于 ConGoRAG 的问答
+	// Title Example: 关于 CongoRAG 的问答
 	Title *string `json:"title,omitempty"`
 }
 
@@ -744,7 +744,7 @@ type KnowledgeSearchHit struct {
 	VectorScore *float64 `json:"vectorScore"`
 }
 
-// KnowledgeSearchRequest Example: {"query":"ConGoRAG 的向量检索用的是什么类型？","topK":5}
+// KnowledgeSearchRequest Example: {"query":"CongoRAG 的向量检索用的是什么类型？","topK":5}
 type KnowledgeSearchRequest struct {
 	// Query 要检索的文本。会先被当前生效的 embedding 模型变成向量。
 	Query string `json:"query"`
@@ -919,7 +919,7 @@ type RenameKnowledgeBaseRequest struct {
 
 // SendMessageRequest defines model for SendMessageRequest.
 type SendMessageRequest struct {
-	// Text Example: ConGoRAG 的默认端口是多少？
+	// Text Example: CongoRAG 的默认端口是多少？
 	Text string `json:"text"`
 }
 

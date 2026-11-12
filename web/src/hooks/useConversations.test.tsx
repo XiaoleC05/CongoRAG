@@ -29,7 +29,7 @@ const KB_ID = '11111111-1111-4111-8111-111111111111'
 
 const savedConversation: Conversation = {
   id: '77777777-7777-4777-8777-777777777777',
-  title: '关于 ConGoRAG 的问答',
+  title: '关于 CongoRAG 的问答',
   knowledgeBaseId: KB_ID,
   createdAt: '2026-09-21T00:00:00Z',
   updatedAt: '2026-09-21T00:00:00Z',
@@ -66,7 +66,7 @@ describe('useCreateConversation', () => {
     })
 
     const input: CreateConversationInput = {
-      title: '关于 ConGoRAG 的问答',
+      title: '关于 CongoRAG 的问答',
       knowledgeBaseId: KB_ID,
     }
 

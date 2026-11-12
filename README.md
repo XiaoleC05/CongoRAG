@@ -1,11 +1,11 @@
-# ConGoRAG 科研助手
+# CongoRAG 科研助手
 
 可溯源、抗幻觉的论文阅读与写作工作台。
 
 上传一篇论文，问它问题。系统先检索证据，再逐句生成带页码和原文位置的回答；点引用就回到 PDF 那一页。
 它也支持中英对照阅读、arXiv 追踪、引用图谱和写作草稿。所有生成都走同一套引用与校验。
 
-当前版本 **v6.0.0**（2026-11-13）。在线演示：<https://congorag.cloud>；
+当前版本 **v6.1.0**（2026-11-13）。在线演示：<https://congorag.cloud>；
 提交材料（技术文档、演示视频、自检清单、评测报告）在
 [docs/submission/](docs/submission/README.md)。
 
@@ -26,7 +26,7 @@
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Version](https://img.shields.io/badge/version-6.0.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-6.1.0-blue)](CHANGELOG.md)
 
 本地优先的 RAG 问答与 Agent 平台。文档、向量、API Key 都留在自己的机器上，
 模型服务由使用者提供（BYOK）。
@@ -75,7 +75,7 @@ api 进程默认只监听 127.0.0.1:3210，不对局域网开放。API Key 用 A
 ## 项目背景与模块
 
 2026 传智杯的赛题要求一个覆盖文献解析、抗幻觉问答、阅读翻译、arXiv 检索推荐、引用图谱、
-学术写作与可视化的科研助手。ConGoRAG 按这条主线实现，六个模块共用同一套检索、引用与
+学术写作与可视化的科研助手。CongoRAG 按这条主线实现，六个模块共用同一套检索、引用与
 证据校验；技术选型、评测数据与模块实现细节见 [docs/modules.md](docs/modules.md)，
 工程与写作 skill 的采用记录见 [docs/skills.md](docs/skills.md)。
 
@@ -360,7 +360,7 @@ Agent 那条流的首帧永远是 `run_started`（`data: {"runId": ...}`），�
 `null` 表示到底了。游标是不透明的，不要解析它，格式随时可能变（见契约里
 `Cursor` 参数的描述）。
 
-契约的 `info.version` 跟产品版本走（当前 `6.0.0` ↔ tag `v6.0.0`），由发布脚本在发布前
+契约的 `info.version` 跟产品版本走（当前 `6.1.0` ↔ tag `v6.1.0`），由发布脚本在发布前
 断言两者一致，见 [ADR-002](docs/adr/002-contract-versioning.md)。它不表示兼容性
 承诺。兼容边界是路径里的 `/api/v1`。
 
@@ -471,6 +471,7 @@ CongoRAG/
 │   ├── docker/                 开发期依赖服务（PostgreSQL）
 │   ├── startup/                交付形态（postgres + migrate + api + worker）
 │   └── production/             演示/评审部署（多一个 PDF sidecar）
+├── landing/                    公开首页（静态 HTML + 真实界面截图）
 ├── docs/
 │   ├── modules.md              六个功能模块与关键接口
 │   ├── evaluation/             检索/引用评测脚本与结果
