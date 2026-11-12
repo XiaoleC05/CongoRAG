@@ -1838,9 +1838,11 @@ func (s *Server) GenerateWritingDraft(c *gin.Context, id openapi_types.UUID) {
 		s.fail(c, err)
 		return
 	}
+	graphviz := writingGraphviz(string(req.Kind))
 	c.JSON(http.StatusOK, WritingResponse{
 		Draft:     draft,
 		Citations: toAPIKnowledgeHits(chunks),
+		Graphviz:  &graphviz,
 	})
 }
 
@@ -1958,6 +1960,29 @@ func buildWritingPrompt(kind, topic string, chunks []domain.Chunk) (system, user
 	system = "你是科研写作助手。只依据给出的编号资料写作；每个事实句末尾用 [n] 标注来源编号；" +
 		"输出 Markdown，不要输出与写作任务无关的解释。资料不足时直接说明" + "「根据现有资料无法完成」" + "，不要编造。"
 	return system, b.String()
+}
+
+// writingGraphviz 生成论文框架的 Graphviz DOT 脚本（M6 的拓扑图输出之一）。
+// 不依赖模型：结构来自体例本身，保证"没有模型也有可渲染的图"。
+func writingGraphviz(kind string) string {
+	sections := []string{"Abstract", "Introduction", "Related Work", "Method", "Experiments", "Conclusion", "References"}
+	if kind == "related_work" {
+		sections = []string{"Topic", "Related Work", "Gap", "References"}
+	} else if kind == "summary" {
+		sections = []string{"Topic", "Key Methods", "Results", "Takeaway"}
+	} else if kind == "outline" {
+		sections = []string{"Title", "Section 1", "Section 2", "Section 3", "References"}
+	}
+	var b strings.Builder
+	b.WriteString("digraph paper_framework {\n  rankdir=LR;\n  node [shape=box, style=rounded, fontname=\"Microsoft YaHei\"];\n")
+	for i, sec := range sections {
+		fmt.Fprintf(&b, "  s%d [label=%q];\n", i, sec)
+		if i > 0 {
+			fmt.Fprintf(&b, "  s%d -> s%d;\n", i-1, i)
+		}
+	}
+	b.WriteString("}\n")
+	return b.String()
 }
 
 // 写作 Copilot 的 topK 边界（与契约里的 minimum/maximum 一致）。

@@ -24,6 +24,11 @@ type Result struct {
 
 var githubPattern = regexp.MustCompile(`https?://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+`)
 
+// venuePattern 从 arXiv 的 comment/摘要里识别会议/期刊线索。
+// 官方 M4 要求“引用含金量”筛选；arXiv API 不带引用数，这里用
+// 已录用会议/期刊作为可解释的质量代理，避免把纯预印本当成熟工作优先推。
+var venuePattern = regexp.MustCompile(`(?i)\b(neurips|nips|icml|iclr|cvpr|iccv|eccv|acl|emnlp|naacl|aaai|ijcai|kdd|sigir|www|tpami|jmlr|tacl|osdi|sosp|mlsys)\b`)
+
 var stopWords = map[string]struct{}{
 	"the": {}, "and": {}, "for": {}, "with": {}, "from": {}, "this": {}, "that": {},
 	"are": {}, "was": {}, "were": {}, "using": {}, "based": {}, "into": {}, "towards": {},
@@ -108,6 +113,10 @@ func Build(libraryTitles []string, papers []arxiv.Paper, votes map[string]string
 		if github != "" {
 			score += 0.8
 			reasonParts = append(reasonParts, "附开源代码")
+		}
+		if venue := venuePattern.FindString(p.Comment + " " + p.Abstract); venue != "" {
+			score += 0.3
+			reasonParts = append(reasonParts, "会议/期刊线索："+strings.ToUpper(venue))
 		}
 		out = append(out, Result{
 			Paper:     p,

@@ -30,6 +30,7 @@ export function KnowledgeWritingPanel({ kbId }: { kbId: string }) {
   const [topic, setTopic] = useState('')
   const [kind, setKind] = useState<WritingKind>('related_work')
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const draft = useWritingDraft(kbId)
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -98,6 +99,28 @@ export function KnowledgeWritingPanel({ kbId }: { kbId: string }) {
 
       {result ? (
         <div className="space-y-4">
+          {result.graphviz ? (
+            <div className="border-border rounded-xl border p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-muted-foreground text-xs">Graphviz（DOT 论文框架拓扑）</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(result.graphviz ?? '').then(() => {
+                      setCopied(true)
+                      window.setTimeout(() => setCopied(false), 1500)
+                    })
+                  }}
+                >
+                  {copied ? '已复制' : '复制代码'}
+                </Button>
+              </div>
+              <pre className="bg-muted/40 max-h-56 overflow-auto rounded-lg p-3 text-xs whitespace-pre-wrap">
+                {result.graphviz}
+              </pre>
+            </div>
+          ) : null}
           <div className="border-border rounded-xl border p-4">
             <div className="text-muted-foreground mb-2 flex items-center gap-2 text-xs">
               <PenLine className="size-3.5" />

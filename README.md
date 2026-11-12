@@ -135,10 +135,10 @@ flowchart TB
   无证据固定拒答、多篇对比、作者/机构/超参数/BLEU 等细粒度问答
 - **M3 阅读与翻译**：PDF.js 阅读器、目录、引用跳转、整页翻译、双语对照、
   原文/译文滚动同步、划词翻译、中文/English 目标语言
-- **M4 arXiv 追踪**：arXiv 检索 Agent、最新论文推荐（相关性/新近度/GitHub）、
-  赞/踩、PDF 下钻入库、推荐面板 5 分钟自动追踪
+- **M4 arXiv 追踪**：arXiv 检索 Agent、最新论文推荐（相关性/新近度/GitHub/
+  会议期刊线索）、赞/踩、PDF 下钻入库、推荐面板 5 分钟自动追踪
 - **M5 引用图谱**：参考文献库内匹配、PageRank 基石论文、自动领域综述 + Future Work
-- **M6 写作与可视化**：写作 Copilot（综述/摘要/提纲/完整论文框架）、
+- **M6 写作与可视化**：写作 Copilot（综述/摘要/提纲/完整论文框架 + Graphviz DOT）、
   CSV → 图表 + 学术图注 + Mermaid/TikZ/Matplotlib 代码
 
 ## 快速开始

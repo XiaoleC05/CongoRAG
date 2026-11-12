@@ -1158,6 +1158,8 @@ export interface components {
             /** @description Markdown 草稿，每个事实句带 [n] 引用 */
             draft: string;
             citations: components["schemas"]["KnowledgeSearchHit"][];
+            /** @description 论文框架的 Graphviz DOT 拓扑图脚本（可丢进 Graphviz 渲染） */
+            graphviz?: string;
         };
         KnowledgeSearchResult: {
             /**

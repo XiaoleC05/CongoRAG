@@ -1106,6 +1106,9 @@ type WritingResponse struct {
 
 	// Draft Markdown 草稿，每个事实句带 [n] 引用
 	Draft string `json:"draft"`
+
+	// Graphviz 论文框架的 Graphviz DOT 拓扑图脚本（可丢进 Graphviz 渲染）
+	Graphviz *string `json:"graphviz,omitempty"`
 }
 
 // Cursor defines model for Cursor.

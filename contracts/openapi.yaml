@@ -2236,6 +2236,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/KnowledgeSearchHit'
+        graphviz:
+          type: string
+          description: 论文框架的 Graphviz DOT 拓扑图脚本（可丢进 Graphviz 渲染）
 
     KnowledgeSearchResult:
       type: object
