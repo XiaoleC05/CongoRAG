@@ -882,10 +882,12 @@ func (u *Usecase) CitationGraph(ctx context.Context, kbID uuid.UUID) (*CitationG
 	for _, d := range ready {
 		if outline, oerr := u.docRepo.ListOutline(ctx, u.db, d.ID); oerr == nil {
 			for _, e := range outline {
-				if t := strings.TrimSpace(e.Title); t != "" && !genericOutlineTitle(t) {
-					titles[d.ID] = t
-					break
+				t := strings.TrimSpace(e.Title)
+				if t == "" || isSectionHeading(t) || genericOutlineTitle(t) || strings.HasPrefix(t, "&") {
+					continue
 				}
+				titles[d.ID] = t
+				break
 			}
 		}
 		if titles[d.ID] == "" {
@@ -1046,12 +1048,23 @@ func normalizeTitle(s string) string {
 // 拿它们当节点标签会把所有论文都叫成同一个名字；真标题通常是第一个
 // 不在这个集合里的一级/二级标题。
 func genericOutlineTitle(title string) bool {
+	// “1 Introduction / 2.1 Attention”这类编号节标题不是论文标题：
+	// 先剥掉编号，再按通用结构标题过滤；剩下的才可能是真标题。
+	title = sectionNumberPattern.ReplaceAllString(title, "")
 	switch strings.ToLower(strings.TrimSpace(title)) {
 	case "abstract", "references", "introduction", "contents", "table of contents",
 		"appendix", "acknowledgements", "acknowledgments", "keywords":
 		return true
 	}
 	return false
+}
+
+var sectionNumberPattern = regexp.MustCompile(`^\s*\d+(\.\d+)*\s+`)
+
+// isSectionHeading 判断一个 outline 标题是否只是编号节标题；
+// 这类标题不该拿来当引用图谱的节点标签（BERT/DeiT 的解析结果就是例子）。
+func isSectionHeading(title string) bool {
+	return sectionNumberPattern.MatchString(strings.TrimSpace(title))
 }
 
 // frontMatterChunk 把第一页靠前的若干块拼成一个“首页元信息”块。
