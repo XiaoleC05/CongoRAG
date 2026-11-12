@@ -725,6 +725,16 @@ func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID, isLastAt
 		chunks = parseAndChunk(content)
 	}
 
+	// 参赛版 M1/M2：给 PDF 额外加一个“首页元信息”块，集中放标题/作者/机构。
+	// 作者行通常只有几行、和正文语义差异大，单靠 top-k 检索容易被正文挤掉；
+	// 这个块让“作者/机构是谁”这类问题能一次拿到完整首页信息，并带 page=1
+	// 的页码锚点（仍然是可溯源的原文，不是模型编造）。
+	if ext == ".pdf" {
+		if front := frontMatterChunk(chunks); front != nil {
+			chunks = append([]domain.Chunk{*front}, chunks...)
+		}
+	}
+
 	// 【issue #97：embedding 在事务外先算完，写库与状态置 ready 同事务】
 	// 索引一份文档是性质相反的两半，而它们对事务的要求正好相反：
 	//
@@ -1042,4 +1052,30 @@ func genericOutlineTitle(title string) bool {
 		return true
 	}
 	return false
+}
+
+// frontMatterChunk 把第一页靠前的若干块拼成一个“首页元信息”块。
+// 只做确定性拼接，不引入模型；内容全部来自解析结果，所以引用仍能回到第 1 页。
+func frontMatterChunk(chunks []domain.Chunk) *domain.Chunk {
+	var b strings.Builder
+	for _, ch := range chunks {
+		if ch.PageStart != 1 {
+			continue
+		}
+		b.WriteString(ch.Content)
+		b.WriteString("\n")
+		if b.Len() >= 1200 {
+			break
+		}
+	}
+	text := strings.TrimSpace(b.String())
+	if text == "" {
+		return nil
+	}
+	return &domain.Chunk{
+		Content:    "首页信息（标题/作者/机构，来自 PDF 第 1 页）：\n" + text,
+		PageStart:  1,
+		PageEnd:    1,
+		BlockType:  "other",
+	}
 }

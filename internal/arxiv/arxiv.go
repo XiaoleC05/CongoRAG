@@ -54,7 +54,7 @@ type Client struct {
 // NewClient 构造一个带超时的客户端。
 func NewClient() *Client {
 	return &Client{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: &http.Client{Timeout: 180 * time.Second}, // PDF 下载走海外链路，30s 不够
 		baseURL:    DefaultBaseURL,
 	}
 }

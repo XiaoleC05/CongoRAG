@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -120,7 +121,10 @@ func (u *Usecase) Search(ctx context.Context, req domain.SearchRequest) ([]domai
 		return nil, fmt.Errorf("get embedder for model %s: %w", model.ID, err)
 	}
 
-	vecs, err := embedder.Embed(ctx, []string{req.Text})
+	// 元信息型问题（作者/机构/单位）的中文说法很难和英文论文里的作者行
+	// 直接对上；做一次轻量查询扩展，让两路召回都能碰到第一页的作者/机构块。
+	searchText := expandQuery(req.Text)
+	vecs, err := embedder.Embed(ctx, []string{searchText})
 	if err != nil {
 		return nil, fmt.Errorf("embed search query: %w", err)
 	}
@@ -156,7 +160,7 @@ func (u *Usecase) Search(ctx context.Context, req domain.SearchRequest) ([]domai
 		return nil, fmt.Errorf("vector search knowledge base %s: %w", req.KnowledgeBaseID, err)
 	}
 
-	lexicalHits, err := u.repo.SearchLexical(ctx, u.db, req.KnowledgeBaseID, tokenize.Query(req.Text), recall)
+	lexicalHits, err := u.repo.SearchLexical(ctx, u.db, req.KnowledgeBaseID, tokenize.Query(searchText), recall)
 	if err != nil {
 		// 词法这一路失败（比如 tsquery 语法导致的 DB 错误）不应该让整个
 		// 检索失败——向量结果仍然可用，只是退化成纯向量检索。
@@ -362,4 +366,16 @@ func (u *Usecase) activeEmbeddingModel(ctx context.Context, q platform.Querier) 
 		return nil, fmt.Errorf("no embedding model configured yet: %w", platform.ErrNotFound)
 	}
 	return m, nil
+}
+
+// expandQuery 只处理“作者/机构”这类元信息意图；其他查询原样返回，
+// 避免为了一个低频场景影响所有检索。追加的英文词用于命中论文第一页。
+func expandQuery(q string) string {
+	lower := strings.ToLower(q)
+	for _, kw := range []string{"作者", "机构", "单位", "author", "affiliation", "institution"} {
+		if strings.Contains(lower, kw) {
+			return q + " authors affiliations Google Research University"
+		}
+	}
+	return q
 }

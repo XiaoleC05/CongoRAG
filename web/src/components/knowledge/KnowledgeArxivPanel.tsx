@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowDownToLine, Code2, ExternalLink, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react'
 
 import { ErrorText } from '@/components/ErrorText'
@@ -24,7 +24,18 @@ export function KnowledgeArxivPanel({ kbId }: { kbId: string }) {
   const [votes, setVotes] = useState<Record<string, 'up' | 'down'>>({})
   const [ingested, setIngested] = useState<Record<string, string>>({})
   const [ingestError, setIngestError] = useState<unknown>(null)
+  // 动态追踪：面板打开期间每 5 分钟自动刷新一次（关掉页面就停），
+  // 同时记录上次刷新时间，避免用户不知道数据是不是新的。
+  const [lastTrackedAt, setLastTrackedAt] = useState<Date | null>(null)
+  const refresh = rec.mutate
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      refresh(undefined, { onSuccess: () => setLastTrackedAt(new Date()) })
+    }, 5 * 60 * 1000)
+    return () => window.clearInterval(timer)
+  }, [refresh])
   const items = rec.data?.items ?? []
+  const track = () => refresh(undefined, { onSuccess: () => setLastTrackedAt(new Date()) })
 
   const vote = (arxivId: string, v: 'up' | 'down') => {
     setVotes((prev) => ({ ...prev, [arxivId]: v }))
@@ -48,12 +59,14 @@ export function KnowledgeArxivPanel({ kbId }: { kbId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Button onClick={() => rec.mutate()} disabled={rec.isPending}>
+        <Button onClick={track} disabled={rec.isPending}>
           <Sparkles />
           {rec.isPending ? '检索中…' : '推荐 arXiv 最新论文'}
         </Button>
         <span className="text-muted-foreground text-xs">
-          用库内标题关键词检索 arXiv，按相关性 / 新近度 / 是否带 GitHub 代码排序
+          用库内标题关键词检索 arXiv，按相关性 / 新近度 / 是否带 GitHub 代码排序；
+          面板打开时每 5 分钟自动追踪一次
+          {lastTrackedAt ? `（上次：${lastTrackedAt.toLocaleTimeString('zh-CN', { hour12: false })}）` : ''}
         </span>
       </div>
 
