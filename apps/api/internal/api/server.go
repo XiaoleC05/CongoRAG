@@ -812,6 +812,9 @@ func (s *Server) GetCitationSurvey(c *gin.Context, id openapi_types.UUID) {
 		if strings.TrimSpace(node.Title) != "" {
 			label = node.Title + "（" + node.Filename + "）"
 		}
+		if year := arxivYearFromFilename(node.Filename); year != "" {
+			label += "（" + year + " 年）"
+		}
 		docs.WriteString("### " + label + "\n")
 		docs.WriteString(excerptChunks(chunks, 700))
 		docs.WriteString("\n\n")
@@ -828,6 +831,24 @@ func (s *Server) GetCitationSurvey(c *gin.Context, id openapi_types.UUID) {
 		return
 	}
 	c.JSON(http.StatusOK, CitationSurvey{Markdown: markdown})
+}
+
+// arxivYearFromFilename 从 arXiv ID 文件名（YYMM.NNNNN.pdf）推断发表年份，
+// 供引用图谱综述的时间线提示使用；不是 arXiv 文件就返回空。
+func arxivYearFromFilename(name string) string {
+	base := strings.TrimSuffix(name, filepath.Ext(name))
+	parts := strings.SplitN(base, ".", 2)
+	if len(parts) != 2 || len(parts[0]) != 4 {
+		return ""
+	}
+	yy, err := strconv.Atoi(parts[0][:2])
+	if err != nil {
+		return ""
+	}
+	if yy < 50 {
+		return strconv.Itoa(2000 + yy)
+	}
+	return strconv.Itoa(1900 + yy)
 }
 
 // GetArxivRecommendations 根据知识库主题推荐 arXiv 最新论文（M4）。
