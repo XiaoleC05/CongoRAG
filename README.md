@@ -1,49 +1,38 @@
-# CongoRAG
+# ConGoRAG 科研助手
 
-> 🏆 **传智杯「AI 大模型创新应用挑战赛」参赛版（2026）**
->
-> 本仓库的 `main` / `cup-2026` 分支是参赛作品：在 v5.0.2 基线上补齐**科研学术层**——
-> PDF 页码/坐标溯源、混合检索与抗幻觉、阅读器与翻译、arXiv 检索、引用图谱、
-> 写作 Copilot；并进一步落地上传语义去重与版本差异摘要、双语对照/划词翻译、
-> PageRank 引用图谱与自动综述、CSV 图表/图注、arXiv 推荐与下钻入库。
-> 参赛说明（六模块对照、架构、快速开始、评分自评）见
-> [docs/competition/README.md](docs/competition/README.md)，Prompt 审计记录见
-> [docs/competition/prompt-audit.md](docs/competition/prompt-audit.md)。
-> **提交材料（技术文档 PDF / 演示视频 / 自检清单 / 评测报告）见
-> [docs/competition/submission/](docs/competition/submission/README.md)。**
-> 基线版本与参赛增量的边界在参赛说明第 3 节逐条列出。
+可溯源、抗幻觉的论文阅读与写作工作台。
 
-## 参赛信息（个人赛）
+上传一篇论文，问它问题。系统先检索证据，再逐句生成带页码和原文位置的回答；点引用就回到 PDF 那一页。
+它也支持中英对照阅读、arXiv 追踪、引用图谱和写作草稿。所有生成都走同一套引用与校验。
+
+当前版本 **v6.0.0**（2026-11-13）。在线演示：<https://congorag.cloud>；
+提交材料（技术文档、演示视频、自检清单、评测报告）在
+[docs/submission/](docs/submission/README.md)。
+
+本项目源于 2026 传智杯「AI 大模型创新应用挑战赛」，当前 main 就是提交版本与后续维护主线，
+不再保留单独的基线分支或"科研能力增量"目录。历史版本见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 作者与参赛信息
 
 | 项 | 内容 |
 |---|---|
-| 参赛者 | 陈晓乐（个人赛） |
+| 作者 | 陈晓乐（个人赛） |
 | 学校 / 专业 | 西华大学 · 软件工程 · 2023 级（本科） |
 | 参赛编号 | 1885438 |
 | 赛事 | 传智杯「AI 大模型创新应用挑战赛」（赛道 10040） |
-| 作品 | ConGoRAG 科研助手——可溯源、抗幻觉的论文阅读与写作工作台 |
-| 代码仓库 | https://github.com/XiaoleC05/CongoRAG（`main` / `cup-2026`） |
+| 代码仓库 | <https://github.com/XiaoleC05/CongoRAG>（main） |
 | 联系 | 714085964@qq.com |
-
-## 提交材料索引
-
-技术文档 PDF、演示视频、评审自检清单、评测报告都在
-[docs/competition/submission/](docs/competition/submission/README.md)；
-在线演示与评审口令以提交说明为准（`https://congorag.cloud`）。ICP 备案号：鲁ICP备2026038838号-2。
 
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Version](https://img.shields.io/badge/version-5.0.2-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-6.0.0-blue)](CHANGELOG.md)
 
-本地优先的 RAG 问答与 Agent 平台。文档、向量、API Key 全部留在你自己的机器上，
-模型服务由你提供（BYOK）。
+本地优先的 RAG 问答与 Agent 平台。文档、向量、API Key 都留在自己的机器上，
+模型服务由使用者提供（BYOK）。
 
-api 进程默认只监听 `127.0.0.1:3210`，不对局域网开放。API Key 用 AES-GCM 加密后
+api 进程默认只监听 127.0.0.1:3210，不对局域网开放。API Key 用 AES-GCM 加密后
 存进本地数据库，主密钥在首次启动时生成并落盘。
-
-当前版本是 v5.0.2（2026-09-22）。下文说的就是这一版。
-之后落在 `main` 上的改动的逐条记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 界面
 
@@ -67,7 +56,7 @@ api 进程默认只监听 `127.0.0.1:3210`，不对局域网开放。API Key 用
 
 ## 目录
 
-- [传智杯参赛版说明](docs/competition/README.md)
+- [项目背景与模块](#项目背景与模块)
 - [界面](#界面)
 - [数据流](#数据流)
 - [核心能力](#核心能力)
@@ -82,6 +71,20 @@ api 进程默认只监听 `127.0.0.1:3210`，不对局域网开放。API Key 用
 - [贡献](#贡献)
 - [目录结构](#目录结构)
 - [License](#license)
+
+## 项目背景与模块
+
+2026 传智杯的赛题要求一个覆盖文献解析、抗幻觉问答、阅读翻译、arXiv 检索推荐、引用图谱、
+学术写作与可视化的科研助手。ConGoRAG 按这条主线实现，六个模块共用同一套检索、引用与
+证据校验；技术选型、评测数据与模块实现细节见 [docs/modules.md](docs/modules.md)，
+工程与写作 skill 的采用记录见 [docs/skills.md](docs/skills.md)。
+
+- **文献解析**：PDF 块级页码 / 坐标 / 章节，扫描件 OCR，超长文档；上传语义去重与版本差异。
+- **抗幻觉问答**：向量 + 中文 FTS + RRF；逐句 grounding；无证据拒答；多篇对比。
+- **阅读与翻译**：PDF.js 阅读器、目录、引用跳转、双语对照/滚动同步、划词/悬停翻译。
+- **arXiv 追踪**：检索 Agent、最新论文推荐、会议/开源线索、赞踩、下钻入库。
+- **引用图谱**：参考文献匹配、PageRank 基石论文、自动综述与 Future Work。
+- **写作与可视化**：写作 Copilot、完整论文框架、Graphviz/Mermaid/TikZ/Matplotlib。
 
 ## 数据流
 
@@ -126,7 +129,7 @@ flowchart TB
 - 关闭顺序：Ctrl-C 会先拒新请求、排空在途 SSE、给 worker 的在途任务留收尾时间
 - 单体交付：前端产物 `go:embed` 进 Go 二进制，一个进程同时提供 API 和界面
 
-### 参赛版科研层（六模块）
+### 科研层能力（六模块）
 
 - **M1 解析与去重**：PDF 块级页码/坐标/章节溯源、扫描件 OCR、541 页长文档；
   上传 SimHash 语义去重、v1/v7 版本差异摘要、首页元信息块（标题/作者/机构）、
@@ -249,7 +252,7 @@ embedding 模型的维度决定向量列的形状：HNSW 索引在 BYOK 引导�
 | 前端依赖 | `pnpm-lock.yaml` | `pnpm install --frozen-lockfile` |
 
 环境变量模板：根目录 [`.env.example`](.env.example)、
-[`deployments/competition/.env.example`](deployments/competition/.env.example)、
+[`deployments/production/.env.example`](deployments/production/.env.example)、
 [`deployments/startup/.env.example`](deployments/startup/.env.example)。
 
 ## 架构
@@ -294,7 +297,7 @@ flowchart LR
 ## 配置
 
 全部通过环境变量配置，没有配置文件。只有 `CONGORAG_DB_URL` 是必填的。
-模板见根目录 `.env.example`（本地开发）与 `deployments/competition/.env.example`
+模板见根目录 `.env.example`（本地开发）与 `deployments/production/.env.example`
 （赛事 compose）；复制后按需修改，**不要把真实 Key 提交进仓库**。
 
 | 变量 | 默认值 | 说明 |
@@ -357,7 +360,7 @@ Agent 那条流的首帧永远是 `run_started`（`data: {"runId": ...}`），�
 `null` 表示到底了。游标是不透明的，不要解析它，格式随时可能变（见契约里
 `Cursor` 参数的描述）。
 
-契约的 `info.version` 跟产品版本走（当前 `5.0.2` ↔ tag `v5.0.2`），由发布脚本在发布前
+契约的 `info.version` 跟产品版本走（当前 `6.0.0` ↔ tag `v6.0.0`），由发布脚本在发布前
 断言两者一致，见 [ADR-002](docs/adr/002-contract-versioning.md)。它不表示兼容性
 承诺。兼容边界是路径里的 `/api/v1`。
 
@@ -464,9 +467,18 @@ CongoRAG/
 ├── contracts/openapi.yaml      契约的唯一真相，两端生成物的输入
 ├── packages/api-client/        TS 类型生成物（schema.d.ts）
 ├── migrations/                 业务表迁移（golang-migrate）
-├── deployments/docker/         开发期依赖服务的 compose
-├── docs/                       ADR、流式协议、测试与发布约定
-├── evals/                      检索质量的测量脚本
+├── deployments/
+│   ├── docker/                 开发期依赖服务（PostgreSQL）
+│   ├── startup/                交付形态（postgres + migrate + api + worker）
+│   └── production/             演示/评审部署（多一个 PDF sidecar）
+├── docs/
+│   ├── modules.md              六个功能模块与关键接口
+│   ├── evaluation/             检索/引用评测脚本与结果
+│   ├── submission/             技术文档、演示视频、评测报告、自检清单
+│   ├── prompt-audit.md         Prompt 版本、原因与效果
+│   └── adr/                    架构决策记录
+├── evals/                      检索召回的测量脚本
+├── scripts/seed-demo.mjs       演示数据种子（只走公开 API）
 ├── web/                        React SPA 源码，规范见 web/README.md
 └── Makefile                    所有开发命令的入口
 ```

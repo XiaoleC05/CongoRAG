@@ -371,7 +371,7 @@ func (u *Usecase) DeleteModel(ctx context.Context, id uuid.UUID) error {
 // 上下文"，再长就应该分段翻译——一次性塞给模型既贵又容易丢后半段。
 const maxTranslateRunes = 8000
 
-// Translate 把一段论文文本翻译成目标语言（参赛版 M3 的阅读器翻译）。
+// Translate 把一段论文文本翻译成目标语言（科研助手 M3 的阅读器翻译）。
 //
 // 走的是"当前生效 chat 模型 + 流式拼装"，错误分类与聊天共用同一条路径。
 func (u *Usecase) Translate(ctx context.Context, text, targetLang string) (string, error) {
@@ -390,7 +390,7 @@ func (u *Usecase) Translate(ctx context.Context, text, targetLang string) (strin
 	return u.complete(ctx, system, text, 0.1)
 }
 
-// Generate 用当前 chat 模型完成一次非流式生成（参赛版 M6 写作 Copilot）。
+// Generate 用当前 chat 模型完成一次非流式生成（科研助手 M6 写作 Copilot）。
 //
 // 【为什么单独暴露一个 Generate 而不是让写作功能自己拼 registry 调用】
 // 模型解析、key 解密、用量记账、错误分类都封装在这个包里；HTTP 边界

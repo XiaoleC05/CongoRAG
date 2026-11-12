@@ -178,7 +178,7 @@ func Run() error {
 	txm := platform.NewTxManager(pool)
 	knowUC := knowledge.NewUsecase(kbRepo, docRepo, files, enqueuer, retrievalUC, cleaner, sched, txm, pool)
 
-	// 参赛版：PDF 解析 sidecar（见 _dev/CONTRACT_pdf-service.md）。
+	// 科研助手：PDF 解析 sidecar（见 _dev/CONTRACT_pdf-service.md）。
 	// 处理 PDF 的正是 worker，所以这里才是真正必须接上的地方；
 	// api 侧那一次注入只影响上传白名单之外的路径（当前没有），
 	// 两边都接是为了两个装配根保持对称。

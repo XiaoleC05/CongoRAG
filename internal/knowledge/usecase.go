@@ -75,7 +75,7 @@ func NewUsecase(
 	}
 }
 
-// SetPDFParser 注入 PDF 解析器（参赛版）。装配根在 cfg.PDFServiceURL
+// SetPDFParser 注入 PDF 解析器（科研助手）。装配根在 cfg.PDFServiceURL
 // 非空时调用；不调用时 .pdf 文档会在 ProcessDocument 里被明确拒绝
 // （落 failed 终态，而不是静默产出空文档）。
 func (u *Usecase) SetPDFParser(p PDFParser) { u.pdfParser = p }
@@ -246,7 +246,7 @@ var allowedUploadExts = map[string]bool{
 	".md":       true,
 	".markdown": true,
 	".txt":      true,
-	// 参赛版新增：PDF 走 sidecar 解析（ProcessDocument 里按扩展名分流）。
+	// 科研助手新增：PDF 走 sidecar 解析（ProcessDocument 里按扩展名分流）。
 	// 放开白名单只是"允许存"，解析失败仍会落 failed 终态，不会出现
 	// "上传成功但库里是空文档"的静默状态。
 	".pdf": true,
@@ -438,7 +438,7 @@ func (u *Usecase) RequeueAllDocuments(ctx context.Context, q platform.Querier) (
 	return len(ids), nil
 }
 
-// Outline 返回论文阅读器左侧目录需要的章节列表（参赛版 M3）。
+// Outline 返回论文阅读器左侧目录需要的章节列表（科研助手 M3）。
 //
 // 【为什么先 ByID 再查分块】分块为空可能是"文档还没处理完"，也可能是
 // "文档不存在"；前端对这两种情况的处理不同（前者继续轮询、后者报错）。
@@ -502,7 +502,7 @@ const (
 	DuplicateReplaceOld DuplicateAction = "replace_old"
 )
 
-// ResolveDuplicate 处理上传时去重的后续动作（参赛版 M1）。
+// ResolveDuplicate 处理上传时去重的后续动作（科研助手 M1）。
 //
 // 【为什么动作不可逆】replace_old 会删掉旧文档和它的分块，磁盘文件走异步
 // 清理；这份选择一旦做出就没有"撤销"接口——回退只能重新上传旧文件。
@@ -725,7 +725,7 @@ func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID, isLastAt
 		chunks = parseAndChunk(content)
 	}
 
-	// 参赛版 M1/M2：给 PDF 额外加一个“首页元信息”块，集中放标题/作者/机构。
+	// 科研助手 M1/M2：给 PDF 额外加一个“首页元信息”块，集中放标题/作者/机构。
 	// 作者行通常只有几行、和正文语义差异大，单靠 top-k 检索容易被正文挤掉；
 	// 这个块让“作者/机构是谁”这类问题能一次拿到完整首页信息，并带 page=1
 	// 的页码锚点（仍然是可溯源的原文，不是模型编造）。
@@ -761,7 +761,7 @@ func (u *Usecase) ProcessDocument(ctx context.Context, docID uuid.UUID, isLastAt
 	// 错误交给 River 重投；事务里任何一步失败则整体回滚，文档同样还是
 	// processing。两条路都走 failProcessing：只有最后一次 attempt 才落
 	// 终态 failed。
-	// 【参赛版：上传时语义去重】解析产物已经就绪，这里先算正文指纹，并与
+	// 【科研助手：上传时语义去重】解析产物已经就绪，这里先算正文指纹，并与
 	// 同库其它文档比较；判为近重复时把"与哪份重合、差多少"随文档一起落库，
 	// 前端据此弹出"保留/覆盖"的提醒。判据是正文 token（中文 bigram +
 	// 英文词），不是文件名——官方用例 v1/v7 的文件名不同但内容高度重合。
@@ -851,7 +851,7 @@ func (u *Usecase) markFailed(ctx context.Context, docID uuid.UUID) {
 }
 
 // ────────────────────────────────────────────────────────────────
-// 引用图谱（参赛版 M5）
+// 引用图谱（科研助手 M5）
 // ────────────────────────────────────────────────────────────────
 
 // CitationGraph 返回一个知识库的局域引用图谱（节点 + 边 + PageRank）。
@@ -922,7 +922,7 @@ type refCandidate struct {
 }
 
 // References 返回一份文档的参考文献列表，并标出其中哪些文献也在当前
-// 知识库里（参赛版 M5 的"引用图谱"数据）。
+// 知识库里（科研助手 M5 的"引用图谱"数据）。
 //
 // 【为什么匹配靠标题文本包含，而不是做一个实体库】比赛作品里的知识库
 // 只有几十份论文，标题匹配已经能覆盖"同一篇论文的不同版本/引用格式"

@@ -475,7 +475,7 @@ func (r *PgDocRepo) ListOutline(ctx context.Context, q platform.Querier, docID u
 	return out, nil
 }
 
-// ListReferences 返回参考文献分块（参赛版 M5）。Index/Matched* 由业务层填。
+// ListReferences 返回参考文献分块（科研助手 M5）。Index/Matched* 由业务层填。
 func (r *PgDocRepo) ListReferences(ctx context.Context, q platform.Querier, docID uuid.UUID) ([]domain.ReferenceEntry, error) {
 	rows, err := q.Query(ctx,
 		`SELECT content, coalesce(page_start, 0)
@@ -501,7 +501,7 @@ func (r *PgDocRepo) ListReferences(ctx context.Context, q platform.Querier, docI
 	return out, nil
 }
 
-// ListChunkContents 取一个文档的全部分块（参赛版 M5 的兜底解析用）。
+// ListChunkContents 取一个文档的全部分块（科研助手 M5 的兜底解析用）。
 func (r *PgDocRepo) ListChunkContents(ctx context.Context, q platform.Querier, docID uuid.UUID) ([]domain.Chunk, error) {
 	rows, err := q.Query(ctx,
 		`SELECT id, content, coalesce(page_start, 0)

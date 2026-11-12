@@ -138,7 +138,7 @@ export function useSendMessage(conversationId: string) {
   const queryClient = useQueryClient()
   const [pendingCitations, setPendingCitations] = useState<DisplayCitation[]>([])
   /**
-   * 引用落地检查报告（参赛版）：done 之前一条 grounding 事件。
+   * 引用落地检查报告（科研助手）：done 之前一条 grounding 事件。
    * 有它才能显示"已溯源 / 部分未溯源"——抗幻觉不是一个形容词，
    * 要有可展示的数字。
    */

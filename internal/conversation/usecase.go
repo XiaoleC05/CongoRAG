@@ -215,7 +215,7 @@ type Usecase struct {
 	memRepo  MemoryRepo
 	db       platform.Querier
 
-	// noEvidenceRefusal 是参赛版抗幻觉闸门：检索不到证据时直接给固定拒答，
+	// noEvidenceRefusal 是科研助手抗幻觉闸门：检索不到证据时直接给固定拒答，
 	// 不让模型自由发挥。
 	//
 	// 【默认关闭、装配根显式打开】现有测试大量依赖"空检索也能走完模型调用"
@@ -241,7 +241,7 @@ func NewUsecase(
 	}
 }
 
-// SetNoEvidenceRefusal 打开/关闭"无证据直接拒答"（参赛版）。
+// SetNoEvidenceRefusal 打开/关闭"无证据直接拒答"（科研助手）。
 //
 // 装配根在启动时调用一次。为什么不是构造参数：见 noEvidenceRefusal 字段的
 // 注释——现有测试依赖默认关闭的旧行为。
@@ -658,7 +658,7 @@ func (u *Usecase) send(ctx context.Context, convID uuid.UUID, text, idempotencyK
 		return u.failMessage(ctx, assistantMsgID, "", err)
 	}
 
-	// 【参赛版抗幻觉闸门：没有证据就直接拒答】检索结果为空时还让模型自由
+	// 【科研助手抗幻觉闸门：没有证据就直接拒答】检索结果为空时还让模型自由
 	// 发挥，是幻觉最大的来源（它会拿"通用知识"编一段看起来很有道理的
 	// 回答）。这里在调模型之前短路，给出确定性的拒答 + 一条 grounding
 	// 事件，把"没找到依据"这件事明确告诉用户。
@@ -697,7 +697,7 @@ func (u *Usecase) send(ctx context.Context, convID uuid.UUID, text, idempotencyK
 		return u.failMessage(ctx, assistantMsgID, content, err)
 	}
 
-	// ⑧ 引用落地检查（参赛版，抗幻觉的第二道闸）：回答已经流给用户了，
+	// ⑧ 引用落地检查（科研助手，抗幻觉的第二道闸）：回答已经流给用户了，
 	// 不能再回撤；这里做的是"把可信度量化并明确展示"——覆盖率达标的回答
 	// 前端标"已溯源"，不达标就标"部分结论未溯源"。指标进 SSE 事件，
 	// 同时可用于评测（评测集统计同一指标）。
@@ -1123,7 +1123,7 @@ type tokenPayload struct {
 
 // citationPayload 是 SSE citation 事件的 data。
 //
-// 【参赛版新增 page/pageEnd/bbox/sectionPath】前端要能"点引用跳到论文
+// 【科研助手新增 page/pageEnd/bbox/sectionPath】前端要能"点引用跳到论文
 // 第几页、高亮哪一块"。md/txt 文档没有页概念，这四项是 null（不是
 // 省略）——与 KnowledgeSearchHit 的约定一致，前端一条分支处理空态。
 type citationPayload struct {

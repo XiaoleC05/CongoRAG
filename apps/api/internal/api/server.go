@@ -447,7 +447,7 @@ func (s *Server) GetDocument(c *gin.Context, id openapi_types.UUID) {
 	c.JSON(http.StatusOK, toAPIDocument(doc))
 }
 
-// ListDocumentReferences 返回参考文献并标注库内命中（参赛版 M5）。
+// ListDocumentReferences 返回参考文献并标注库内命中（科研助手 M5）。
 func (s *Server) ListDocumentReferences(c *gin.Context, id openapi_types.UUID) {
 	entries, err := s.deps.Knowledge.References(c.Request.Context(), id)
 	if err != nil {
@@ -472,7 +472,7 @@ func (s *Server) ListDocumentReferences(c *gin.Context, id openapi_types.UUID) {
 	c.JSON(http.StatusOK, out)
 }
 
-// TranslateText 翻译一段论文文本（参赛版 M3 阅读器翻译）。
+// TranslateText 翻译一段论文文本（科研助手 M3 阅读器翻译）。
 func (s *Server) TranslateText(c *gin.Context) {
 	var req TranslateRequest
 	if !s.bindJSON(c, &req) {
@@ -544,7 +544,7 @@ func (s *Server) figureCaption(ctx context.Context, chart visualize.Chart, fallb
 	return s.deps.LLM.Generate(ctx, system, user)
 }
 
-// GetDocumentOutline 返回阅读器目录（参赛版 M3）。
+// GetDocumentOutline 返回阅读器目录（科研助手 M3）。
 func (s *Server) GetDocumentOutline(c *gin.Context, id openapi_types.UUID) {
 	entries, err := s.deps.Knowledge.Outline(c.Request.Context(), id)
 	if err != nil {
@@ -649,7 +649,7 @@ func (s *Server) DeleteDocument(c *gin.Context, id openapi_types.UUID) {
 	c.Status(http.StatusNoContent)
 }
 
-// ResolveDocumentDuplicate 处理上传时去重的后续动作（参赛版 M1）。
+// ResolveDocumentDuplicate 处理上传时去重的后续动作（科研助手 M1）。
 func (s *Server) ResolveDocumentDuplicate(c *gin.Context, id openapi_types.UUID) {
 	var req DocumentDuplicateResolution
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -663,7 +663,7 @@ func (s *Server) ResolveDocumentDuplicate(c *gin.Context, id openapi_types.UUID)
 	c.Status(http.StatusNoContent)
 }
 
-// DiffDocumentVersions 对比同一篇论文两个版本的差异（参赛版 M1 高级表现）。
+// DiffDocumentVersions 对比同一篇论文两个版本的差异（科研助手 M1 高级表现）。
 func (s *Server) DiffDocumentVersions(c *gin.Context, id openapi_types.UUID) {
 	var req VersionDiffRequest
 	if !s.bindJSON(c, &req) {
@@ -973,7 +973,7 @@ func (s *Server) ReindexKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 	c.JSON(http.StatusAccepted, ReindexAccepted{Enqueued: enqueued})
 }
 
-// GetCitationGraph 返回知识库的局域引用图谱（参赛版 M5）。
+// GetCitationGraph 返回知识库的局域引用图谱（科研助手 M5）。
 func (s *Server) GetCitationGraph(c *gin.Context, id openapi_types.UUID) {
 	g, err := s.deps.Knowledge.CitationGraph(c.Request.Context(), id)
 	if err != nil {
@@ -1163,7 +1163,7 @@ func toAPIConversation(c *conversation.Conversation) Conversation {
 }
 
 func toAPIMessage(m *conversation.Message) Message {
-	// 引用与 grounding 是参赛版持久化字段（migration 0017）：空切片不是 nil，
+	// 引用与 grounding 是科研助手持久化字段（migration 0017）：空切片不是 nil，
 	// 契约里 citations 是数组，nil 会序列化成 null（前端 .map() 会崩）。
 	citations := make([]MessageCitation, 0, len(m.Citations))
 	for _, c := range m.Citations {
@@ -1810,7 +1810,7 @@ func (s *Server) SearchKnowledgeBase(c *gin.Context, id openapi_types.UUID) {
 	c.JSON(http.StatusOK, KnowledgeSearchResult{Hits: toAPIKnowledgeHits(chunks)})
 }
 
-// GenerateWritingDraft 基于知识库检索结果生成写作草稿（参赛版 M6）。
+// GenerateWritingDraft 基于知识库检索结果生成写作草稿（科研助手 M6）。
 //
 // 【为什么是独立端点而不是复用聊天】输出形态不同：聊天是流式一问一答，
 // 写作要的是"一份可以继续编辑的 Markdown 草稿 + 引用来源"；前者用户
@@ -1867,7 +1867,7 @@ func (s *Server) GenerateWritingDraft(c *gin.Context, id openapi_types.UUID) {
 	})
 }
 
-// ComparePapers 生成多篇论文的对比分析（参赛版 A6）。
+// ComparePapers 生成多篇论文的对比分析（科研助手 A6）。
 //
 // 【和写作为什么分成两个端点】对比要求"按维度组织成表格 + 每篇论文的
 // 证据并排"，提示词与输出校验都不同；合成一个端点会让 kind 枚举变成

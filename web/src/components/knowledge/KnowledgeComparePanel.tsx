@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { useCompareDraft } from '@/hooks/useDocuments'
 
 /**
- * 多篇对比问答（参赛版 A6）。
+ * 多篇对比问答（科研助手 A6）。
  *
  * 【为什么要单独一块 UI】聊天给出的是一段线性叙述，横向比较两篇论文的
  * 差异时要来回翻上下文。这里直接把"按维度组织的对照表 + 综合结论"摆出来，

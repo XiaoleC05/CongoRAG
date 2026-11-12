@@ -161,7 +161,7 @@ func (r *PgRepo) Delete(ctx context.Context, q platform.Querier, id uuid.UUID) e
 	return nil
 }
 
-// ListOutline 返回 heading 分块组成的章节大纲（参赛版 M3 阅读器目录）。
+// ListOutline 返回 heading 分块组成的章节大纲（科研助手 M3 阅读器目录）。
 //
 // 【为什么查 document_chunks 而不是复用解析产物】heading 分块本来就带着
 // 页码与 section_path，这是解析阶段已经落库的权威数据；再存一份大纲表会

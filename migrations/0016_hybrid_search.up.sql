@@ -1,6 +1,6 @@
 -- 0016_hybrid_search
 --
--- 参赛版 M2：混合检索的"词法"这一路。
+-- 科研助手 M2：混合检索的"词法"这一路。
 --
 -- 【为什么存 search_text 而不是直接 to_tsvector('simple', content)】
 -- Postgres 的 simple 配置按非字母字符切词：英文没问题，中文整段会变成

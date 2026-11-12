@@ -19,7 +19,7 @@ const KINDS: { value: WritingKind; label: string; hint: string }[] = [
 ]
 
 /**
- * 写作 Copilot（参赛版 M6）。
+ * 写作 Copilot（科研助手 M6）。
  *
  * 【为什么它和检索调试摆在同一页】写作草稿的可信度完全取决于检索质量：
  * 用户先在检索调试里确认"召回对不对"，再来这里生成草稿，两条证据

@@ -1,4 +1,4 @@
-// Package arxiv 是 arXiv API 的最小客户端（参赛版 M4 的文献检索工具）。
+// Package arxiv 是 arXiv API 的最小客户端（科研助手 M4 的文献检索工具）。
 //
 // 【为什么自己写而不是引三方库】需求只有一件事：按关键词查论文、把
 // 结果解析成结构化数据。arXiv 的 Atom 响应很稳定，encoding/xml 足够；

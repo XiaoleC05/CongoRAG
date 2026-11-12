@@ -26,6 +26,28 @@
 
 ---
 
+## [6.0.0] - 2026-11-13
+
+单一主线合并版本。
+
+### 变更
+
+- **合并项目与比赛版本**：删除 `cup-2026` 分支与 `competition-base-v5.0.2` 标签；
+  `docs/competition/` 拆分为 `docs/modules.md`、`docs/submission/`、
+  `docs/evaluation/` 与 `docs/prompt-audit.md`；`deployments/competition` 改为
+  `deployments/production`。
+- **README 改为产品主线**：移除"基线/参赛增量"叙事，当前 `main` 即提交版本与
+  后续维护主线；版本号统一为 6.0.0。
+- 新增/完善科研助手能力：上传语义去重与版本差异、首页元信息块、批量上传、
+  双语滚动同步/悬停翻译、arXiv 推荐与自动追踪、PageRank 图谱与自动综述、
+  完整论文框架 + Graphviz、CSV 可视化 Matplotlib 代码。
+- 清理旧的参赛版视频脚本与过期目录，提交材料统一到 `docs/submission/`。
+
+### 升级说明
+
+- 无数据库结构变更（自 5.0.2 以来的科研助手迁移 0015–0019 已在旧版本中包含）；
+- 仓库路径变化：旧链接 `docs/competition/...`、`deployments/competition` 不再存在。
+
 ## [Unreleased]
 
 ### 变更
@@ -406,7 +428,8 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
-[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0.2...HEAD
+[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.0.0...HEAD
+[6.0.0]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0.2...v6.0.0
 [5.0.2]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0.1...v5.0.2
 [5.0.1]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0...v5.0.1
 [5.0]: https://github.com/XiaoleC05/CongoRAG/compare/v3.0...v5.0

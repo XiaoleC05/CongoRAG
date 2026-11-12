@@ -34,7 +34,7 @@ type Chunk struct {
 	Score      float64 // 余弦相似度，越大越相关
 	Filename   string  // 只有 Search 返回的 Chunk 会填这个字段
 
-	// 以下五个字段是参赛版「科研助手」新增的学术结构（migration 0015）。
+	// 以下五个字段是科研助手「科研助手」新增的学术结构（migration 0015）。
 	//
 	// 【为什么放在 domain.Chunk 而不是另建 PDFBlock 类型】检索、引用、
 	// 评测三条链路都直接消费 domain.Chunk——另建一个类型意味着每个消费者
@@ -48,7 +48,7 @@ type Chunk struct {
 	SectionPath []string  // 章节路径，如 ["3 Model Architecture", "3.2 Attention"]
 	BlockType   string    // heading|paragraph|formula|table|list|reference|caption|other
 
-	// 参赛版 M2：混合检索的两路原始分数（只在检索结果里填，索引输入时为零）。
+	// 科研助手 M2：混合检索的两路原始分数（只在检索结果里填，索引输入时为零）。
 	//
 	// 【为什么不复用 Score】Score 是"最终排序分"（现在是 RRF 融合分），
 	// 而这两列分别是向量余弦相似度、词法 ts_rank_cd——量纲不同、用途不同：
@@ -94,7 +94,7 @@ type Citation struct {
 	Snippet    string
 	Score      float64
 
-	// 参赛版新增：引用要能"跳到论文第几页、高亮哪一块"。
+	// 科研助手新增：引用要能"跳到论文第几页、高亮哪一块"。
 	//
 	// 【零值语义与 Chunk 一致】md/txt 文档这三个字段是零值，前端不渲染
 	// 页码按钮；PDF 才有。见 Chunk.IsAcademic。
@@ -136,7 +136,7 @@ type MessageSnippet struct {
 }
 
 
-// OutlineEntry 是论文阅读器左侧目录的一行（参赛版 M3）。
+// OutlineEntry 是论文阅读器左侧目录的一行（科研助手 M3）。
 //
 // 【为什么 Level 由 section_path 长度推出，而不是解析标题里的 3.2.1 编号】
 // 编号格式在不同出版社的 PDF 里差异很大（有的用 1.、有的用 A.、有的没有
@@ -148,7 +148,7 @@ type OutlineEntry struct {
 	Level int    // 1-based 层级 = len(section_path)
 }
 
-// ReferenceEntry 是论文参考文献的一条（参赛版 M5 引用图谱的基础节点）。
+// ReferenceEntry 是论文参考文献的一条（科研助手 M5 引用图谱的基础节点）。
 //
 // 【MatchedDocumentID/MatchedFilename 的意义】它表示"这条参考文献对应的
 // 论文也在当前知识库里"——只有这样，引用图谱才有跨文档的边。匹配靠标题

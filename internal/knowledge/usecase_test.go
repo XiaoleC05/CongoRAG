@@ -120,7 +120,7 @@ var _ DocRepo = (*fakeDocRepo)(nil)
 type fakeDocRepo struct {
 	docs []*Document
 
-	// outline 是 ListOutline 要返回的目录（参赛版 M3）。
+	// outline 是 ListOutline 要返回的目录（科研助手 M3）。
 	outline []domain.OutlineEntry
 	// references / chunks 是引用图谱（M5）测试的摆放值。
 	references []domain.ReferenceEntry
@@ -198,7 +198,7 @@ func (f *fakeDocRepo) UpdateStatus(ctx context.Context, q platform.Querier, id u
 }
 
 // UpdateParsedInfo 复刻真实实现的语义：只写文档级解析元信息，
-// 不改状态、不做 CAS。参赛版 ProcessDocument 在落库事务里调用它。
+// 不改状态、不做 CAS。科研助手 ProcessDocument 在落库事务里调用它。
 func (f *fakeDocRepo) UpdateParsedInfo(ctx context.Context, q platform.Querier, id uuid.UUID, pageCount int, parser string) error {
 	if f.failOn == "UpdateParsedInfo" {
 		return f.err

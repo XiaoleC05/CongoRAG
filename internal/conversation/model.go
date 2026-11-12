@@ -40,7 +40,7 @@ type Message struct {
 	CreatedAt      time.Time
 
 	// Citations / Grounding 是这一轮回答的引用与引用落地检查结果
-	//（参赛版，migration 0017）。刷新页面后前端靠它们渲染可点击的引用角标
+	//（科研助手，migration 0017）。刷新页面后前端靠它们渲染可点击的引用角标
 	// 与"已溯源/部分未溯源"徽标——SSE 只负责当轮实时性，持久化负责回看。
 	Citations []domain.Citation
 	Grounding *grounding.Report

@@ -104,7 +104,7 @@ func (r *fakeRows) Scan(dest ...any) error {
 	}
 	*filename = row.filename
 
-	// 参赛版新增的五列学术结构：这个假实现只服务 md/txt 那条查询，
+	// 科研助手新增的五列学术结构：这个假实现只服务 md/txt 那条查询，
 	// 所以统一给 NULL/默认值——正好覆盖"没有页码"这条零值路径。
 	pageStart, ok := dest[4].(**int)
 	if !ok {

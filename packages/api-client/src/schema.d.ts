@@ -955,7 +955,7 @@ export interface components {
              */
             lexicalScore: number | null;
         };
-        /** @description 参考文献的一条（参赛版 M5） */
+        /** @description 参考文献的一条（科研助手 M5） */
         ReferenceEntry: {
             /** @description 引文编号（[n] 里的 n）；解析不出来时为 0 */
             index: number;

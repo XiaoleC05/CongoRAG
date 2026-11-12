@@ -347,7 +347,7 @@ func TestSearchKnowledgeBase_MapsHits(t *testing.T) {
 	assert.Equal(t, docID, got.Hits[0].DocumentId)
 	assert.Equal(t, "a.pdf", got.Hits[0].Filename)
 	assert.Equal(t, "片段", got.Hits[0].Snippet)
-	// 参赛版：score 是 RRF 融合分（这一条只有向量一路，所以是 1/(60+1)），
+	// 科研助手：score 是 RRF 融合分（这一条只有向量一路，所以是 1/(60+1)），
 	// 原始余弦相似度在 vectorScore 里。
 	assert.InDelta(t, 1.0/61.0, got.Hits[0].Score, 0.0001)
 	require.NotNil(t, got.Hits[0].VectorScore)

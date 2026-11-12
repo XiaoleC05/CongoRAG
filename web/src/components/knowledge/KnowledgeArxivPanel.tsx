@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowDownToLine, Code2, ExternalLink, Sparkles, ThumbsDown, ThumbsUp } from 'lucide-react'
 
 import { ErrorText } from '@/components/ErrorText'
@@ -11,7 +11,7 @@ import {
 } from '@/hooks/useDocuments'
 
 /**
- * arXiv 最新论文推荐（参赛版 M4）。
+ * arXiv 最新论文推荐（科研助手 M4）。
  *
  * 后端用库内标题关键词查 arXiv，再按相关性/新近度/开源代码重排并给出理由；
  * 这里只负责展示与三个动作：赞、踩、下载入库。赞/踩持久化后，down 的
@@ -27,15 +27,20 @@ export function KnowledgeArxivPanel({ kbId }: { kbId: string }) {
   // 动态追踪：面板打开期间每 5 分钟自动刷新一次（关掉页面就停），
   // 同时记录上次刷新时间，避免用户不知道数据是不是新的。
   const [lastTrackedAt, setLastTrackedAt] = useState<Date | null>(null)
-  const refresh = rec.mutate
+  // mutate 的引用在 TanStack Query 里通常稳定，但不要把定时器绑在它上面：
+  // 用一个 ref 保留最新函数，interval 只挂载一次，避免每次渲染重置 5 分钟计时。
+  const refreshRef = useRef(rec.mutate)
+  useEffect(() => {
+    refreshRef.current = rec.mutate
+  }, [rec.mutate])
   useEffect(() => {
     const timer = window.setInterval(() => {
-      refresh(undefined, { onSuccess: () => setLastTrackedAt(new Date()) })
+      refreshRef.current(undefined, { onSuccess: () => setLastTrackedAt(new Date()) })
     }, 5 * 60 * 1000)
     return () => window.clearInterval(timer)
-  }, [refresh])
+  }, [])
   const items = rec.data?.items ?? []
-  const track = () => refresh(undefined, { onSuccess: () => setLastTrackedAt(new Date()) })
+  const track = () => rec.mutate(undefined, { onSuccess: () => setLastTrackedAt(new Date()) })
 
   const vote = (arxivId: string, v: 'up' | 'down') => {
     setVotes((prev) => ({ ...prev, [arxivId]: v }))

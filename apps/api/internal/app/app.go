@@ -162,7 +162,7 @@ func Run(webFS embed.FS) error {
 		pool,
 	)
 
-	// 参赛版：配置了 PDF 解析 sidecar 才接上。没配时 .pdf 上传会在
+	// 科研助手：配置了 PDF 解析 sidecar 才接上。没配时 .pdf 上传会在
 	// worker 处理阶段明确失败（落 failed 终态），md/txt 行为完全不变——
 	// 这样默认启动不依赖额外进程，评审环境少一个启动条件。
 	if cfg.PDFServiceURL != "" {
@@ -188,7 +188,7 @@ func Run(webFS embed.FS) error {
 		pool,
 	)
 
-	// 参赛版抗幻觉闸门：检索不到证据时固定拒答，不让模型自由发挥。
+	// 科研助手抗幻觉闸门：检索不到证据时固定拒答，不让模型自由发挥。
 	// 只在 api（聊天入口）打开；测试与其它装配保持旧行为，见 usecase.go
 	// noEvidenceRefusal 字段的注释。
 	convUC.SetNoEvidenceRefusal(true)
@@ -200,7 +200,7 @@ func Run(webFS embed.FS) error {
 	toolReg := agent.NewToolRegistry()
 	toolReg.Register(agent.NewCalculator())
 	toolReg.Register(agent.NewKnowledgeSearch(retrievalUC))
-	// 参赛版 M4：arXiv 论文检索（联网工具，只读、可重试）。
+	// 科研助手 M4：arXiv 论文检索（联网工具，只读、可重试）。
 	// 同一个客户端也给 HTTP 的"推荐/下钻入库"用，避免两处各建一个超时配置。
 	arxivClient := arxiv.NewClient()
 	toolReg.Register(agent.NewArxivSearch(arxivClient))

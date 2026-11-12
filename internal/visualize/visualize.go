@@ -1,4 +1,4 @@
-// Package visualize 把用户上传的 CSV 变成"可直接用于论文的图表描述"（参赛版 M6）。
+// Package visualize 把用户上传的 CSV 变成"可直接用于论文的图表描述"（科研助手 M6）。
 //
 // 【为什么在 Go 里做而不用 Python/pandas】图表需求只有三类（折线/柱状/雷达）、
 // 数据规模是论文表格级（几十行），解析 + 选列 + 生成 Mermaid/TikZ 代码

@@ -2137,7 +2137,7 @@ func TestSend_ClientError_ErrorFramePassesInnermostCause(t *testing.T) {
 func ptrTo(s string) *string { return &s }
 
 // ────────────────────────────────────────────────────────────────
-// 参赛版：无证据拒答 + grounding 事件
+// 科研助手：无证据拒答 + grounding 事件
 // ────────────────────────────────────────────────────────────────
 
 // 检索不到任何证据时，不允许模型自由发挥——直接给固定拒答文案，

@@ -454,7 +454,7 @@ export default function KnowledgeBaseDetailPage() {
         <KnowledgeSearchPanel kbId={kbId} />
       </section>
 
-      {/* 写作 Copilot（参赛版 M6）：先确认检索质量，再基于检索结果写作。 */}
+      {/* 写作 Copilot（科研助手 M6）：先确认检索质量，再基于检索结果写作。 */}
       <section className="mt-8">
         <h2 className="mb-3 text-base font-semibold">写作 Copilot</h2>
         <p className="text-muted-foreground mb-4 text-sm">
@@ -464,7 +464,7 @@ export default function KnowledgeBaseDetailPage() {
         <KnowledgeWritingPanel kbId={kbId} />
       </section>
 
-      {/* 多篇对比（参赛版 A6）：横向比较不同论文在同一问题上的观点与证据。 */}
+      {/* 多篇对比（科研助手 A6）：横向比较不同论文在同一问题上的观点与证据。 */}
       <section className="mt-8">
         <h2 className="mb-3 text-base font-semibold">多篇对比</h2>
         <p className="text-muted-foreground mb-4 text-sm">
@@ -474,7 +474,7 @@ export default function KnowledgeBaseDetailPage() {
         <KnowledgeComparePanel kbId={kbId} />
       </section>
 
-      {/* 引用图谱（参赛版 M5）：把库内论文的引用关系画出来，用 PageRank 挖基石论文。 */}
+      {/* 引用图谱（科研助手 M5）：把库内论文的引用关系画出来，用 PageRank 挖基石论文。 */}
       <section className="mt-8">
         <h2 className="mb-3 text-base font-semibold">引用图谱</h2>
         <p className="text-muted-foreground mb-4 text-sm">
@@ -484,7 +484,7 @@ export default function KnowledgeBaseDetailPage() {
         <KnowledgeCitationGraphPanel kbId={kbId} />
       </section>
 
-      {/* 数据可视化 Copilot（参赛版 M6）：CSV → 图表 + Mermaid/TikZ + 图注。 */}
+      {/* 数据可视化 Copilot（科研助手 M6）：CSV → 图表 + Mermaid/TikZ + 图注。 */}
       <section className="mt-8">
         <h2 className="mb-3 text-base font-semibold">数据可视化 Copilot</h2>
         <p className="text-muted-foreground mb-4 text-sm">
@@ -493,7 +493,7 @@ export default function KnowledgeBaseDetailPage() {
         <KnowledgeVisualizePanel />
       </section>
 
-      {/* arXiv 推荐（参赛版 M4）：按库内主题推荐最新论文，可赞/踩/下载入库。 */}
+      {/* arXiv 推荐（科研助手 M4）：按库内主题推荐最新论文，可赞/踩/下载入库。 */}
       <section className="mt-8">
         <h2 className="mb-3 text-base font-semibold">arXiv 推荐</h2>
         <p className="text-muted-foreground mb-4 text-sm">

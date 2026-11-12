@@ -8,7 +8,7 @@ import { flattenPages, nextPageParam } from '@/lib/pagination'
 export type WritingKind = 'related_work' | 'summary' | 'outline' | 'framework'
 
 /**
- * 写作 Copilot（参赛版 M6）：POST /knowledge-bases/{id}/writing。
+ * 写作 Copilot（科研助手 M6）：POST /knowledge-bases/{id}/writing。
  *
  * 【为什么用 useMutation】它是"点一次生成一次"的写操作（虽然不改库，
  * 但语义上是一次任务提交），没有"页面打开就该有草稿"的概念，用 mutation
@@ -36,7 +36,7 @@ export function useWritingDraft(kbId: string) {
   })
 }
 
-/** 参考文献条目（参赛版 M5 引用图谱）。 */
+/** 参考文献条目（科研助手 M5 引用图谱）。 */
 export type DocumentReference = {
   index: number
   text: string
@@ -66,7 +66,7 @@ export function useDocumentReferences(docId: string) {
 }
 
 /**
- * 多篇对比（参赛版 A6）：POST /knowledge-bases/{id}/compare。
+ * 多篇对比（科研助手 A6）：POST /knowledge-bases/{id}/compare。
  *
  * 输出是"对照表 + 综合结论 + 引用列表"，和写作草稿的形态不同，所以单独
  * 一个 mutation，不复用写作的 hook（两者的错误文案与结果渲染都不一样）。
@@ -89,7 +89,7 @@ export function useCompareDraft(kbId: string) {
 }
 
 /**
- * 阅读器目录（参赛版 M3）：GET /documents/{id}/outline。
+ * 阅读器目录（科研助手 M3）：GET /documents/{id}/outline。
  *
  * 【为什么单独一个 hook】目录只有在阅读器打开时才需要，且与文档列表的
  * 轮询无关；塞进列表查询会让每次轮询都白跑一遍目录。react-query 的 key
@@ -401,7 +401,7 @@ export function useKnowledgeSearch(kbId: string) {
 }
 
 /**
- * 写：处理"上传时检测到的重复"（参赛版 M1）。
+ * 写：处理"上传时检测到的重复"（科研助手 M1）。
  *
  * 服务端在 worker 处理完成后把 duplicateOf 挂在文档上；用户在这一页选择
  * 保留两者或覆盖旧版本。两个动作都会让文档的重复告警消失，所以成功后
@@ -426,7 +426,7 @@ export function useResolveDuplicate(kbId: string) {
 }
 
 /**
- * 引用图谱（参赛版 M5）：GET /knowledge-bases/{id}/citation-graph。
+ * 引用图谱（科研助手 M5）：GET /knowledge-bases/{id}/citation-graph。
  *
  * 【为什么是 mutation 而不是页面打开就查】图计算要遍历知识库里每篇文档的
  * 参考文献并做一次 PageRank；文档多时它明显比列表查询重。由用户点"生成"
@@ -446,7 +446,7 @@ export function useCitationGraph(kbId: string) {
 }
 
 /**
- * 数据可视化（参赛版 M6）：POST /api/v1/visualize。
+ * 数据可视化（科研助手 M6）：POST /api/v1/visualize。
  *
  * CSV 由前端读成文本传给后端；后端返回表格、图表描述、Mermaid/TikZ 代码
  * 与图注。图表本身用 SVG 画（不引图表库），代码块可直接复制进论文。

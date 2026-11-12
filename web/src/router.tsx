@@ -33,7 +33,7 @@ import NotFoundPage from '@/pages/NotFoundPage'
 // 只有几百字节，单独成 chunk 是净亏。
 const OnboardingPage = lazy(() => import('@/pages/OnboardingPage'))
 const KnowledgeBaseDetailPage = lazy(() => import('@/pages/KnowledgeBaseDetailPage'))
-// 参赛版：论文阅读器（点 citation 的页码跳进来，支持 bbox 高亮）
+// 科研助手：论文阅读器（点 citation 的页码跳进来，支持 bbox 高亮）
 const ReaderPage = lazy(() => import('@/pages/ReaderPage'))
 const ConversationsPage = lazy(() => import('@/pages/ConversationsPage'))
 const ConversationPage = lazy(() => import('@/pages/ConversationPage'))

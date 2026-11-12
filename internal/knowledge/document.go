@@ -82,14 +82,14 @@ type Document struct {
 	// 未处理完的文档是 0，不是"未知"。
 	ChunkCount int64
 
-	// PageCount / Parser 是参赛版「科研助手」新增的解析元信息（migration 0015）。
+	// PageCount / Parser 是科研助手「科研助手」新增的解析元信息（migration 0015）。
 	//
 	// 【零值语义】md/txt 文档 PageCount=0、Parser=""；PDF 解析后才有意义。
 	// 前端用 PageCount>0 判断要不要显示页数/页码跳转。
 	PageCount int
 	Parser    string
 
-	// ContentFingerprint / DuplicateOf / DuplicateDistance 是参赛版
+	// ContentFingerprint / DuplicateOf / DuplicateDistance 是科研助手
 	// 「上传时语义去重」字段（migration 0018）。
 	//
 	// 【为什么不存在 duplicate 表】"哪份文档和哪份重合"是文档行自身的属性：

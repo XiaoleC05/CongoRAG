@@ -43,7 +43,7 @@ function parseBBox(raw: string | null): BBox | null {
 }
 
 /**
- * 论文阅读器（参赛版）——点 citation 的「在原文中查看」跳到这里。
+ * 论文阅读器（科研助手）——点 citation 的「在原文中查看」跳到这里。
  *
  * 【为什么自己用 pdfjs-dist 而不是 react-pdf】只需要"渲染 + 页码跳转 + 一个
  * 高亮框"，react-pdf 多一层组件抽象反而不好控制 canvas 与 overlay 的像素
@@ -86,7 +86,7 @@ function ReaderView({
   const [pageNo, setPageNo] = useState(initialPage)
   const [scale, setScale] = useState(1.4)
   const [rendering, setRendering] = useState(false)
-  // 翻译面板（参赛版 M3）：把当前页文本抽出来交给后端，用当前 chat 模型翻译。
+  // 翻译面板（科研助手 M3）：把当前页文本抽出来交给后端，用当前 chat 模型翻译。
   const [translating, setTranslating] = useState(false)
   // 按页保存翻译与原文（state 而不是 ref：翻页/切双语时要触发渲染）。
   const [translations, setTranslations] = useState<Record<number, string>>({})
@@ -104,7 +104,7 @@ function ReaderView({
   } | null>(null)
   const hoverTimer = useRef<number | null>(null)
   const hoverCache = useRef(new Map<string, string>())
-  // 双语对照（参赛版 M3）：左 PDF / 右"原文 + 译文"双栏；翻页时两栏一起切到
+  // 双语对照（科研助手 M3）：左 PDF / 右"原文 + 译文"双栏；翻页时两栏一起切到
   // 该页（页级联动）。划词翻译在原文栏选中文字触发。
   const [bilingual, setBilingual] = useState(false)
   const [selection, setSelection] = useState<{
@@ -119,7 +119,7 @@ function ReaderView({
   const pageText = pageTexts[pageNo] ?? null
   const pageTextLoading = bilingual && pageText === null
 
-  // 章节目录（参赛版 M3）：点击某节直接把页码切过去。
+  // 章节目录（科研助手 M3）：点击某节直接把页码切过去。
   //
   // 【本地再声明一次形状，而不是依赖 Schemas】useQuery 的返回类型在这里
   // 退化成 any（见 useDocuments.ts 里的说明），而 JSX 的 map 回调参数是

@@ -137,7 +137,7 @@ func (u *Usecase) Search(ctx context.Context, req domain.SearchRequest) ([]domai
 		topK = u.topK
 	}
 
-	// ── 混合检索（参赛版 M2）：向量 + 词法两路召回，RRF 融合 ────────
+	// ── 混合检索（科研助手 M2）：向量 + 词法两路召回，RRF 融合 ────────
 	//
 	// 为什么不是"向量不够、加个词法兜底"：科研问答的高频查询是精确锚点型
 	// （"式 (3) 的 α 取值"、"Table 2 的 BLEU"、"引用 [11] 是谁"），BM25/FTS

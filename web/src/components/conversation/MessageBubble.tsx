@@ -12,7 +12,7 @@ type Props = {
   content: string
   citations?: DisplayCitation[]
   /**
-   * 引用落地检查结果（参赛版）。历史消息从 /messages 的持久化字段里来；
+   * 引用落地检查结果（科研助手）。历史消息从 /messages 的持久化字段里来；
    * 流式中的消息由对话页单独渲染（还没落库）。
    */
   grounding?: GroundingReport | null
@@ -95,7 +95,7 @@ function MessageBubbleImpl({ role, content, citations, grounding, pending }: Pro
           </div>
         )}
 
-        {/* 引用落地检查徽标（参赛版，migration 0017 持久化）：刷新页面之后
+        {/* 引用落地检查徽标（科研助手，migration 0017 持久化）：刷新页面之后
             仍然能看到这一轮回答的可信度，而不是只在流式当轮闪一下。 */}
         {!isUser && grounding ? (
           <span

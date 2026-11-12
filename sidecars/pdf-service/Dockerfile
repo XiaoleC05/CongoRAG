@@ -1,4 +1,4 @@
-# PDF 学术解析 sidecar（参赛版）
+# PDF 学术解析 sidecar（科研助手）
 #
 # 【为什么单独一个镜像】解析依赖 PyMuPDF + RapidOCR（torch-free 的 onnx
 # 版本），和 Go 镜像的构建链路完全不同；放同一个镜像里会让 api 镜像多出

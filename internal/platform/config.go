@@ -43,7 +43,7 @@ type Config struct {
 	// 根目录这个字符串，不会回头再读 Config，所以换目录只需改这里）。
 	DocumentsDir string
 
-	// PDFServiceURL 是参赛版 PDF 解析 sidecar 的地址（如 http://127.0.0.1:8000）。
+	// PDFServiceURL 是科研助手 PDF 解析 sidecar 的地址（如 http://127.0.0.1:8000）。
 	//
 	// 【空字符串 = 关闭 PDF 通道】不设时 .pdf 上传会在 worker 处理阶段
 	// 落 failed 终态（明确报"没有配置解析器"），md/txt 完全不受影响。

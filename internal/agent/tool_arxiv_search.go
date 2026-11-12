@@ -20,7 +20,7 @@ type ArxivSearcher interface {
 	Search(ctx context.Context, query string, maxResults int) ([]arxiv.Paper, error)
 }
 
-// ArxivSearch 让 Agent 能检索 arXiv 预印本（参赛版 M4）。
+// ArxivSearch 让 Agent 能检索 arXiv 预印本（科研助手 M4）。
 //
 // 【为什么是独立工具而不是塞进 knowledge_search】两者的数据源、可靠性、
 // 语义都不同：知识库检索的是"用户已上传的文档"，arXiv 检索的是"互联网

@@ -76,13 +76,13 @@ citation     一次引用命中。data: {"chunkId": string, "documentId": string
                               "filename": string, "snippet": string, "score": number,
                               "page": int|null, "pageEnd": int|null,
                               "bbox": [x0,y0,x1,y1]|null, "sectionPath": [string]|null}
-             **参赛版新增后四个字段**（migration 0015 / PDF 学术解析）：
+             **科研助手新增后四个字段**（migration 0015 / PDF 学术解析）：
              page 是 1-based 物理页码，bbox 是归一化 0~1、左上原点，
              sectionPath 是章节路径。md/txt 文档这四个字段为 null——
              与 REST 的 KnowledgeSearchHit 同一套零值约定，前端一条分支处理。
 tool_call    工具调用请求（M4-A 才会出现）。data: {"id": string, "name": string, "args": object}
 tool_result  工具调用结果（M4-A 才会出现）。data: {"id": string, "result": unknown}
-grounding    引用落地检查（参赛版）。data: {"sentences": int, "cited": int,
+grounding    引用落地检查（科研助手）。data: {"sentences": int, "cited": int,
              "unsupported": int, "refs": int, "validRefs": int, "valid": bool}
              在 done 之前发出：句子级统计回答里的 [n] 标记是否都能对应到
              本次下发的 citation。valid=false 表示有句子没引用或编号越界，

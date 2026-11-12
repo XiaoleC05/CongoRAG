@@ -76,7 +76,7 @@ func (r *PgRepo) InsertChunks(ctx context.Context, q platform.Querier, docID uui
 // id 和它自己的向量。
 func (r *PgRepo) insertChunkBatch(ctx context.Context, q platform.Querier, docID uuid.UUID, chunks []domain.Chunk, vecs [][]float32, model string) error {
 	var sql strings.Builder
-	// 参赛版加了五列学术结构（migration 0015）：page_start/page_end/bbox/
+	// 科研助手加了五列学术结构（migration 0015）：page_start/page_end/bbox/
 	// section_path/block_type。md/txt 文档这五列是 NULL/默认值，行为与原来一致。
 	sql.WriteString(`INSERT INTO document_chunks
 		(id, document_id, content, embedding, embedding_model,

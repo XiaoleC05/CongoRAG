@@ -886,7 +886,7 @@ type ProviderWithModels struct {
 	RequeuedDocuments *int `json:"requeuedDocuments,omitempty"`
 }
 
-// ReferenceEntry 参考文献的一条（参赛版 M5）
+// ReferenceEntry 参考文献的一条（科研助手 M5）
 type ReferenceEntry struct {
 	// Index 引文编号（[n] 里的 n）；解析不出来时为 0
 	Index int `json:"index"`

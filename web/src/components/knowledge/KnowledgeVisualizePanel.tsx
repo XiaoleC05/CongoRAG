@@ -139,7 +139,7 @@ function ChartPreview({
 }
 
 /**
- * 数据可视化 Copilot（参赛版 M6）：CSV → 表格 + 图表 + Mermaid/TikZ + 图注。
+ * 数据可视化 Copilot（科研助手 M6）：CSV → 表格 + 图表 + Mermaid/TikZ + 图注。
  */
 export function KnowledgeVisualizePanel() {
   const [csv, setCsv] = useState(SAMPLE_CSV)

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { useCitationGraph, useCitationSurvey } from '@/hooks/useDocuments'
 
 /**
- * 局域引用图谱（参赛版 M5）。
+ * 局域引用图谱（科研助手 M5）。
  *
  * 后端把"每篇文档的参考文献命中库内标题"聚合成有向图并算 PageRank；
  * 这一块只做两件事：用 SVG 把图摆出来，把 PageRank 最高的几篇列成

@@ -191,7 +191,7 @@ export default function ConversationPage() {
             />
           )}
 
-          {/* 参赛版：引用落地检查徽标。done 之前后端发一条 grounding 事件，
+          {/* 科研助手：引用落地检查徽标。done 之前后端发一条 grounding 事件，
               句子级统计回答里的 [n] 是否都能对应到本次下发的 citation——
               把"抗幻觉"从形容词变成可展示的数字。 */}
           {groundingReport !== null && (

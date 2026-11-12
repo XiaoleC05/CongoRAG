@@ -96,7 +96,7 @@ export function CitationBadge({ index, citation }: { index: number; citation: Di
               <span>相似度 {(citation.score * 100).toFixed(0)}%</span>
               {citation.page != null && citation.page > 0 ? (
                 <span className="text-foreground/80">
-                  {/* 参赛版：PDF 分块才有页码。跳转由阅读器接手（见 ReaderPage） */}
+                  {/* 科研助手：PDF 分块才有页码。跳转由阅读器接手（见 ReaderPage） */}
                   第 {citation.page} 页
                   {citation.pageEnd != null && citation.pageEnd > citation.page
                     ? '–' + citation.pageEnd
