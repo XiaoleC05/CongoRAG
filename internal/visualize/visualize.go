@@ -45,11 +45,12 @@ type Chart struct {
 
 // Result 是一次可视化生成的全部产物。
 type Result struct {
-	Table   Table  `json:"table"`
-	Chart   Chart  `json:"chart"`
-	Mermaid string `json:"mermaid"`
-	TikZ    string `json:"tikz"`
-	Caption string `json:"caption"`
+	Table      Table  `json:"table"`
+	Chart      Chart  `json:"chart"`
+	Mermaid    string `json:"mermaid"`
+	TikZ       string `json:"tikz"`
+	Matplotlib string `json:"matplotlib"`
+	Caption    string `json:"caption"`
 }
 
 // Build 解析 CSV 并生成图表描述、Mermaid/TikZ 代码与兜底图注。
@@ -100,11 +101,12 @@ func Build(csvText, chartType, title string) (*Result, error) {
 	}
 
 	return &Result{
-		Table:   table,
-		Chart:   chart,
-		Mermaid: mermaid(chart),
-		TikZ:    tikz(chart),
-		Caption: FallbackCaption(chart),
+		Table:      table,
+		Chart:      chart,
+		Mermaid:    mermaid(chart),
+		TikZ:       tikz(chart),
+		Matplotlib: matplotlib(chart),
+		Caption:    FallbackCaption(chart),
 	}, nil
 }
 
@@ -372,4 +374,60 @@ func escapeMermaid(s string) string {
 func escapeTeX(s string) string {
 	r := strings.NewReplacer("_", "\\_", "&", "\\&", "%", "\\%", "#", "\\#", "$", "\\$", "{", "\\{", "}", "\\}")
 	return r.Replace(s)
+}
+
+// matplotlib 生成可直接运行的 Python/Matplotlib 绘图脚本（M6 官方示例之一）。
+// 折线/柱状用常规 axes，雷达图用 polar；输出 figure.png（300dpi）。
+func matplotlib(chart Chart) string {
+	var b strings.Builder
+	b.WriteString("import matplotlib.pyplot as plt\n")
+	if chart.Type == "radar" {
+		b.WriteString("import numpy as np\n\n")
+	}
+	b.WriteString("labels = " + pyStringList(chart.Categories) + "\n")
+	for i, s := range chart.Series {
+		fmt.Fprintf(&b, "series_%d = %s\n", i, pyFloatList(s.Values))
+	}
+	b.WriteString("\n")
+	if chart.Type == "radar" {
+		b.WriteString("angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()\n")
+		b.WriteString("angles += angles[:1]\n")
+		b.WriteString("fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))\n")
+		for i, s := range chart.Series {
+			fmt.Fprintf(&b, "values = series_%d + series_%d[:1]\n", i, i)
+			fmt.Fprintf(&b, "ax.plot(angles, values, label=%q)\n", s.Name)
+			b.WriteString("ax.fill(angles, values, alpha=0.15)\n")
+		}
+		b.WriteString("ax.set_xticks(angles[:-1])\nax.set_xticklabels(labels)\n")
+	} else {
+		b.WriteString("fig, ax = plt.subplots(figsize=(8, 4.5))\n")
+		for i, s := range chart.Series {
+			if chart.Type == "line" {
+				fmt.Fprintf(&b, "ax.plot(labels, series_%d, marker='o', label=%q)\n", i, s.Name)
+			} else {
+				fmt.Fprintf(&b, "ax.bar(labels, series_%d, label=%q)\n", i, s.Name)
+			}
+		}
+		b.WriteString("ax.set_xlabel('类别')\n")
+	}
+	fmt.Fprintf(&b, "ax.set_ylabel(%q)\n", chart.YLabel)
+	fmt.Fprintf(&b, "ax.set_title(%q)\n", chart.Title)
+	b.WriteString("ax.legend()\nfig.tight_layout()\nfig.savefig('figure.png', dpi=300)\n")
+	return b.String()
+}
+
+func pyStringList(xs []string) string {
+	parts := make([]string, len(xs))
+	for i, x := range xs {
+		parts[i] = "'" + strings.ReplaceAll(strings.ReplaceAll(x, "\\", "\\\\"), "'", "\\'") + "'"
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+func pyFloatList(xs []float64) string {
+	parts := make([]string, len(xs))
+	for i, x := range xs {
+		parts[i] = strconv.FormatFloat(x, 'f', -1, 64)
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
 }

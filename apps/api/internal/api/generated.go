@@ -318,6 +318,7 @@ func (e VisualizeRequestChartType) Valid() bool {
 
 // Defines values for WritingRequestKind.
 const (
+	Framework   WritingRequestKind = "framework"
 	Outline     WritingRequestKind = "outline"
 	RelatedWork WritingRequestKind = "related_work"
 	Summary     WritingRequestKind = "summary"
@@ -326,6 +327,8 @@ const (
 // Valid indicates whether the value is a known member of the WritingRequestKind enum.
 func (e WritingRequestKind) Valid() bool {
 	switch e {
+	case Framework:
+		return true
 	case Outline:
 		return true
 	case RelatedWork:
@@ -1055,6 +1058,9 @@ type VisualizeResult struct {
 	Caption string         `json:"caption"`
 	Chart   VisualizeChart `json:"chart"`
 
+	// Matplotlib Python / Matplotlib 绘图代码
+	Matplotlib string `json:"matplotlib"`
+
 	// Mermaid Mermaid xychart-beta 代码
 	Mermaid string         `json:"mermaid"`
 	Table   VisualizeTable `json:"table"`
@@ -1078,7 +1084,8 @@ type VisualizeTable struct {
 // WritingRequest defines model for WritingRequest.
 type WritingRequest struct {
 	// Kind related_work = 相关工作综述段；summary = 摘要/要点总结；
-	// outline = 章节提纲
+	// outline = 章节提纲；framework = 完整论文框架
+	// （Abstract / Introduction / Related Work / References）
 	Kind WritingRequestKind `json:"kind"`
 
 	// TopK 检索多少条依据（默认 6）
@@ -1089,7 +1096,8 @@ type WritingRequest struct {
 }
 
 // WritingRequestKind related_work = 相关工作综述段；summary = 摘要/要点总结；
-// outline = 章节提纲
+// outline = 章节提纲；framework = 完整论文框架
+// （Abstract / Introduction / Related Work / References）
 type WritingRequestKind string
 
 // WritingResponse defines model for WritingResponse.

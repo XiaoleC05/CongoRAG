@@ -2118,7 +2118,7 @@ components:
 
     VisualizeResult:
       type: object
-      required: [table, chart, mermaid, tikz, caption]
+      required: [table, chart, mermaid, tikz, matplotlib, caption]
       properties:
         table:
           $ref: '#/components/schemas/VisualizeTable'
@@ -2130,6 +2130,9 @@ components:
         tikz:
           type: string
           description: pgfplots/TikZ 代码
+        matplotlib:
+          type: string
+          description: Python / Matplotlib 绘图代码
         caption:
           type: string
           description: 学术图注（LLM 润色，失败时确定性兜底）
@@ -2211,10 +2214,11 @@ components:
           description: 写作主题（如"Transformer 的高效注意力机制"）
         kind:
           type: string
-          enum: [related_work, summary, outline]
+          enum: [related_work, summary, outline, framework]
           description: |
             related_work = 相关工作综述段；summary = 摘要/要点总结；
-            outline = 章节提纲
+            outline = 章节提纲；framework = 完整论文框架
+            （Abstract / Introduction / Related Work / References）
         topK:
           type: integer
           minimum: 1

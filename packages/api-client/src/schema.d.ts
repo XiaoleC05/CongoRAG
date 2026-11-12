@@ -1103,6 +1103,8 @@ export interface components {
             mermaid: string;
             /** @description pgfplots/TikZ 代码 */
             tikz: string;
+            /** @description Python / Matplotlib 绘图代码 */
+            matplotlib: string;
             /** @description 学术图注（LLM 润色，失败时确定性兜底） */
             caption: string;
         };
@@ -1144,10 +1146,11 @@ export interface components {
             topic: string;
             /**
              * @description related_work = 相关工作综述段；summary = 摘要/要点总结；
-             *     outline = 章节提纲
+             *     outline = 章节提纲；framework = 完整论文框架
+             *     （Abstract / Introduction / Related Work / References）
              * @enum {string}
              */
-            kind: "related_work" | "summary" | "outline";
+            kind: "related_work" | "summary" | "outline" | "framework";
             /** @description 检索多少条依据（默认 6） */
             topK?: number;
         };

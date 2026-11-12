@@ -91,6 +91,8 @@ function ReaderView({
   const [translations, setTranslations] = useState<Record<number, string>>({})
   const [pageTexts, setPageTexts] = useState<Record<number, string>>({})
   const [translateError, setTranslateError] = useState<unknown>(null)
+  // 学术翻译目标语言（M6 要求中文摘要/全文→学术英文）：双语/整页翻译共用。
+  const [targetLang, setTargetLang] = useState<'zh-CN' | 'en'>('zh-CN')
   // 双语对照（参赛版 M3）：左 PDF / 右"原文 + 译文"双栏；翻页时两栏一起切到
   // 该页（页级联动）。划词翻译在原文栏选中文字触发。
   const [bilingual, setBilingual] = useState(false)
@@ -118,6 +120,23 @@ function ReaderView({
   const { data: references } = useDocumentReferences(id)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  // 双语对照的两栏滚动同步：原文栏 ↔ 译文栏按滚动比例联动（官方 M3 要求
+  // “中英对比阅读模式，两侧页面拖动时自动同步滚动”）。
+  const originalTextRef = useRef<HTMLParagraphElement | null>(null)
+  const translationTextRef = useRef<HTMLParagraphElement | null>(null)
+  const syncingScroll = useRef(false)
+
+  const syncScroll = useCallback((from: HTMLElement | null, to: HTMLElement | null) => {
+    if (!from || !to || syncingScroll.current) return
+    const fromRange = from.scrollHeight - from.clientHeight
+    const toRange = to.scrollHeight - to.clientHeight
+    if (fromRange <= 0 || toRange <= 0) return
+    syncingScroll.current = true
+    to.scrollTop = (from.scrollTop / fromRange) * toRange
+    requestAnimationFrame(() => {
+      syncingScroll.current = false
+    })
+  }, [])
 
   // 文档元信息：文件名、页数、回到知识库的链接。
   useEffect(() => {
@@ -253,7 +272,7 @@ function ReaderView({
       const res = await fetch('/api/v1/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, targetLang: 'zh-CN' }),
+        body: JSON.stringify({ text, targetLang }),
       })
       if (!res.ok) throw new Error('HTTP ' + res.status)
       const data = (await res.json()) as { translation: string }
@@ -263,7 +282,7 @@ function ReaderView({
     } finally {
       setTranslating(false)
     }
-  }, [pdf, pageNo, loadPageText])
+  }, [pdf, pageNo, loadPageText, targetLang])
 
   // 划词翻译：在双语对照的"原文"栏里选中一段，自动请求该段的译文。
   const handleSelectionTranslate = useCallback(async () => {
@@ -275,7 +294,7 @@ function ReaderView({
       const res = await fetch('/api/v1/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: clipped, targetLang: 'zh-CN' }),
+        body: JSON.stringify({ text: clipped, targetLang }),
       })
       if (!res.ok) throw new Error('HTTP ' + res.status)
       const data = (await res.json()) as { translation: string }
@@ -283,7 +302,7 @@ function ReaderView({
     } catch {
       setSelection({ text: clipped, translation: '翻译失败，请重试', loading: false })
     }
-  }, [])
+  }, [targetLang])
 
   // 错误态统一在下面渲染：页面只能有一个 <h1>（headingStructure.test.ts 钉着
   // 这条规范），所以不能每个分支各写一个 return + h1。
@@ -502,8 +521,23 @@ function ReaderView({
           {bilingual || translation !== null || translateError !== null ? (
             <aside className="hidden w-96 shrink-0 overflow-auto border-l p-4 lg:block">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium">
-                  {bilingual ? '双语对照' : '译文'} · 第 {pageNo} 页
+                <div className="flex items-center gap-2 text-xs font-medium">
+                  <span>{bilingual ? '双语对照' : '译文'} · 第 {pageNo} 页</span>
+                  <select
+                    aria-label="翻译目标语言"
+                    className="border-input bg-background rounded border px-1 py-0.5 text-xs"
+                    value={targetLang}
+                    onChange={(e) => {
+                      const next = e.target.value as 'zh-CN' | 'en'
+                      setTargetLang(next)
+                      // 翻译缓存按页只存一种目标语言；切换后清空，避免张冠李戴。
+                      setTranslations({})
+                      setSelection(null)
+                    }}
+                  >
+                    <option value="zh-CN">中文</option>
+                    <option value="en">English</option>
+                  </select>
                 </div>
                 <button
                   type="button"
@@ -528,8 +562,10 @@ function ReaderView({
                       {pageTextLoading ? <span>提取中…</span> : null}
                     </div>
                     <p
+                      ref={originalTextRef}
                       className="max-h-72 overflow-auto text-sm leading-relaxed whitespace-pre-wrap select-text"
                       onMouseUp={() => void handleSelectionTranslate()}
+                      onScroll={() => syncScroll(originalTextRef.current, translationTextRef.current)}
                     >
                       {pageText ?? (pageTextLoading ? '正在提取本页文本…' : '本页没有可提取的文字')}
                     </p>
@@ -571,7 +607,11 @@ function ReaderView({
                         <ErrorText error={translateError} />
                       </p>
                     ) : (
-                      <p className="max-h-72 overflow-auto text-sm leading-relaxed whitespace-pre-wrap">
+                      <p
+                        ref={translationTextRef}
+                        className="max-h-72 overflow-auto text-sm leading-relaxed whitespace-pre-wrap"
+                        onScroll={() => syncScroll(translationTextRef.current, originalTextRef.current)}
+                      >
                         {translation ?? '当前页还没有译文，点"翻译本页"生成。翻页时会自动复用已缓存的译文。'}
                       </p>
                     )}

@@ -15,6 +15,7 @@ const KINDS: { value: WritingKind; label: string; hint: string }[] = [
   { value: 'related_work', label: '相关工作综述', hint: '按方法脉络组织的一段综述' },
   { value: 'summary', label: '摘要式总结', hint: '200~300 字概括核心方法与结论' },
   { value: 'outline', label: '章节提纲', hint: 'Markdown 多级列表的写作骨架' },
+  { value: 'framework', label: '完整论文框架', hint: 'Abstract / Introduction / Related Work / References 一体化框架' },
 ]
 
 /**

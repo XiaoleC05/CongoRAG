@@ -526,9 +526,10 @@ func (s *Server) VisualizeCSV(c *gin.Context) {
 			Categories: res.Chart.Categories,
 			Series:     series,
 		},
-		Mermaid: res.Mermaid,
-		Tikz:    res.TikZ,
-		Caption: res.Caption,
+		Mermaid:    res.Mermaid,
+		Tikz:       res.TikZ,
+		Matplotlib: res.Matplotlib,
+		Caption:    res.Caption,
 	})
 }
 
@@ -1934,6 +1935,10 @@ func buildWritingPrompt(kind, topic string, chunks []domain.Chunk) (system, user
 		task = "写一段 200~300 字的摘要式总结，概括这些资料的核心方法与结论"
 	case "outline":
 		task = "写一份章节提纲（Markdown 多级列表），覆盖资料涉及的主要主题与它们之间的关系"
+	case "framework":
+		task = "写一份完整的论文框架（Markdown）：包含 Abstract、Introduction、Related Work、" +
+			"Method（分点提纲）、Experiments（分点提纲）、Conclusion 与 References；" +
+			"References 只能列资料中出现过的真实文献，写不出完整条目时保留可核对的标题/年份/来源，不要编造"
 	default: // related_work
 		task = "写一段 300~500 字的「相关工作」综述，按方法脉络组织（不要逐篇罗列），指出各方法的差异与联系"
 	}

@@ -5,7 +5,7 @@ import type { Schemas } from '@congorag/api-client'
 import { flattenPages, nextPageParam } from '@/lib/pagination'
 
 /** 写作草稿的类型（与契约的 enum 一致）。 */
-export type WritingKind = 'related_work' | 'summary' | 'outline'
+export type WritingKind = 'related_work' | 'summary' | 'outline' | 'framework'
 
 /**
  * 写作 Copilot（参赛版 M6）：POST /knowledge-bases/{id}/writing。

@@ -265,11 +265,15 @@ export function KnowledgeVisualizePanel() {
             </div>
           </div>
 
-          {(['mermaid', 'tikz'] as const).map((key) => (
+          {(['mermaid', 'tikz', 'matplotlib'] as const).map((key) => (
             <div key={key} className="border-border rounded-xl border p-4">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-muted-foreground text-xs">
-                  {key === 'mermaid' ? 'Mermaid（xychart-beta）' : 'TikZ / pgfplots'}
+                  {key === 'mermaid'
+                    ? 'Mermaid（xychart-beta）'
+                    : key === 'tikz'
+                      ? 'TikZ / pgfplots'
+                      : 'Python / Matplotlib'}
                 </span>
                 <Button size="sm" variant="outline" onClick={() => copy(key, result[key])}>
                   <Copy />
