@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import * as pdfjs from 'pdfjs-dist'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
@@ -93,6 +94,16 @@ function ReaderView({
   const [translateError, setTranslateError] = useState<unknown>(null)
   // 学术翻译目标语言（M6 要求中文摘要/全文→学术英文）：双语/整页翻译共用。
   const [targetLang, setTargetLang] = useState<'zh-CN' | 'en'>('zh-CN')
+  // 悬停翻译（官方 M3 的“局部划词/悬停翻译”）：鼠标停在原文句子上时，
+  // 450ms 后翻译该句并浮层展示；划词仍然优先（有选中就不触发悬停）。
+  const [hover, setHover] = useState<{
+    x: number
+    y: number
+    text: string
+    translation: string | null
+  } | null>(null)
+  const hoverTimer = useRef<number | null>(null)
+  const hoverCache = useRef(new Map<string, string>())
   // 双语对照（参赛版 M3）：左 PDF / 右"原文 + 译文"双栏；翻页时两栏一起切到
   // 该页（页级联动）。划词翻译在原文栏选中文字触发。
   const [bilingual, setBilingual] = useState(false)
@@ -302,6 +313,71 @@ function ReaderView({
     } catch {
       setSelection({ text: clipped, translation: '翻译失败，请重试', loading: false })
     }
+  }, [targetLang])
+
+  // 悬停翻译：取鼠标下的句子，450ms 防抖后请求翻译；同一句只请求一次。
+  const hoverTextRef = useRef('')
+  const clearHover = useCallback(() => {
+    if (hoverTimer.current !== null) {
+      window.clearTimeout(hoverTimer.current)
+      hoverTimer.current = null
+    }
+    hoverTextRef.current = ''
+    setHover(null)
+  }, [])
+  const handleHoverMove = useCallback((e: ReactMouseEvent<HTMLParagraphElement>) => {
+    const selected = window.getSelection()?.toString().trim() ?? ''
+    if (selected.length >= 2) return
+    const range = (
+      document as Document & {
+        caretRangeFromPoint?: (x: number, y: number) => Range | null
+      }
+    ).caretRangeFromPoint?.(e.clientX, e.clientY)
+    const node = range?.startContainer
+    if (!node || node.nodeType !== Node.TEXT_NODE) return
+    const full = node.textContent ?? ''
+    const offset = range?.startOffset ?? 0
+    let start = 0
+    let end = full.length
+    for (let i = offset - 1; i >= 0; i -= 1) {
+      if ('.!?。！？；;\n'.includes(full[i])) {
+        start = i + 1
+        break
+      }
+    }
+    for (let i = offset; i < full.length; i += 1) {
+      if ('.!?。！？；;\n'.includes(full[i])) {
+        end = i + 1
+        break
+      }
+    }
+    const sentence = full.slice(start, end).trim().slice(0, 300)
+    if (sentence.length < 4 || sentence === hoverTextRef.current) return
+    hoverTextRef.current = sentence
+    const { clientX: x, clientY: y } = e
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current)
+    hoverTimer.current = window.setTimeout(() => {
+      const cached = hoverCache.current.get(sentence)
+      if (cached) {
+        setHover({ x, y, text: sentence, translation: cached })
+        return
+      }
+      setHover({ x, y, text: sentence, translation: null })
+      void fetch('/api/v1/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: sentence, targetLang }),
+      })
+        .then(async (res) => {
+          if (!res.ok) throw new Error('HTTP ' + res.status)
+          const data = (await res.json()) as { translation: string }
+          hoverCache.current.set(sentence, data.translation)
+          setHover((prev) => (prev?.text === sentence ? { ...prev, translation: data.translation } : prev))
+        })
+        .catch(() => {
+          setHover((prev) => (prev?.text === sentence ? { ...prev, translation: '翻译失败，请重试' } : prev))
+        })
+    }, 450)
   }, [targetLang])
 
   // 错误态统一在下面渲染：页面只能有一个 <h1>（headingStructure.test.ts 钉着
@@ -565,6 +641,8 @@ function ReaderView({
                       ref={originalTextRef}
                       className="max-h-72 overflow-auto text-sm leading-relaxed whitespace-pre-wrap select-text"
                       onMouseUp={() => void handleSelectionTranslate()}
+                      onMouseMove={handleHoverMove}
+                      onMouseLeave={clearHover}
                       onScroll={() => syncScroll(originalTextRef.current, translationTextRef.current)}
                     >
                       {pageText ?? (pageTextLoading ? '正在提取本页文本…' : '本页没有可提取的文字')}
@@ -624,6 +702,19 @@ function ReaderView({
               ) : (
                 <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap">{translation}</p>
               )}
+
+              {hover ? (
+                <div
+                  className="bg-popover text-popover-foreground fixed z-50 w-80 rounded-lg border p-2 text-xs shadow-lg"
+                  style={{
+                    left: Math.min(hover.x + 12, window.innerWidth - 340),
+                    top: Math.min(hover.y + 16, window.innerHeight - 120),
+                  }}
+                >
+                  <p className="text-muted-foreground line-clamp-2">{hover.text}</p>
+                  <p className="mt-1 leading-relaxed">{hover.translation ?? '翻译中…'}</p>
+                </div>
+              ) : null}
             </aside>
           ) : null}
         </div>
