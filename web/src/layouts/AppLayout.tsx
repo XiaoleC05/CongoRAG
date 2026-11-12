@@ -88,6 +88,15 @@ export default function AppLayout() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
+          {/* 备案号必须展示在网站底部并链接工信部（ICP 备案要求）。 */}
+          <a
+            href="https://beian.miit.gov.cn/"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-muted-foreground hover:text-foreground block px-2 py-1 text-[11px] leading-tight group-data-[collapsible=icon]:hidden"
+          >
+            鲁ICP备2026038838号-2
+          </a>
         </SidebarFooter>
 
         <SidebarRail />
