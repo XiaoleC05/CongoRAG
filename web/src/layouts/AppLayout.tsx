@@ -113,10 +113,7 @@ export default function AppLayout() {
             侧栏用固定宽度，主区域里有长表格/长代码块时不会把它撑变形。 */}
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
-          <span className="font-serif text-sm font-semibold sm:hidden">CongoRAG</span>
-          <span className="text-muted-foreground hidden text-xs sm:inline">CongoRAG /</span>
           <span className="truncate text-sm font-medium">{current ?? '科研助手'}</span>
-          <span className="text-muted-foreground ml-auto hidden text-xs md:inline">可溯源 · 抗幻觉</span>
         </header>
         {/* 【为什么是 div 而不是 <main>（issue #94 顺手修的）】页面上已经有一个
             <main> 了：shadcn 的 SidebarInset 自己就渲染一个 `<main>`（见
@@ -149,7 +146,7 @@ export default function AppLayout() {
         </div>
         {/* 备案号展示在页面底部并链接工信部（ICP 备案要求）；公安备案通过后在此补链接。 */}
         <footer className="text-muted-foreground flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t px-4 py-2 text-[11px] leading-tight">
-          <span>CongoRAG 科研助手 · 个人技术展示</span>
+          <span>CongoRAG 科研助手</span>
           <span className="flex flex-wrap items-center gap-3">
             <a
               href="https://beian.miit.gov.cn/"
