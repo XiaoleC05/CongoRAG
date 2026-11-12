@@ -820,7 +820,7 @@ func (s *Server) GetCitationSurvey(c *gin.Context, id openapi_types.UUID) {
 	for _, e := range graph.Edges {
 		rels.WriteString("- " + filename[e.From] + " 引用了 " + filename[e.To] + "（" + strconv.Itoa(e.Weight) + " 条参考文献）\n")
 	}
-	system := "你是学术综述助手。基于给定的库内论文片段与引用关系，用中文写一份 400-600 字的领域综述（Markdown，包含研究脉络、代表工作、引用关系），然后给出 3 条 Future Work 方向。只能使用给定材料，不要编造未出现的论文或结论；材料不足时明确说明。"
+	system := "你是学术综述助手。基于给定的库内论文片段与引用关系，用中文写一份 400-600 字的领域综述（Markdown，包含研究脉络、代表工作、引用关系），然后给出 3 条 Future Work 方向。对于 Future Work，请结合论文标题/编号中的年份线索区分【仍开放】与【可能已被后续论文覆盖】，无法判断时标注「不确定」；只能使用给定材料，不要编造未出现的论文或结论；材料不足时明确说明。"
 	user := "关注方向：" + focus + "\n\n论文片段：\n" + docs.String() + "\n引用关系：\n" + rels.String() + "\n请输出综述 + Future Work。"
 	markdown, err := s.deps.LLM.Generate(ctx, system, user)
 	if err != nil {

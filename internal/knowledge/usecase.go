@@ -1059,7 +1059,7 @@ func genericOutlineTitle(title string) bool {
 	return false
 }
 
-var sectionNumberPattern = regexp.MustCompile(`^\s*\d+(\.\d+)*\s+`)
+var sectionNumberPattern = regexp.MustCompile(`^\s*\d+(\.\d+)*[.)]?\s+`)
 
 // isSectionHeading 判断一个 outline 标题是否只是编号节标题；
 // 这类标题不该拿来当引用图谱的节点标签（BERT/DeiT 的解析结果就是例子）。
