@@ -219,6 +219,24 @@ embedding 模型的维度决定向量列的形状：HNSW 索引在 BYOK 引导�
 | 测试 | Go test + testify；Vitest + Testing Library；oxlint |
 | 交付 | 前端产物 `go:embed` 进单个 Go 二进制，两个进程（api / worker） |
 
+### 依赖清单
+
+| 组件 | 版本 / 文件 | 说明 |
+| --- | --- | --- |
+| Go | 1.26（见 `go.mod`） | api / worker |
+| Node.js | 22（见 `.nvmrc` / CI） | 前端构建 |
+| pnpm | 11（见 `packageManager` / `pnpm-lock.yaml`） | 依赖锁定 |
+| PostgreSQL | 16+（推荐 18，见 Dockerfile / compose） | 需要 pgvector 0.8.6 |
+| pgvector | 0.8.6（`halfvec` + HNSW） | 迁移 0016 |
+| PDF sidecar | Python 3.11+，`sidecars/pdf-service/requirements.txt` | FastAPI + PyMuPDF |
+| 扫描件 OCR（可选） | `sidecars/pdf-service/requirements-ocr.txt` | RapidOCR，不装则仅文本层 |
+| Go 模块 | `go.sum` | `go mod download` |
+| 前端依赖 | `pnpm-lock.yaml` | `pnpm install --frozen-lockfile` |
+
+环境变量模板：根目录 [`.env.example`](.env.example)、
+[`deployments/competition/.env.example`](deployments/competition/.env.example)、
+[`deployments/startup/.env.example`](deployments/startup/.env.example)。
+
 ## 架构
 
 模块化单体：一个 api 进程 + 一个 worker 进程，模块边界用 Go 包表达，不拆微服务。
@@ -261,6 +279,8 @@ flowchart LR
 ## 配置
 
 全部通过环境变量配置，没有配置文件。只有 `CONGORAG_DB_URL` 是必填的。
+模板见根目录 `.env.example`（本地开发）与 `deployments/competition/.env.example`
+（赛事 compose）；复制后按需修改，**不要把真实 Key 提交进仓库**。
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |

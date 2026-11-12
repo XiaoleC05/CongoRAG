@@ -131,13 +131,25 @@ export default function KnowledgeBaseDetailPage() {
     setDeleting(doc)
   }
 
-  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  // 批量上传：一次选多个文件后按顺序逐个提交（后端接口是单文件 multipart），
+  // 进度显示成 (已完成/总数)，避免一次失败后用户不知道传到哪了。
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
     // 选完立刻清空 input 的 value：不清的话，连续两次选同一个文件时
     // onChange 不会再触发（浏览器认为"值没变"），第二次上传就悄悄失效。
     e.target.value = ''
-    if (file) {
-      upload.mutate(file, { onError: showError })
+    if (files.length === 0) return
+    setUploadProgress({ done: 0, total: files.length })
+    try {
+      for (let i = 0; i < files.length; i += 1) {
+        await upload.mutateAsync(files[i])
+        setUploadProgress({ done: i + 1, total: files.length })
+      }
+    } catch (err) {
+      showError(err)
+    } finally {
+      setUploadProgress(null)
     }
   }
 
@@ -184,12 +196,13 @@ export default function KnowledgeBaseDetailPage() {
             ref={fileInputRef}
             type="file"
             className="hidden"
+            multiple
             accept=".pdf,.md,.txt,.markdown"
             onChange={handleFileSelected}
           />
-          <Button onClick={() => fileInputRef.current?.click()} disabled={upload.isPending}>
+          <Button onClick={() => fileInputRef.current?.click()} disabled={upload.isPending || uploadProgress !== null}>
             <Upload />
-            {upload.isPending ? '上传中…' : '上传文档'}
+            {uploadProgress ? `上传中 ${uploadProgress.done}/${uploadProgress.total}…` : upload.isPending ? '上传中…' : '上传文档'}
           </Button>
         </div>
       </header>
