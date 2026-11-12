@@ -88,15 +88,6 @@ export default function AppLayout() {
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
-          {/* 备案号必须展示在网站底部并链接工信部（ICP 备案要求）。 */}
-          <a
-            href="https://beian.miit.gov.cn/"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="text-muted-foreground hover:text-foreground block px-2 py-1 text-[11px] leading-tight group-data-[collapsible=icon]:hidden"
-          >
-            鲁ICP备2026038838号-2
-          </a>
         </SidebarFooter>
 
         <SidebarRail />
@@ -137,6 +128,20 @@ export default function AppLayout() {
             </Suspense>
           </RouteErrorBoundary>
         </div>
+        {/* 备案号展示在页面底部并链接工信部（ICP 备案要求）；公安备案通过后在此补链接。 */}
+        <footer className="text-muted-foreground flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t px-4 py-2 text-[11px] leading-tight">
+          <span>ConGoRAG 科研助手 · 个人技术展示</span>
+          <span className="flex flex-wrap items-center gap-3">
+            <a
+              href="https://beian.miit.gov.cn/"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="hover:text-foreground"
+            >
+              鲁ICP备2026038838号-2
+            </a>
+          </span>
+        </footer>
       </SidebarInset>
     </SidebarProvider>
   )
