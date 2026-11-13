@@ -1,5 +1,18 @@
 # 省赛提交材料（四件套）
 
+> 【版本说明】本目录是 **2026-11-13 省赛提交材料的副本**（当时主线 v6.1.0）。
+> 当前主线已迭代到 **v6.7.0**（2026-11-14 的六轮迭代，见
+> [`docs/iterations.md`](../iterations.md)）。新增的证据材料不在本目录里重复，
+> 而是：
+> - 评分细项 → 代码/测试/截图：[defense/evidence-matrix.md](../defense/evidence-matrix.md)
+> - 架构与部署：[architecture.md](../architecture.md)、[deployment.md](../deployment.md)
+> - 答辩预演：[defense/答辩问答.md](../defense/答辩问答.md)、[defense/demo-script.md](../defense/demo-script.md)
+> - 质量与性能实测：[quality-baseline.md](../quality-baseline.md)、[performance.md](../performance.md)、
+>   [loadtest-report.md](../loadtest-report.md)
+>
+> 技术文档正文（43KB）仍描述 v6.1.0 的模块与接口；v6.2.0–v6.7.0 的差异以
+> CHANGELOG 与上述新增文档为准。
+
 > 传智杯「AI 大模型创新应用挑战赛」· 参赛编号 1885438 · 陈晓乐 · 西华大学
 > 本目录是随仓库一起分发的提交材料副本，评委可直接下载查看。
 

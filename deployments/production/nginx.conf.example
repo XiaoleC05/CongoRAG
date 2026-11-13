@@ -1,0 +1,61 @@
+# CongoRAG 生产反代示例（nginx）
+#
+# 【为什么仓库里要有这份文件】deployments/production 原先只有 Caddy 示例，
+# 而多数云主机默认 nginx。这份配置把三个"配错就出事"的点写死：
+#   1. Host 必须转发成回环（Go 侧 OriginCheck 只放行回环 Host）；
+#   2. X-Forwarded-For 必须【覆盖式】写成 $remote_addr（追加式可被伪造绕过限流）；
+#   3. SSE 必须关闭响应缓冲，否则流式回答会被攒成一坨。
+#
+# 用法：把 server_name / ssl 证书 / auth_basic 用户文件 换成自己的，
+# 然后 nginx -t && systemctl reload nginx。
+
+upstream congorag_api {
+    server 127.0.0.1:3210;
+    keepalive 32;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name demo.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/demo.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/demo.example.com/privkey.pem;
+
+    # 评审访问口令（可选）。生成：htpasswd -c /etc/nginx/congorag.htpasswd reviewer
+    # auth_basic           "CongoRAG review";
+    # auth_basic_user_file /etc/nginx/congorag.htpasswd;
+
+    # 上传上限要和 CONGORAG_MAX_UPLOAD_BYTES 对齐（默认 32 MiB）。
+    client_max_body_size 32m;
+
+    location / {
+        proxy_pass http://congorag_api;
+        proxy_http_version 1.1;
+
+        # 【1】Host 必须是回环，否则 OriginCheck 返回 403 forbidden_host。
+        proxy_set_header Host 127.0.0.1:3210;
+
+        # 【2】X-Forwarded-For 用 $remote_addr 覆盖，不能追加：
+        #      $proxy_add_x_forwarded_for 会把客户端自带的值放最左边，
+        #      攻击者轮换该头即可让限流按伪造地址分桶。
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+
+        # 【3】SSE：关缓冲、放宽读超时。普通接口也走同一 location，
+        #      这些值对它们没有副作用。
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+
+        # 安全头由 Go 中间件设置（见 SECURITY.md），这里不重复，
+        # 免得两处口径不一致。
+    }
+}
+
+# HTTP 跳 HTTPS（证书就绪后启用）
+# server {
+#     listen 80;
+#     server_name demo.example.com;
+#     return 301 https://$host$request_uri;
+# }

@@ -5,7 +5,7 @@
 上传一篇论文，问它问题。系统先检索证据，再逐句生成带页码和原文位置的回答；点引用就回到 PDF 那一页。
 它也支持中英对照阅读、arXiv 追踪、引用图谱和写作草稿。所有生成都走同一套引用与校验。
 
-当前版本 **v6.6.0**（2026-11-14）。在线演示：<https://congorag.cloud>；
+当前版本 **v6.7.0**（2026-11-14）。在线演示：<https://congorag.cloud>；
 提交材料（技术文档、演示视频、自检清单、评测报告）在
 [docs/submission/](docs/submission/README.md)。
 
@@ -26,7 +26,7 @@
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Version](https://img.shields.io/badge/version-6.6.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-6.7.0-blue)](CHANGELOG.md)
 
 本地优先的 RAG 问答与 Agent 平台。文档、向量、API Key 都留在自己的机器上，
 模型服务由使用者提供（BYOK）。
@@ -388,7 +388,7 @@ Agent 那条流的首帧永远是 `run_started`（`data: {"runId": ...}`），�
 `null` 表示到底了。游标是不透明的，不要解析它，格式随时可能变（见契约里
 `Cursor` 参数的描述）。
 
-契约的 `info.version` 跟产品版本走（当前 `6.6.0` ↔ tag `v6.6.0`），由发布脚本在发布前
+契约的 `info.version` 跟产品版本走（当前 `6.7.0` ↔ tag `v6.7.0`），由发布脚本在发布前
 断言两者一致，见 [ADR-002](docs/adr/002-contract-versioning.md)。它不表示兼容性
 承诺。兼容边界是路径里的 `/api/v1`。
 

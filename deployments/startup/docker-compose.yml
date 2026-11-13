@@ -119,6 +119,10 @@ services:
       # 上传上限。默认 32 MiB（config.go 的 defaultMaxUploadBytes），写在这里
       # 只为让它可调；填 0 或非法值会被 config.go 退回默认值，不会变成"不限"。
       CONGORAG_MAX_UPLOAD_BYTES: ${CONGORAG_MAX_UPLOAD_BYTES:-33554432}
+      CONGORAG_RATE_LIMIT_PER_MINUTE: ${CONGORAG_RATE_LIMIT_PER_MINUTE:-240}
+      CONGORAG_RATE_LIMIT_BURST: ${CONGORAG_RATE_LIMIT_BURST:-60}
+      CONGORAG_RATE_LIMIT_LLM_PER_MINUTE: ${CONGORAG_RATE_LIMIT_LLM_PER_MINUTE:-30}
+      CONGORAG_RATE_LIMIT_LLM_BURST: ${CONGORAG_RATE_LIMIT_LLM_BURST:-8}
 
     ports:
       # 只绑宿主机回环。局域网上的其他机器连不进来——方案 §1 的安全基线。

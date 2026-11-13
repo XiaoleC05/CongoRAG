@@ -53,6 +53,13 @@ Caddyfile 示例：
 
 ```
 demo.example.com {
+    # 【必须覆盖 Host】Go 侧的 OriginCheck 只放行回环 Host；Caddy 默认原样
+    # 传递客户端 Host（demo.example.com）→ 会被 403 forbidden_host。
+    header_up Host {upstream_hostport}
+
+    # 【SSE 必须关缓冲】否则 token 会被攒在中间层，流式体感消失。
+    flush_interval -1
+
     basic_auth {
         reviewer <bcrypt-hash>
     }

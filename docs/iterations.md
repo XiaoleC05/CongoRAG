@@ -152,21 +152,30 @@ codegen 幂等、契约 lint 通过。
 **验证**：见交付文档中的实测表格；`make test-e2e` / `make bench-gate` /
 `make loadtest` 三条命令可复跑。
 
-**提交**：（见下方版本表）
+**提交**：`d4d92fb`（含 E2E/bench-gate/压测），tag `v6.6.0`。
 
 ---
 
 ## R6 · 部署文档与答辩材料（v6.7.0）
 
 **落地**
-- `docs/deployment.md`：生产 runbook（配置/反代/迁移/升级回滚/备份/故障处置/验收）。
-- `docs/architecture.md`：分层与边界、包依赖图、五条关键请求流、数据模型、ADR 索引。
-- `docs/defense/`：答辩 Q&A（14 问）、7 分钟 Demo 脚本、评分证据矩阵。
-- README 最终对齐；CHANGELOG 与 tag 收口；bundle 基线刷新到最终提交。
+- `docs/deployment.md`（361 行）：生产 runbook——三份 compose 差异、17 项环境变量、
+  反向代理四约束（Host 回环 / XFF 覆盖式 / 关闭缓冲 / 上传上限）、首次部署与两套
+  迁移顺序、升级与回滚、备份恢复、监控探针、9 条故障 playbook、命令级验收清单。
+- `docs/architecture.md`（356 行）：分层与边界、包依赖图（与 arch_test 边表一致）、
+  5 条关键请求流（SSE 问答/上传流水线/Agent run/提示词注册表/中间件链）、
+  数据模型概要、ADR-001~010 索引、10 条关键不变式。
+- `docs/defense/`：14 问答辩 Q&A（每题附证据位置）、7 分钟 Demo 脚本
+  （逐段对应评分 a–f）、评分证据矩阵（细项 → 代码/测试/文档/截图/提交）。
+- 修正三处部署不一致：Caddy 示例补 `header_up Host` + `flush_interval -1`；
+  两份 compose 补传限流/去重/主密钥变量；新增 `nginx.conf.example`。
+  修正 shutdown.go 里"SSE 心跳不存在"的过期注释。
+- README/CHANGELOG/契约版本收口到 6.7.0；bundle 基线刷新到最终提交。
 
-**验证**：文档内命令逐条可执行；链接检查通过；最终 tag 与契约版本一致。
+**验证**：`go test ./...`、前端 32 文件/214 用例、E2E 13 用例、`make bundle-check`、
+`make bench-gate`、`make check-changelog` 全绿；文档内命令与相对链接逐个核对。
 
-**提交**：（见下方版本表）
+**提交**：见 tag `v6.7.0`。
 
 ---
 
@@ -178,5 +187,5 @@ codegen 幂等、契约 lint 通过。
 | 6.3.0 | `v6.3.0` | Prompt 审计注册表 | `ea79901`、`94d8c6c` |
 | 6.4.0 | `v6.4.0` | 安全与异常加固 | `7da20e5` |
 | 6.5.0 | `v6.5.0` | UI/UX 与响应式 | `faa0e2b` |
-| 6.6.0 | `v6.6.0` | 自动化测试与压测 | （R5 提交） |
-| 6.7.0 | `v6.7.0` | 部署文档与答辩材料 | （R6 提交） |
+| 6.6.0 | `v6.6.0` | 自动化测试与压测 | `d4d92fb` |
+| 6.7.0 | `v6.7.0` | 部署文档与答辩材料 | 见 tag `v6.7.0` |

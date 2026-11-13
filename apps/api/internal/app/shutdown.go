@@ -15,10 +15,9 @@ import (
 // 一次 conversation_events INSERT 和一次 socket 写，在回环地址上是毫秒级。
 // 30 秒是「兜底上限」，不是「预计耗时」。
 //
-// 【与 SSE 心跳的关系】docs/sse-protocol.md 声明服务端每 15 秒发一条
-// 注释行保活，但那个定时器在 apps/api/internal/api/sse.go 里并不存在
-// （全仓没有任何 time.Ticker）。30 秒正好是该间隔的两倍，量级上够用；
-// 将来真把心跳实现出来，这个值也不需要跟着动。
+// 【与 SSE 心跳的关系】v6.4.0 起 apps/api/internal/api/sse.go 有 15 秒的
+// 空闲心跳（注释帧 keep-alive）。30 秒正好是该间隔的两倍：排空阶段即使
+// 客户端一直不读，心跳也还会替连接续命几次，然后这个兜底上限才强关。
 //
 // 【不放进 platform.Config】它不是部署配置，是进程语义——换一台机器、
 // 换一个部署形态都不该改变它。

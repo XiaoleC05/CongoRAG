@@ -26,6 +26,43 @@
 
 ---
 
+## [6.7.0] - 2026-11-14
+
+部署文档与评审/答辩材料版本。**无代码行为变更**；补齐"别人怎么部署、怎么验、
+怎么问不倒"的那层材料，并修正三处部署配置与文档不一致。
+
+### 变更
+
+- **新增 docs/deployment.md（生产 runbook）**：三份 compose 的差异、完整环境变量表
+  （含 v6.4.0 四个限流变量）、反向代理约束（Host 必须转发为回环、XFF 必须
+  覆盖式、SSE 必须关缓冲）、首次部署/升级/回滚、备份恢复（DB + 数据卷 +
+  master.key）、监控探针与日志字段、9 条故障 playbook、命令级验收清单。
+- **新增 docs/architecture.md**：系统全景与进程职责、分层与 ADR-001 取舍、
+  包依赖图（与 internal/arch_test.go 的允许边表一致）、5 条关键请求流、
+  数据模型概要、ADR-001~010 索引、关键不变式、已知架构债。
+- **新增 docs/defense/**：答辩问答（14 问，每题附证据位置）、7 分钟 Demo 脚本
+  （逐段对应评分 a–f）、评分证据矩阵（细项 → 代码/测试/文档/截图/提交）。
+- **新增 docs/iterations.md**：六轮迭代（v6.2.0 → v6.7.0）的审计发现、
+  方案共识、落地与清理、验证结果、提交索引。
+- **修正部署配置**：
+  - `deployments/production/README.md` 的 Caddy 示例补 `header_up Host`
+    与 `flush_interval -1`——照抄旧示例会被 OriginCheck 403、SSE 被缓冲；
+  - 两份应用 compose 补传限流 4 项、检索去重与主密钥变量（此前只改
+    `.env` 不会进容器）；
+  - 新增 `deployments/production/nginx.conf.example`（覆盖式 XFF、
+    `proxy_buffering off`、上传上限对齐）。
+- **修正过期注释**：`apps/api/internal/app/shutdown.go` 里"SSE 心跳不存在"
+  的说法已过期（v6.4.0 起有 15s 空闲心跳）。
+- **提交材料目录说明**：`docs/submission/README.md` 注明该目录是省赛
+  v6.1.0 材料副本，当前主线为 v6.7.0，新增证据见 defense/architecture/deployment。
+- **README 收口**：版本 6.7.0、docs 索引补 architecture/deployment/iterations/
+  defense/loadtest，目录结构同步。
+
+### 升级说明
+
+- 无数据库/契约 schema 变更；契约 `info.version` 与 tag 同步到 6.7.0；
+- 部署侧若沿用旧 Caddy 示例，请按新示例补 Host 覆盖与缓冲关闭两行。
+
 ## [6.6.0] - 2026-11-14
 
 自动化测试与压测版本。**无运行时行为变更、无端点/环境变量/数据库变更**；
@@ -633,7 +670,8 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
-[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.6.0...HEAD
+[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.7.0...HEAD
+[6.7.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.6.0...v6.7.0
 [6.6.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.5.0...v6.6.0
 [6.5.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.4.0...v6.5.0
 [6.4.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.3.0...v6.4.0
