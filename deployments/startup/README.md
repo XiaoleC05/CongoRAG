@@ -109,3 +109,13 @@ docker compose exec postgres psql -U postgres -d congorag   # 连库排障
 升级脚本来自 `scripts/`。仓库里还有一套 `deployments/docker/docker-compose.yml`
 ——那是**开发期**用的，只有 PostgreSQL 一个服务，api 跑在宿主机上。两个文件
 不要混用。
+
+## 已知限制：不含 PDF 解析 sidecar
+
+这个启动包只包含 postgres / migrate / api / worker 四个服务，**没有 pdf-service**，
+也没有设置 `CONGORAG_PDF_SERVICE_URL`。因此 `.pdf` 上传会在处理阶段落 `failed`
+终态（错误信息会说没有配置解析器），`.md/.txt` 不受影响。
+
+需要演示 PDF 学术解析（页码/坐标/章节/OCR）时，请改用
+[`deployments/production/docker-compose.yml`](../production/docker-compose.yml)，
+它多一个 `pdf-service` 并让 api/worker 指向它。

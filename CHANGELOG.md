@@ -26,6 +26,37 @@
 
 ---
 
+## [6.7.1] - 2026-11-14
+
+最终验收补丁。**无代码行为变更**；修的是文档与部署示例中"照抄会失败/口径不一致"
+的四处问题（QA 最终验收 S2/S3）。
+
+### 修复
+
+- **Caddy 示例指令位置**：`deployments/production/README.md` 里
+  `header_up Host` 与 `flush_interval -1` 原先写在站点块顶层（Caddy 会报
+  unrecognized directive），已移入 `reverse_proxy { ... }` 子块——这是"照抄示例
+  会被 OriginCheck 403 / SSE 被缓冲"的直接原因。
+- **镜像 tag 对齐**：README 的 `docker build -t congorag-api:6.7.1` 与
+  `deployments/production/.env.example` 的 `CONGORAG_IMAGE_TAG=6.7.1` 统一，
+  避免按 README 三步走时 compose 找 `congorag-api:cup` 不存在。
+- **启动包 PDF 限制写清**：startup README 与 `docs/deployment.md` §3.1 注明
+  启动包不含 pdf-service，`.pdf` 上传会 failed；演示 PDF 请用 production compose。
+- **nginx 示例语法**：`listen 443 ssl http2` 拆成 `listen 443 ssl` + `http2 on`，
+  并给 upstream keepalive 补 `proxy_set_header Connection ""`。
+- **质量基线更新到最终快照**：`docs/quality-baseline.md` 改为 v6.7.1
+  （835 用例/33 skip、32 文件 214 前端用例、13 E2E、首屏 607,453 B/179,804 B gzip），
+  §5 覆盖率与 §9 Prompt 快照标注采集版本。
+- **文档数字订正**：iterations.md 的 runbook/架构文档行数与环境变量数、
+  performance.md 的最终产物体积、testing.md 的 E2E 措辞、CI job 编号顺序、
+  CHANGELOG 6.6/6.7 的两处表述与实现对齐。
+
+### 升级说明
+
+- 无数据库/契约 schema 变更；契约 `info.version` 与 tag 同步到 6.7.1；
+- 部署侧只看两行：Caddy 的 `header_up`/`flush_interval` 必须在
+  `reverse_proxy` 块内；镜像 tag 要同时改 `docker build -t` 与 `.env`。
+
 ## [6.7.0] - 2026-11-14
 
 部署文档与评审/答辩材料版本。**无代码行为变更**；补齐"别人怎么部署、怎么验、
@@ -47,8 +78,8 @@
 - **修正部署配置**：
   - `deployments/production/README.md` 的 Caddy 示例补 `header_up Host`
     与 `flush_interval -1`——照抄旧示例会被 OriginCheck 403、SSE 被缓冲；
-  - 两份应用 compose 补传限流 4 项、检索去重与主密钥变量（此前只改
-    `.env` 不会进容器）；
+  - production compose 补传限流 4 项 + 检索去重 + 主密钥变量，startup compose
+    补传限流 4 项（此前只改 `.env` 不会进容器）；
   - 新增 `deployments/production/nginx.conf.example`（覆盖式 XFF、
     `proxy_buffering off`、上传上限对齐）。
 - **修正过期注释**：`apps/api/internal/app/shutdown.go` 里"SSE 心跳不存在"
@@ -76,7 +107,8 @@
   （chromium，失败上传 test-results）。首次跑需
   `pnpm --filter web exec playwright install chromium`。
 - **benchmark 回归门禁**：`scripts/bench-gate.mjs` + `benchmarks/baseline.json`，
-  解析 14 条基准的 ns/B/allocs，与基线中位数比较；allocs 严格、B/op +5%、
+  解析 14 条基准的 ns/B/allocs；allocs/B 用「本次 min vs 基线 max」、ns 用
+  min-vs-min（吸收采样抖动），allocs 严格、B/op +5%、
   ns/op +30% 且 >200ns 才失败（共享 runner 降噪）；支持 `--write` 重写基线。
   新增 `make bench-gate` 与 CI 的 advisory `bench` job。
 - **SSE 高并发压测模拟**：`ops/loadtest/stream-load.mjs`（零依赖）内置 mock
@@ -670,7 +702,8 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
-[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.7.0...HEAD
+[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.7.1...HEAD
+[6.7.1]: https://github.com/XiaoleC05/CongoRAG/compare/v6.7.0...v6.7.1
 [6.7.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.6.0...v6.7.0
 [6.6.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.5.0...v6.6.0
 [6.5.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.4.0...v6.5.0

@@ -422,7 +422,7 @@ jobs:
             exit 1
           fi
           echo "缺 CONGORAG_DB_URL 时如预期非零退出"
-# ── 8. 纯函数基准回归（advisory）────────────────────────────────
+# ── 7. 纯函数基准回归（advisory）────────────────────────────────
   #
   # 【这个 job 不挡合并】共享 runner 上 ns/op 会随邻居负载漂 2–3 倍，拿死阈值
   # 当硬门禁只会制造误报。脚本自己把"allocs/op 上涨"设为硬失败（与机器无关），
@@ -446,7 +446,7 @@ jobs:
       - name: Bench gate
         run: node scripts/bench-gate.mjs
 
-  # ── 7. 浏览器端到端（Playwright，全量 mock /api/v1） ──────────────
+  # ── 8. 浏览器端到端（Playwright，全量 mock /api/v1） ──────────────
   #
   # 【这个 job 不依赖 Postgres / 模型 Key】所有 /api/v1/** 请求由
   # web/e2e/fixtures.ts 的 page.route 接管（外部域名一律 abort），

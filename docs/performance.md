@@ -113,11 +113,11 @@ Jaccard 数值与字符串定义一致）。
 
 | 指标 | 值 |
 | --- | ---: |
-| 构建产物总大小 | 2.675 MB（58 个文件，vite build 471ms） |
-| 首屏（entry + modulepreload + stylesheet，raw） | 604,457 B |
-| 首屏（gzip） | 179,100 B |
-| 其中 JS / CSS | 511,918 B（gzip 162,959）/ 92,539 B（gzip 16,141） |
-| 入口 chunk `index-*.js` | 40,962 B（gzip 11,864 B） |
+| 构建产物总大小 | 2.695 MB（61 个文件，vite build ~470ms） |
+| 首屏（entry + modulepreload + stylesheet，raw） | 607,453 B |
+| 首屏（gzip） | 179,804 B |
+| 其中 JS / CSS | 514,530 B（gzip 163,610）/ 92,923 B（gzip 16,194） |
+| 入口 chunk `index-*.js` | 45,663 B（gzip 13,451 B） |
 | `react-*.js` / `lib-*.js` / `radix-*.js` | 218,840 / 150,399 / 97,349 B |
 | 阅读器 `ReaderPage-*.js`（懒加载） | 444,056 B（gzip 132,324 B） |
 | PDF worker（懒加载） | 1,178,002 B（gzip 363,302 B） |

@@ -15,7 +15,8 @@ upstream congorag_api {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name demo.example.com;
 
     ssl_certificate     /etc/letsencrypt/live/demo.example.com/fullchain.pem;
@@ -34,6 +35,8 @@ server {
 
         # 【1】Host 必须是回环，否则 OriginCheck 返回 403 forbidden_host。
         proxy_set_header Host 127.0.0.1:3210;
+        # keepalive 要生效，必须清空 Connection（否则 nginx 仍按短连接转发）。
+        proxy_set_header Connection "";
 
         # 【2】X-Forwarded-For 用 $remote_addr 覆盖，不能追加：
         #      $proxy_add_x_forwarded_for 会把客户端自带的值放最左边，

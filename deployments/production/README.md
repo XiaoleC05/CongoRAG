@@ -5,9 +5,13 @@
 在**仓库根目录**执行：
 
 ```bash
-docker build --target api     -t congorag-api:v6 .
-docker build --target worker  -t congorag-worker:v6 .
-docker build --target migrate -t congorag-migrate:v6 .
+docker build --target api     -t congorag-api:6.7.1 .
+docker build --target worker  -t congorag-worker:6.7.1 .
+docker build --target migrate -t congorag-migrate:6.7.1 .
+
+# 【镜像 tag 必须和 .env 的 CONGORAG_IMAGE_TAG 一致】compose 里写的是
+# `${CONGORAG_IMAGE_TAG:-cup}`；.env.example 默认是 6.7.1。
+# 要换版本就同时改这里的 -t 与 .env 的那一行，否则 compose 会去找一个不存在的镜像。
 ```
 
 PDF sidecar 由 compose 的 `build:` 直接构建（首次约 3~5 分钟，主要是 pip 安装
@@ -53,17 +57,18 @@ Caddyfile 示例：
 
 ```
 demo.example.com {
-    # 【必须覆盖 Host】Go 侧的 OriginCheck 只放行回环 Host；Caddy 默认原样
-    # 传递客户端 Host（demo.example.com）→ 会被 403 forbidden_host。
-    header_up Host {upstream_hostport}
-
-    # 【SSE 必须关缓冲】否则 token 会被攒在中间层，流式体感消失。
-    flush_interval -1
 
     basic_auth {
         reviewer <bcrypt-hash>
     }
-    reverse_proxy 127.0.0.1:3210
+    # 【这两行必须是 reverse_proxy 的子指令】写在站点块顶层 Caddy 会报
+    # unrecognized directive：header_up 决定上游看到的 Host（Go 侧
+    # OriginCheck 只放行回环 Host，默认传递 demo.example.com 会 403）；
+    # flush_interval -1 关闭响应缓冲，否则 SSE 的 token 会被攒着不发。
+    reverse_proxy 127.0.0.1:3210 {
+        header_up Host {upstream_hostport}
+        flush_interval -1
+    }
 }
 ```
 

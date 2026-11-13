@@ -1,6 +1,6 @@
 # 部署 runbook（生产 / 演示 / 本地复现）
 
-- 适用版本：v6.5.0 起的交付形态（写作时契约版本 v6.5.0，以 `contracts/openapi.yaml` 的 `info.version` 为准；版本规范见 ADR-002）
+- 适用版本：v6.7.1 起的交付形态（写作时契约版本 v6.7.1，以 `contracts/openapi.yaml` 的 `info.version` 为准；版本规范见 ADR-002）
 - 读者：部署/运维评审环境的人，以及要复现"从零到可用"的答辩观众
 - 相关文档：[启动包用户手册](../deployments/startup/README.md)、[演示部署](../deployments/production/README.md)、[升级回滚用户视角](upgrading.md)、[发布流程](releasing.md)、[系统架构](architecture.md)
 - 命令默认在**仓库根目录**执行；在启动包目录执行时会单独标注
@@ -116,6 +116,10 @@ docker compose logs migrate
 ~~~bash
 node scripts/seed-demo.mjs --api http://127.0.0.1:3210 --dir ./测试数据/pdf
 ~~~
+
+> **启动包不含 pdf-service**：上面的启动包形态只有 postgres/migrate/api/worker，
+> 没有 `CONGORAG_PDF_SERVICE_URL`，`.pdf` 上传会在处理阶段落 `failed`。
+> 要演示 PDF 解析（页码/坐标/章节/OCR），请走 3.2 的 production compose。
 
 ### 3.2 从源码构建（含 PDF sidecar 的演示部署）
 

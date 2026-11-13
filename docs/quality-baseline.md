@@ -1,15 +1,15 @@
-# 质量基线（v6.3.0）
+# 质量基线（v6.7.1 最终快照）
 
 这份文档回答两个问题：**在本机能验证的范围内，"绿灯"具体长什么样；哪些结论必须等 CI。**
 
-它记录的是 v6.3.0（R2 Prompt 审计与 Guardrails 注册表）的实测值：用例数、覆盖率、
-前端产物、基准与 Playwright 冒烟。测法细节看 [performance.md](performance.md)，
-测试约定（平台差异、崩溃探针、端到端验证）看 [testing.md](testing.md)。
+它记录的是**六轮迭代结束（v6.7.1）**的实测值：用例数、覆盖率、前端产物、基准、
+端到端与压测。§3–§8 是最终快照；§5 的覆盖率表与 §9 的 Prompt 快照标注了各自
+的采集版本（覆盖率在 R2 之后没有逐轮重测）。测法细节看
+[performance.md](performance.md)，测试约定看 [testing.md](testing.md)。
 
-> **采集点：commit `ea79901`（v6.3.0）+ 其上的 bundle 基线刷新 `94d8c6c`。**
-> R2 的主要验收在 2026-11-14 03:37–03:39 冻结窗口内完成（384 个源文件指纹前后一致）；
-> 因为冻结结束后同一工作区立即开始了 R3 改动，最终数字又在 **`ea79901` 的干净
-> `git worktree`** 里复验了一次（不依赖当前工作区）。复验命令见 §11。
+> **最终采集点：commit `e1cbffc`（tag `v6.7.0` 的 bundle 基线提交）+ v6.7.1 文档补丁。**
+> 最终验收由 QA 在冻结态执行（验收前后 `git status` 为空、tag 与 origin 一致）；
+> R2 阶段的覆盖率数字保留在 §5 并已标注采集版本。复验命令见 §11。
 
 ## 1. 环境
 
@@ -55,14 +55,17 @@ git worktree remove --force /tmp/congorag-verify
 | --- | --- | --- |
 | `go build ./...` | 4.8s（冷 worktree；热缓存 1.9s） | exit 0、无输出 |
 | `go vet ./...` | 1.0s（冷 worktree；热缓存 0.7s） | exit 0、无输出 |
-| `go test -count=1 ./...`（含 `-json` 统计） | 5.3s | **pass 777 / fail 0 / skip 33**；无 FAIL |
+| `go test -count=1 ./...`（含 `-json` 统计） | 5.2s | **pass 835 / fail 0 / skip 33**；无 FAIL |
 | `go test -count=1 -cover ./...` | 6.7s | exit 0（覆盖率仅记录，见 §5） |
 | `pnpm --filter web lint` | 0.5s（104 文件） | `0 warnings and 0 errors` |
 | `pnpm --filter web exec tsc -b` | 4.0s | exit 0 |
-| `pnpm --filter web test` | 6.9s（Vitest 内部 6.11s） | 29 文件 / 185 用例全过 |
+| `pnpm --filter web test` | 8.1s（Vitest 内部 ~6.2s） | 32 文件 / 214 用例全过 |
 | `pnpm --filter web build` | 4.8s（vite 段 476ms） | exit 0，产物落 `apps/api/web/` |
 | `make generate-go` + `pnpm --filter api-client generate` | 0.2s / 1.0s | **幂等**：生成物哈希前后一致，`git diff` 为空 |
 | `node scripts/bundle-report.mjs --check` | 0.2s | `结论：体积在预算内`，exit 0 |
+| `node scripts/bench-gate.mjs` | 66.8s | `BENCH GATE: PASS`；阈值见 scripts/bench-gate.mjs 头注释 |
+| `pnpm --filter web e2e` | 11.3s | **13 passed**（chromium，全 mock API） |
+| `node ops/loadtest/stream-load.mjs`（25/50/100 并发） | 30.1s | 100% 成功、0 错误；明细见 [loadtest-report.md](loadtest-report.md) |
 | `make check-changelog` | 0.1s | `✓ CHANGELOG 格式没问题` |
 | spectral 契约 lint（`npx @stoplight/spectral-cli@6.15.0 ... --fail-severity=warn`） | npx 缓存命中时可跑 | `No results with a severity of 'warn' or higher found!` |
 | `go test ./internal/prompt`（10 条） | 0.6s | 全 PASS |
@@ -70,7 +73,8 @@ git worktree remove --force /tmp/congorag-verify
 
 ## 4. 用例口径
 
-- `grep '^func Test'` = **589 个 Test 函数**；实际执行 **777 个通过用例**（含 222 个子测试）。
+- `grep '^func Test'` = **620 个 Test 函数**；实际执行 **835 个通过用例**（含子测试）。
+  另有 **13 个 Playwright E2E 用例**（`pnpm --filter web e2e`）与 16 条 benchmark。
 - 上一版（R1 冻结态）：576 个 Test 函数 / 764 个用例。R2 新增 13 个 Test 函数 / 13 个用例：
   `internal/prompt` 10 条（Validate / 目录排序与深拷贝 / SHA-256 确定性 / Render 变量与缺失变量 /
   可选变量 / 体例映射 / 历史版本单调 / grounding 契约）、`handler_prompt` 1 条、`call_options` 2 条。
@@ -92,6 +96,9 @@ git worktree remove --force /tmp/congorag-verify
 | pdfparse | 86.2% | agent | 51.9% |
 | visualize | 84.4% | platform | 67.6% |
 | **prompt（v6.3.0 新增）** | **78.6%** | retrieval | 70.7% |
+
+> 覆盖率表采集于 R2（`ea79901`）。R3–R6 新增的测试主要在 platform/api/前端与
+> E2E，离线覆盖率没有逐轮重跑；需要最新值请在最终 commit 上跑 §11 的覆盖命令。
 | recommend | 75.9% | apps/api/internal/api | 29.8% |
 | apps/api/internal/app | 10.8% | apps/worker（main/app） | 0.0% |
 | internal/domain | 0.0% | — | — |
@@ -107,7 +114,7 @@ git worktree remove --force /tmp/congorag-verify
 
 ## 6. 前端
 
-- **29 个测试文件 / 185 个用例全过**，Vitest 内部耗时 6.11s（environment 58%、import 26%、tests 10%）。
+- **32 个测试文件 / 214 个用例全过**，Vitest 内部耗时约 6.2s。
 - `oxlint`：104 个文件、0 警告；`tsc -b` 4.0s。
 - 新增「Prompt 审计」页（`/prompts`，懒加载）：5 条页面测试覆盖渲染字段（标题/key/生效版本/变量/
   代码位置/哈希前缀/采样参数）、版本切换（切换只换前端状态、不重新请求）、单版本不渲染切换器、
@@ -127,7 +134,7 @@ git worktree remove --force /tmp/congorag-verify
 
 | 指标 | raw | gzip |
 | --- | ---: | ---: |
-| 首屏（入口 script + modulepreload + stylesheet） | **605,504 B** | **179,377 B** |
+| 首屏（入口 script + modulepreload + stylesheet） | **607,453 B** | **179,804 B** |
 | 其中 JS / CSS | 512,539 / 92,965 B | 163,161 / 16,216 B |
 | 入口 chunk `index-*.js` | 41,252 B | 11,963 B |
 | 新增「Prompt 审计」chunk | 6,429 B | 2,501 B |

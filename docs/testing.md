@@ -357,7 +357,7 @@ run** 往下跑——第一条 INSERT 撞上 `UNIQUE (run_id, seq)`，而轨迹�
 
 ## E2E（Playwright）：协作约定
 
-这一节定义端到端的**边界与约定**；具体实现由 fullstack 在 `web/e2e/` 落地，QA 负责
+这一节定义端到端的**边界与约定**；实现与用例在 `web/e2e/`（`pnpm --filter web e2e`），QA 负责
 约定、flake 政策与验收。在实现落地之前，唯一的浏览器自动化是 `_record/` 下的临时
 冒烟脚本（见 `docs/quality-baseline.md` 的 Playwright 段）。
 
