@@ -132,6 +132,7 @@ func (s *Server) StartAgentRun(c *gin.Context, id openapi_types.UUID, params Sta
 	}
 
 	sink := newSSESink(c)
+	defer sink.Close()
 	if _, err := s.deps.Agent.Start(c.Request.Context(), id, req.Input, idempotencyKey, sink); err != nil {
 		s.deps.Logger.Warn("agent run failed",
 			"request_id", platform.RequestIDFrom(c.Request.Context()),
@@ -171,6 +172,7 @@ func (s *Server) SubscribeRunEvents(c *gin.Context, runId openapi_types.UUID, pa
 	}
 
 	sink := newSSESink(c)
+	defer sink.Close()
 	for _, ev := range events {
 		if err := sink.Emit(conversation.Event{ID: ev.ID, Type: ev.Type, Payload: ev.Payload}); err != nil {
 			// 客户端在补发过程中断开了——没有更多可做的，停止继续写。
@@ -208,6 +210,7 @@ func (s *Server) ResumeAgentRun(c *gin.Context, runId openapi_types.UUID) {
 	}
 
 	sink := newSSESink(c)
+	defer sink.Close()
 	if _, err := s.deps.Agent.Resume(c.Request.Context(), plan, sink); err != nil {
 		s.deps.Logger.Warn("agent run resume failed",
 			"request_id", platform.RequestIDFrom(c.Request.Context()),

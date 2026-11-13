@@ -26,6 +26,63 @@
 
 ---
 
+## [6.4.0] - 2026-11-14
+
+安全与异常处理加固版本。默认开启两道新的防线，升级后**不需要改任何配置**，
+但有几处客户端可见的行为变化（见「行为变更」）。
+
+### 行为变更
+
+- **上传内容嗅探**：扩展名对但内容不对的文件现在在上传阶段就返回 400
+  `invalid_argument`，而不是存进去、处理失败、在文档列表里留一个 `failed`。
+  PDF 必须以 `%PDF-` 开头；`.md/.markdown/.txt` 不能含 NUL 且必须是合法 UTF-8。
+- **上传文件名净化**：客户端给的文件名会去掉路径部分与 ASCII 控制字符
+  （`../../etc/passwd` → `passwd`）。依赖原始路径展示的用法会看到变化；
+  落盘的 `storage_key` 一直是 UUID，不受影响。
+- **SSE 空闲心跳**：服务端在一条流空闲 15 秒后补 `: keep-alive` 注释帧。
+  注释帧是 SSE 规范的一部分，**客户端必须忽略以 `:` 开头的行**（我们的前端
+  一直如此）。`lastEventId` 不因此推进，断线续传语义不变。
+- **新增限流（默认开启）**：`/api/` 全局限流 240/min（burst 60），会调模型/
+  embedding 的端点 30/min（burst 8）；超限返回 429 `rate_limited` + `Retry-After`。
+  四个新环境变量见下；0 可关闭对应档位。
+- **新增安全响应头**：`X-Content-Type-Options`、`X-Frame-Options: DENY`、
+  `Referrer-Policy`、`Permissions-Policy`、`Cross-Origin-Opener-Policy` 与 CSP。
+  自建前端若依赖被 CSP 拦截的能力（内联 script、跨域 connect、iframe 嵌入），
+  需要在这条 CSP 下重新评估。
+- **新增 4 个环境变量**（都可不配，用默认值）：
+
+  | 变量 | 默认 | 说明 |
+  | --- | ---: | --- |
+  | `CONGORAG_RATE_LIMIT_PER_MINUTE` | 240 | 全局限流（令牌/分钟），0 关闭 |
+  | `CONGORAG_RATE_LIMIT_BURST` | 60 | 全局桶容量 |
+  | `CONGORAG_RATE_LIMIT_LLM_PER_MINUTE` | 30 | 模型端点限流，0 关闭 |
+  | `CONGORAG_RATE_LIMIT_LLM_BURST` | 8 | 模型端点桶容量 |
+
+  非法值（负数；开启档位但 burst 为 0）会让进程拒绝启动。
+
+### 变更
+
+- **安全响应头中间件**：`internal/platform/security.go`，排在 Recovery 之前，
+  panic 产生的 500 也带这些头。
+- **两档令牌桶限流**：`internal/platform/ratelimit.go`；按客户端地址分桶、
+  懒清理，生产反代场景从 `X-Forwarded-For` 取真实来源（仅当 `RemoteAddr`
+  是回环，且不盲信外部伪造的 XFF）。
+- **上传校验**：`internal/knowledge/upload_validation.go`（扩展名/内容嗅探/
+  文件名净化）；`Upload` 在落盘前完成校验。
+- **SSE 心跳与写锁**：`apps/api/internal/api/sse.go`；心跳 goroutine 与
+  Emit/兜底 error 帧/Flush 共用一把写锁，杜绝半截帧交错；handler 用
+  `defer sink.Close()` 停心跳。
+- **前端请求超时**：`packages/api-client` 的非流式请求加 120s 超时；
+  流式请求不受影响；`fetchWithTimeout` 可单测。
+- **文档**：`SECURITY.md` 扩成"内置防护 + 限流配置 + 已知取舍"三节；
+  `docs/sse-protocol.md` 心跳章节改写；ADR-005 同步注记；`.env.example` 补变量。
+
+### 升级说明
+
+- 无数据库结构变更；契约 `info.version` 与 tag 同步到 6.4.0；
+- 如果公网部署前面有反代：确认它透传 `X-Forwarded-For`（限流按真实来源分桶），
+  并保持 `proxy_buffering off`（否则 SSE 的流式体感会被缓冲吃掉）。
+
 ## [6.3.0] - 2026-11-14
 
 Prompt 审计与 Guardrails 版本：提示词从散落的字符串变成可审计资产。
@@ -516,7 +573,8 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
-[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.3.0...HEAD
+[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.4.0...HEAD
+[6.4.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.3.0...v6.4.0
 [6.3.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.2.0...v6.3.0
 [6.2.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.1.0...v6.2.0
 [6.1.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.0.0...v6.1.0

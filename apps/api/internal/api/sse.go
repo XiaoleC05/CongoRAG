@@ -13,11 +13,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/XiaoleC05/CongoRAG/internal/conversation"
 )
+
+// sseHeartbeatInterval 是"多久没写数据就补一条注释帧"的间隔。
+//
+// 【为什么要发心跳】浏览器与反向代理都会掐掉长时间没有任何字节的连接。
+// 一次 Agent run 在等模型/工具时可能几分钟不产生 token；没有心跳的话，
+// 用户看到的是"回答到一半突然没了"，而服务端日志里一切正常。注释帧
+// （以 ":" 开头）在 SSE 规范里被客户端忽略，不推进 lastEventId，是最安全的
+// keep-alive 形式。
+//
+// 15 秒来自 nginx 默认 proxy_read_timeout 60s / 常见云负载均衡 60s 的经验值：
+// 取四分之一留足抖动余量。测试会把变量改小，所以它是 var 不是 const。
+var sseHeartbeatInterval = 15 * time.Second
 
 var _ conversation.EventSink = (*sseSink)(nil)
 
@@ -39,6 +53,17 @@ type sseErrorData struct {
 type sseSink struct {
 	c    *gin.Context
 	done <-chan struct{}
+	stop chan struct{}
+	once sync.Once
+
+	// mu 保护对 ResponseWriter 的所有写入。
+	//
+	// 【为什么需要它】v6.4.0 起有一个心跳 goroutine 会周期性往同一条流里写
+	// 注释帧；handler 自己也在写事件帧。两个 goroutine 同时写 ResponseWriter
+	// 会把帧交错（SSE 是文本协议，交错就是坏帧），所以所有写入口
+	// （Emit / writeFallbackError / Flush / 心跳）共用这一把锁。
+	mu        sync.Mutex
+	lastWrite time.Time
 
 	// errorFrameSent 记录 error 帧是不是已经成功写出去过——SendMessage 在
 	// Send 返回错误时靠它决定要不要补一条兜底帧（见 writeFallbackError）。
@@ -60,7 +85,57 @@ func newSSESink(c *gin.Context) *sseSink {
 	// 不用等到第一条真实事件才收到响应头。
 	c.Status(http.StatusOK)
 
-	return &sseSink{c: c, done: c.Request.Context().Done()}
+	sink := &sseSink{
+		c:         c,
+		done:      c.Request.Context().Done(),
+		stop:      make(chan struct{}),
+		lastWrite: time.Now(),
+	}
+	sink.startHeartbeat(sseHeartbeatInterval)
+	return sink
+}
+
+// startHeartbeat 起一个只在"确实空闲"时补注释帧的 goroutine。
+//
+// 【为什么要看 lastWrite 而不是无脑写】有数据在流的时候不需要心跳；无脑写
+// 会让每条正常回答里夹一堆注释帧（多耗带宽，日志也变吵）。这里每 tick 检查
+// 一次：距上次写入不足一个间隔就跳过。
+func (s *sseSink) startHeartbeat(interval time.Duration) {
+	if interval <= 0 {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-s.done:
+				return
+			case <-s.stop:
+				return
+			case <-ticker.C:
+				s.mu.Lock()
+				if time.Since(s.lastWrite) < interval {
+					s.mu.Unlock()
+					continue
+				}
+				_, err := fmt.Fprint(s.c.Writer, ": keep-alive\n\n")
+				if err == nil {
+					s.c.Writer.Flush()
+				}
+				s.lastWrite = time.Now()
+				s.mu.Unlock()
+				if err != nil {
+					return
+				}
+			}
+		}
+	}()
+}
+
+// Close 停掉心跳 goroutine。幂等，handler 用 defer 调用。
+func (s *sseSink) Close() {
+	s.once.Do(func() { close(s.stop) })
 }
 
 // Emit 按 docs/sse-protocol.md 定义的帧格式写一条事件。
@@ -78,6 +153,8 @@ func newSSESink(c *gin.Context) *sseSink {
 // docs/sse-protocol.md「线路层怎么区分这两种帧」写的就是这一行，
 // writeFallbackError（下面那个）走的是同一条判据——两条路必须一致。
 func (s *sseSink) Emit(ev conversation.Event) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	// 拼一个可以为空的前缀，而不是写两条 Fprintf：帧格式只有一处可看，
 	// 加字段时不会漏改其中一条分支。
 	id := ""
@@ -85,6 +162,7 @@ func (s *sseSink) Emit(ev conversation.Event) error {
 		id = fmt.Sprintf("id: %d\n", ev.ID)
 	}
 	_, err := fmt.Fprintf(s.c.Writer, "%sevent: %s\ndata: %s\n\n", id, ev.Type, ev.Payload)
+	s.lastWrite = time.Now()
 	if err != nil {
 		return fmt.Errorf("write sse frame: %w", err)
 	}
@@ -112,13 +190,19 @@ func (s *sseSink) writeFallbackError(data sseErrorData) error {
 		return fmt.Errorf("marshal fallback error frame: %w", err)
 	}
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if _, err := fmt.Fprintf(s.c.Writer, "event: %s\ndata: %s\n\n", eventErrorName, body); err != nil {
 		return fmt.Errorf("write fallback error frame: %w", err)
 	}
-	return s.Flush()
+	s.lastWrite = time.Now()
+	s.c.Writer.Flush()
+	return nil
 }
 
 func (s *sseSink) Flush() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.c.Writer.Flush()
 	return nil
 }

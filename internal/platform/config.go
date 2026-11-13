@@ -100,6 +100,22 @@ type Config struct {
 	// 放进 ./data/ 而不是系统临时目录，理由和 MasterKeyPath 一样：
 	// 跟着 Compose 卷走，不会因为容器重建就重新触发一次下载。
 	TiktokenCacheDir string
+
+	// RateLimitPerMinute / RateLimitBurst 是 HTTP 限流的 general 档：
+	// 所有 /api/ 请求共用，默认每分钟 240 个令牌、桶容量 60。0 表示关闭
+	// 这一档（语义见 RateLimitConfig 的注释）。
+	//
+	// 【为什么默认开着】限流是这一轮的交付物之一；默认关掉的防御只有
+	// "文档里写了可以开"，评审看到的就是一个不生效的旋钮。默认值按
+	// "一个正常用户不会碰到"来定，遇到再调。
+	RateLimitPerMinute int
+	RateLimitBurst     int
+
+	// RateLimitLLMPerMinute / RateLimitLLMBurst 是 expensive 档：会调
+	// 模型/embedding 或触发大规模重索引的端点走这一档，默认 30/min、
+	// burst 8——比 general 严格一个数量级，因为一次调用的真实成本高。
+	RateLimitLLMPerMinute int
+	RateLimitLLMBurst     int
 }
 
 // 默认值。每一项都能用对应的 CONGORAG_* 环境变量覆盖。
@@ -126,12 +142,57 @@ const (
 	// 10 分钟。比 541 页实测的 2 分钟留 5 倍余量；真正更慢的解析应该
 	// 走后台任务而不是拉长 HTTP 超时。
 	defaultPDFTimeout = 10 * time.Minute
+
+	// 限流的默认额度（单位：令牌/分钟；burst 是桶容量）。
+	//
+	// general 240/min（4/s）对"一个用户点界面"足够宽松：页面静态资源
+	// 不受限（见 RateLimit 的注释），/api/ 请求不会连续打到每秒 4 个以上；
+	// burst 60 允许一次刷新后的并发请求全部通过。
+	//
+	// expensive 30/min（0.5/s）、burst 8：一次对话/写作/对比就是一次模型
+	// 调用，30/min 足够一个人正常使用；burst 8 允许"点一下写作、马上切
+	// 对比"这种短时连点。
+	defaultRateLimitPerMinute    = 240
+	defaultRateLimitBurst        = 60
+	defaultRateLimitLLMPerMinute = 30
+	defaultRateLimitLLMBurst     = 8
 )
 
 // LoadConfig 从环境变量读配置，缺失的用默认值补。
 //
 // 只有 DatabaseURL 是必填的——没有它服务起不来，而且猜不出正确值。
 func LoadConfig() (*Config, error) {
+	// 【限流参数为什么特殊对待】别的数值配置（超时、上传上限）非法时静默
+	// 退回默认值，因为"有一个合理的默认行为"比"起不来"重要；限流相反：
+	// 一个手滑的负数或拼错的变量名会让防线无声消失，而那正是这一轮的
+	// 交付物。所以这 4 个变量解析失败/为负一律 return error，让进程在
+	// 启动时就地失败，而不是带着"看起来配了"的配置跑起来。
+	generalPerMinute, err := envNonNegativeInt("CONGORAG_RATE_LIMIT_PER_MINUTE", defaultRateLimitPerMinute)
+	if err != nil {
+		return nil, err
+	}
+	generalBurst, err := envNonNegativeInt("CONGORAG_RATE_LIMIT_BURST", defaultRateLimitBurst)
+	if err != nil {
+		return nil, err
+	}
+	llmPerMinute, err := envNonNegativeInt("CONGORAG_RATE_LIMIT_LLM_PER_MINUTE", defaultRateLimitLLMPerMinute)
+	if err != nil {
+		return nil, err
+	}
+	llmBurst, err := envNonNegativeInt("CONGORAG_RATE_LIMIT_LLM_BURST", defaultRateLimitLLMBurst)
+	if err != nil {
+		return nil, err
+	}
+
+	// 0 是"关闭这一档"；但"开着却 burst=0"是自相矛盾的配置——桶永远
+	// 拿不到令牌，表现成该端点全被拒。启动时报错，别等上线后排查。
+	if generalPerMinute > 0 && generalBurst < 1 {
+		return nil, fmt.Errorf("CONGORAG_RATE_LIMIT_BURST must be at least 1 when CONGORAG_RATE_LIMIT_PER_MINUTE is enabled, got %d", generalBurst)
+	}
+	if llmPerMinute > 0 && llmBurst < 1 {
+		return nil, fmt.Errorf("CONGORAG_RATE_LIMIT_LLM_BURST must be at least 1 when CONGORAG_RATE_LIMIT_LLM_PER_MINUTE is enabled, got %d", llmBurst)
+	}
+
 	cfg := &Config{
 		DatabaseURL:      os.Getenv("CONGORAG_DB_URL"),
 		ListenAddr:       envOr("CONGORAG_LISTEN_ADDR", defaultListenAddr),
@@ -144,6 +205,11 @@ func LoadConfig() (*Config, error) {
 		MasterKeyPath:    envOr("CONGORAG_MASTER_KEY_PATH", defaultMasterKeyPath),
 		TiktokenCacheDir: envOr("CONGORAG_TIKTOKEN_CACHE_DIR", defaultTiktokenCacheDir),
 		MaxUploadBytes:   envBytes("CONGORAG_MAX_UPLOAD_BYTES", defaultMaxUploadBytes),
+
+		RateLimitPerMinute:    generalPerMinute,
+		RateLimitBurst:        generalBurst,
+		RateLimitLLMPerMinute: llmPerMinute,
+		RateLimitLLMBurst:     llmBurst,
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -194,4 +260,26 @@ func envDuration(key string, def time.Duration) time.Duration {
 		return def
 	}
 	return d
+}
+
+// envNonNegativeInt 读一个"允许 0、不允许负数/非数字"的整数环境变量。
+//
+// 【为什么和 envBytes 的做法不同】envBytes 对非法值退回默认值，判据是
+// "这个配置有合理的默认行为"（上传上限）。限流不满足这个判据：把用户
+// 写错的负数悄悄换成默认值，等于告诉他"你配的额度生效了"，而实际生效的
+// 是另一个数。所以这里的选择是：没设置 → 默认值；设置了但解析不出非负
+// 整数 → 启动失败并指名变量。
+func envNonNegativeInt(key string, fallback int) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a non-negative integer, got %q", key, raw)
+	}
+	if n < 0 {
+		return 0, fmt.Errorf("%s must not be negative, got %d", key, n)
+	}
+	return n, nil
 }

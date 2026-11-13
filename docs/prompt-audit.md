@@ -27,7 +27,7 @@
 | `caption.system` | Figure Caption | v1 | `apps/api/internal/api/handler_research.go` |
 | `versiondiff.system` | 论文版本差异 | v1 | `apps/api/internal/api/handler_knowledge.go` |
 
-![Prompt 审计页面](../assets/prompts-audit.png)
+![Prompt 审计页面](assets/prompts-audit.png)
 
 *（截图来自真实注册表数据：17 条提示词、每条的版本时间线 / 完整文本 / SHA-256 / 变更原因 / 采样参数 / 代码位置。界面只读。）*
 

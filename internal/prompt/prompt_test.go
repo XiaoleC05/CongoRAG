@@ -108,3 +108,119 @@ func TestChatSystemPrompt_KeepsGroundingContract(t *testing.T) {
 	require.Contains(t, content, "根据现有资料无法回答")
 	require.True(t, strings.Contains(content, "不要编造引用编号"))
 }
+
+// TestValidateRegistry_CatchesBrokenEntries 用表驱动证明每一条校验规则都会真的失败。
+//
+// 【为什么不能只测 Validate()==nil】那只证明"当前注册表是对的"，不证明
+// "校验器能抓住错误"。变异体测试让每条规则都有一个会红的反例；将来有人
+// 为了"让测试过"放宽规则时，对应的反例会立刻变绿暴露出来。
+func TestValidateRegistry_CatchesBrokenEntries(t *testing.T) {
+	// 取一条真实条目做底，逐字段造坏。
+	// 【必须深拷贝】registry 的 Versions 是切片；按值返回 Entry 时切片仍与
+	// 全局注册表共享底层数组——某个变异用例改了版本号，后面的用例会一起看到
+	// 被改过的全局状态（第一版测试就是这么红的）。
+	base := func() Entry {
+		for _, e := range registry {
+			if e.Key == "translate.system" {
+				c := e
+				c.Versions = append([]Version(nil), e.Versions...)
+				c.Variables = append([]Variable(nil), e.Variables...)
+				c.CodeRefs = append([]CodeRef(nil), e.CodeRefs...)
+				return c
+			}
+		}
+		t.Fatal("fixture entry translate.system not found")
+		return Entry{}
+	}
+
+	cases := []struct {
+		name   string
+		mutate func([]Entry) []Entry
+		want   string // 错误里应包含的片段
+	}{
+		{
+			name: "重复 key",
+			mutate: func(es []Entry) []Entry {
+				dup := es[0]
+				return append(es, dup)
+			},
+			want: "重复的 key",
+		},
+		{
+			name: "Active 指向旧版本",
+			mutate: func(es []Entry) []Entry {
+				e := base()
+				v2 := e.Versions[0]
+				v2.Version = 2
+				e.Versions = append(e.Versions, v2)
+				e.Active = 1 // 最新是 2，却生效 1
+				return []Entry{e}
+			},
+			want: "Active",
+		},
+		{
+			name: "版本号不连续",
+			mutate: func(es []Entry) []Entry {
+				e := base()
+				e.Versions[0].Version = 3
+				e.Active = 3
+				return []Entry{e}
+			},
+			want: "版本号不连续",
+		},
+		{
+			name: "内容为空",
+			mutate: func(es []Entry) []Entry {
+				e := base()
+				e.Versions[0].Content = "   "
+				return []Entry{e}
+			},
+			want: "内容为空",
+		},
+		{
+			name: "模板占位符未声明",
+			mutate: func(es []Entry) []Entry {
+				e := base()
+				e.Versions[0].Content = "带有 {{undeclared}} 的模板"
+				return []Entry{e}
+			},
+			want: "未在 Variables 里声明",
+		},
+		{
+			name: "声明了变量但模板里没有占位符",
+			mutate: func(es []Entry) []Entry {
+				e := base()
+				e.Variables = append(e.Variables, Variable{Name: "unused", Description: "没用到的变量"})
+				return []Entry{e}
+			},
+			want: "已声明但模板里没有占位符",
+		},
+		{
+			name: "没有代码位置",
+			mutate: func(es []Entry) []Entry {
+				e := base()
+				e.CodeRefs = nil
+				return []Entry{e}
+			},
+			want: "至少需要一个代码位置",
+		},
+		{
+			name: "变更原因为空",
+			mutate: func(es []Entry) []Entry {
+				e := base()
+				e.Versions[0].ChangeReason = ""
+				return []Entry{e}
+			},
+			want: "变更原因",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			broken := c.mutate([]Entry{base()})
+			err := validateRegistry(broken)
+			require.Error(t, err, "变异体必须被校验器抓到")
+			require.Contains(t, err.Error(), c.want)
+		})
+	}
+}

@@ -266,7 +266,9 @@ var allowedUploadExts = map[string]bool{
 // 如果 rename 成功之后事务失败，磁盘上会留下一个孤儿文件，那不是本方法
 // 要处理的问题——它交给 StartReconciler 注册的周期任务事后清理。
 func (u *Usecase) Upload(ctx context.Context, kbID uuid.UUID, filename string, r io.Reader) (*Document, error) {
-	filename = strings.TrimSpace(filename)
+	// 文件名先净化再校验：客户端可以传 "../../etc/passwd"、带换行的名字、
+	// Windows 反斜杠路径。净化只保留纯文件名，控制字符直接丢弃。
+	filename = sanitizeUploadFilename(filename)
 	if filename == "" {
 		return nil, fmt.Errorf("filename must not be empty: %w", platform.ErrInvalid)
 	}
@@ -276,15 +278,24 @@ func (u *Usecase) Upload(ctx context.Context, kbID uuid.UUID, filename string, r
 			n, maxUploadFilenameLen, platform.ErrInvalid)
 	}
 	// 扩展名按小写比对：.MD 和 .md 是同一类文件。
-	if ext := strings.ToLower(path.Ext(filename)); !allowedUploadExts[ext] {
+	ext := uploadExtOf(filename)
+	if !allowedUploadExts[ext] {
 		return nil, fmt.Errorf(
-			"unsupported file type %q: only .md, .markdown and .txt are accepted: %w",
+			"unsupported file type %q: only .md, .markdown, .txt and .pdf are accepted: %w",
 			ext, platform.ErrInvalid)
+	}
+
+	// ⓪ 内容嗅探：扩展名白名单挡不住"改名成 .pdf 的 HTML"。在落盘之前把
+	// 前 512 字节看出来，错的文件在这一步就以 invalid_argument 拒绝，而不是
+	// 存进去、处理失败、再让用户在文档列表里看到一个 failed。
+	body, err := validateUploadContent(ext, r)
+	if err != nil {
+		return nil, err
 	}
 
 	// ① 写临时文件。byteSize 是服务端自己数出来的实际字节数，
 	// 不是客户端上报的（那个不可信）。
-	tmp, byteSize, err := u.files.WriteTemp(ctx, r)
+	tmp, byteSize, err := u.files.WriteTemp(ctx, body)
 	if err != nil {
 		return nil, fmt.Errorf("write temp file: %w", err)
 	}
@@ -1086,9 +1097,9 @@ func frontMatterChunk(chunks []domain.Chunk) *domain.Chunk {
 		return nil
 	}
 	return &domain.Chunk{
-		Content:    "首页信息（标题/作者/机构，来自 PDF 第 1 页）：\n" + text,
-		PageStart:  1,
-		PageEnd:    1,
-		BlockType:  "other",
+		Content:   "首页信息（标题/作者/机构，来自 PDF 第 1 页）：\n" + text,
+		PageStart: 1,
+		PageEnd:   1,
+		BlockType: "other",
 	}
 }

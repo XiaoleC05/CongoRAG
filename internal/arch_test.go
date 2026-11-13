@@ -53,7 +53,7 @@ const (
 // 序号之后，「为什么允许 ctxmgr→llm」这种问题会被压成一个数字，新增边时也
 // 没人需要解释理由。
 //
-// 未列出的边一律失败，包括将来新增的包（例如 R2 计划里的 internal/prompt）
+// 未列出的边一律失败，包括将来新增的包（例如 v6.3.0 加入的 internal/prompt）
 // 第一次被 import 的时候：先来这张表登记、再同步 ADR，是刻意的摩擦。
 //
 // 约定：key 是 from（import 别人的包），value 是允许它 import 的 internal 一级包。

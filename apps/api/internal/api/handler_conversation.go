@@ -128,6 +128,7 @@ func (s *Server) SendMessage(c *gin.Context, id openapi_types.UUID, params SendM
 	}
 
 	sink := newSSESink(c)
+	defer sink.Close()
 	// Send 的返回值只用于日志和兜底——一旦切到 SSE 模式，错误已经通过
 	// error 事件传给客户端了（conversation.Usecase.Send 自己保证这一点），
 	// 这里不需要、也不能再对 c 做任何响应相关的操作。
@@ -183,6 +184,7 @@ func (s *Server) SubscribeConversationEvents(c *gin.Context, id openapi_types.UU
 	}
 
 	sink := newSSESink(c)
+	defer sink.Close()
 	for _, ev := range events {
 		if err := sink.Emit(conversation.Event{ID: ev.ID, Type: ev.Type, Payload: ev.Payload}); err != nil {
 			// 客户端在补发历史事件的过程中断开了——没有更多可做的，

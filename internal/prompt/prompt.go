@@ -310,7 +310,7 @@ var registry = []Entry{
 		CodeRefs: []CodeRef{{File: "internal/llm/usecase.go", Symbol: "Translate"}},
 		Versions: []Version{{
 			Version: 1,
-			Content: "你是学术论文翻译助手。把用户给出的论文片段准确翻译成 {{targetLang}}；保留公式、术语、引用编号与数字原文；只输出译文，不要解释或补充。",
+			Content: "你是学术论文翻译助手。把用户给出的论文片段准确翻译成{{targetLang}}；保留公式、术语、引用编号与数字原文；只输出译文，不要解释或补充。",
 			ChangeReason: "从 llm/usecase.go 的字符串拼接收敛到注册表；temperature=0.1 的采样参数随版本一起登记" +
 				"（v6.3.0 起适配器真正把它传给模型，之前被丢弃）。",
 			CreatedAt:   "2026-11-14",
@@ -364,7 +364,7 @@ var registry = []Entry{
 		CodeRefs: []CodeRef{{File: "apps/api/internal/api/handler_research.go", Symbol: "buildWritingPrompt"}},
 		Versions: []Version{{
 			Version:      1,
-			Content:      "写作主题：{{topic}}\r\n\r\n任务：{{task}}。\r\n\r\n可用资料（每条前面的编号就是引用编号）：\r\n{{evidence}}",
+			Content:      "写作主题：{{topic}}\n\n任务：{{task}}。\n\n可用资料（每条前面的编号就是引用编号）：\n{{evidence}}",
 			ChangeReason: "把写作请求的用户侧模板从代码拼接改为注册表模板；证据块的内容仍由 handler 按 citation 顺序生成。",
 			CreatedAt:    "2026-11-14",
 			ActivatedAt:  "2026-11-14",
@@ -464,7 +464,7 @@ var registry = []Entry{
 		CodeRefs: []CodeRef{{File: "apps/api/internal/api/handler_research.go", Symbol: "buildComparePrompt"}},
 		Versions: []Version{{
 			Version:      1,
-			Content:      "对比问题：{{question}}\r\n\r\n资料（每条前面的编号就是引用编号，括号里是来源文件与页码）：\r\n{{evidence}}",
+			Content:      "对比问题：{{question}}\n\n资料（每条前面的编号就是引用编号，括号里是来源文件与页码）：\n{{evidence}}",
 			ChangeReason: "从代码拼接改为注册表模板；编号顺序仍由 handler 保证与 citations 一致。",
 			CreatedAt:    "2026-11-14",
 			ActivatedAt:  "2026-11-14",
@@ -500,7 +500,7 @@ var registry = []Entry{
 		CodeRefs: []CodeRef{{File: "apps/api/internal/api/handler_research.go", Symbol: "GetCitationSurvey"}},
 		Versions: []Version{{
 			Version:      1,
-			Content:      "关注方向：{{focus}}\r\n\r\n论文片段：\r\n{{docs}}\r\n引用关系：\r\n{{relations}}\r\n请输出综述 + Future Work。",
+			Content:      "关注方向：{{focus}}\n\n论文片段：\n{{docs}}\n引用关系：\n{{relations}}\n请输出综述 + Future Work。",
 			ChangeReason: "从代码拼接改为注册表模板；片段摘录长度（700 rune）仍由 handler 决定。",
 			CreatedAt:    "2026-11-14",
 			ActivatedAt:  "2026-11-14",
@@ -564,9 +564,15 @@ var registry = []Entry{
 // 调用一次（见 apps/api/internal/app），失败就拒绝启动——和数据库连不上、
 // tiktoken 词表下载失败同一条原则：配错了就在启动时说。
 func Validate() error {
+	return validateRegistry(registry)
+}
+
+// validateRegistry 是 Validate 的可注入版本：测试用它喂"故意写坏的注册表"，
+// 证明每一条校验规则都真的会失败（否则全局注册表的 happy-path 测试永远绿）。
+func validateRegistry(entries []Entry) error {
 	var problems []string
 	seen := map[string]bool{}
-	for _, e := range registry {
+	for _, e := range entries {
 		if e.Key == "" || e.Title == "" || e.Description == "" {
 			problems = append(problems, fmt.Sprintf("entry %q: key/title/description 不能为空", e.Key))
 		}

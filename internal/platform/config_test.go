@@ -153,3 +153,105 @@ func TestLoadConfig_MaxUploadBytes(t *testing.T) {
 		})
 	}
 }
+
+// ────────────────────────────────────────────────────────────────
+// 限流配置
+// ────────────────────────────────────────────────────────────────
+
+// 四个 CONGORAG_RATE_LIMIT_* 的默认值就是对外承诺的额度，和代码里的
+// 常量分开断言：常量被"顺手调小"时这条会红，提醒改的人这是行为变更。
+func TestLoadConfig_RateLimitDefaults(t *testing.T) {
+	t.Setenv("CONGORAG_DB_URL", "postgres://localhost/congorag")
+	clearRateLimitEnv(t)
+
+	cfg, err := LoadConfig()
+
+	require.NoError(t, err)
+	assert.Equal(t, 240, cfg.RateLimitPerMinute, "general 档默认 240 令牌/分钟")
+	assert.Equal(t, 60, cfg.RateLimitBurst, "general 档 burst 默认 60")
+	assert.Equal(t, 30, cfg.RateLimitLLMPerMinute, "expensive 档默认 30 令牌/分钟")
+	assert.Equal(t, 8, cfg.RateLimitLLMBurst, "expensive 档 burst 默认 8")
+}
+
+func TestLoadConfig_RateLimitOverrides(t *testing.T) {
+	t.Setenv("CONGORAG_DB_URL", "postgres://localhost/congorag")
+	t.Setenv("CONGORAG_RATE_LIMIT_PER_MINUTE", "120")
+	t.Setenv("CONGORAG_RATE_LIMIT_BURST", " 30 ")
+	t.Setenv("CONGORAG_RATE_LIMIT_LLM_PER_MINUTE", "0")
+	t.Setenv("CONGORAG_RATE_LIMIT_LLM_BURST", "0")
+
+	cfg, err := LoadConfig()
+
+	require.NoError(t, err)
+	assert.Equal(t, 120, cfg.RateLimitPerMinute, "数字两侧空白应被接受")
+	assert.Equal(t, 30, cfg.RateLimitBurst)
+	assert.Equal(t, 0, cfg.RateLimitLLMPerMinute, "0 表示关闭这一档，是合法值")
+	assert.Equal(t, 0, cfg.RateLimitLLMBurst)
+}
+
+// 负数和解析不出数字的值必须让启动失败，而不是静默回退默认值：
+// 回退等于把用户写错的额度换成一个他没写过的数字，且没有任何提示。
+func TestLoadConfig_RateLimitRejectsInvalidValues(t *testing.T) {
+	t.Setenv("CONGORAG_DB_URL", "postgres://localhost/congorag")
+
+	for _, tt := range []struct {
+		name string
+		key  string
+		val  string
+	}{
+		{"general 速率为负", "CONGORAG_RATE_LIMIT_PER_MINUTE", "-1"},
+		{"general burst 为负", "CONGORAG_RATE_LIMIT_BURST", "-5"},
+		{"expensive 速率为负", "CONGORAG_RATE_LIMIT_LLM_PER_MINUTE", "-30"},
+		{"expensive burst 为负", "CONGORAG_RATE_LIMIT_LLM_BURST", "-8"},
+		{"不是整数", "CONGORAG_RATE_LIMIT_PER_MINUTE", "240/min"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			clearRateLimitEnv(t)
+			t.Setenv(tt.key, tt.val)
+
+			cfg, err := LoadConfig()
+
+			require.Error(t, err, "非法限流配置必须拒绝启动")
+			assert.Nil(t, cfg)
+			assert.Contains(t, err.Error(), tt.key, "报错要指名是哪个变量")
+		})
+	}
+}
+
+// burst=0 与 rate>0 是自相矛盾的配置：桶永远拿不到令牌，表现成该端点全被拒。
+// 0 只应作为"关闭这一档"与 rate 一起出现。
+func TestLoadConfig_RateLimitRejectsEnabledTierWithoutBurst(t *testing.T) {
+	t.Setenv("CONGORAG_DB_URL", "postgres://localhost/congorag")
+	clearRateLimitEnv(t)
+	t.Setenv("CONGORAG_RATE_LIMIT_BURST", "0")
+
+	_, err := LoadConfig()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "CONGORAG_RATE_LIMIT_BURST")
+
+	// 两档都显式关闭时，burst 为 0 是合法的（停止使用该配置）。
+	clearRateLimitEnv(t)
+	t.Setenv("CONGORAG_RATE_LIMIT_PER_MINUTE", "0")
+	t.Setenv("CONGORAG_RATE_LIMIT_BURST", "0")
+	t.Setenv("CONGORAG_RATE_LIMIT_LLM_PER_MINUTE", "0")
+	t.Setenv("CONGORAG_RATE_LIMIT_LLM_BURST", "0")
+
+	cfg, err := LoadConfig()
+	require.NoError(t, err)
+	assert.Zero(t, cfg.RateLimitPerMinute)
+	assert.Zero(t, cfg.RateLimitLLMPerMinute)
+}
+
+// clearRateLimitEnv 把四个限流变量恢复成"没设置"，避免开发者本机环境
+// 泄漏进默认值断言。
+func clearRateLimitEnv(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"CONGORAG_RATE_LIMIT_PER_MINUTE",
+		"CONGORAG_RATE_LIMIT_BURST",
+		"CONGORAG_RATE_LIMIT_LLM_PER_MINUTE",
+		"CONGORAG_RATE_LIMIT_LLM_BURST",
+	} {
+		t.Setenv(key, "")
+	}
+}

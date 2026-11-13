@@ -5,7 +5,7 @@
 上传一篇论文，问它问题。系统先检索证据，再逐句生成带页码和原文位置的回答；点引用就回到 PDF 那一页。
 它也支持中英对照阅读、arXiv 追踪、引用图谱和写作草稿。所有生成都走同一套引用与校验。
 
-当前版本 **v6.3.0**（2026-11-14）。在线演示：<https://congorag.cloud>；
+当前版本 **v6.4.0**（2026-11-14）。在线演示：<https://congorag.cloud>；
 提交材料（技术文档、演示视频、自检清单、评测报告）在
 [docs/submission/](docs/submission/README.md)。
 
@@ -26,7 +26,7 @@
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Version](https://img.shields.io/badge/version-6.3.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-6.4.0-blue)](CHANGELOG.md)
 
 本地优先的 RAG 问答与 Agent 平台。文档、向量、API Key 都留在自己的机器上，
 模型服务由使用者提供（BYOK）。
@@ -316,6 +316,12 @@ flowchart LR
 | `CONGORAG_MASTER_KEY_PATH` | `./data/master.key` | 主密钥文件路径 |
 | `CONGORAG_TIKTOKEN_CACHE_DIR` | `./data/tiktoken-cache` | tiktoken 词表缓存目录 |
 | `CONGORAG_MAX_UPLOAD_BYTES` | `33554432`（32 MiB） | 单次上传的请求体上限。写 0 或负数会被当成没设、退回默认值 |
+| `CONGORAG_RATE_LIMIT_PER_MINUTE` | `240` | 全局限流（令牌/分钟）；0 关闭 |
+| `CONGORAG_RATE_LIMIT_BURST` | `60` | 全局限流桶容量 |
+| `CONGORAG_RATE_LIMIT_LLM_PER_MINUTE` | `30` | 会调模型/embedding 的端点限流（令牌/分钟）；0 关闭 |
+| `CONGORAG_RATE_LIMIT_LLM_BURST` | `8` | 模型端点限流桶容量 |
+
+限流与安全响应头见 [SECURITY.md](SECURITY.md)；超限返回 429 `rate_limited` 并带 `Retry-After`。
 
 主密钥有三个来源，按顺序解析：环境变量非空则直接用；否则读 `master.key` 文件；
 文件不存在就随机生成一个写入该路径（权限 `0600`），首次启动后固定下来。
@@ -367,7 +373,7 @@ Agent 那条流的首帧永远是 `run_started`（`data: {"runId": ...}`），�
 `null` 表示到底了。游标是不透明的，不要解析它，格式随时可能变（见契约里
 `Cursor` 参数的描述）。
 
-契约的 `info.version` 跟产品版本走（当前 `6.3.0` ↔ tag `v6.3.0`），由发布脚本在发布前
+契约的 `info.version` 跟产品版本走（当前 `6.4.0` ↔ tag `v6.4.0`），由发布脚本在发布前
 断言两者一致，见 [ADR-002](docs/adr/002-contract-versioning.md)。它不表示兼容性
 承诺。兼容边界是路径里的 `/api/v1`。
 

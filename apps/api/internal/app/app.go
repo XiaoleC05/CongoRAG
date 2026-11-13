@@ -255,10 +255,32 @@ func Run(webFS embed.FS) error {
 	// 对前端路由没有影响：/knowledge-bases/ 不是 API 前缀，依旧返回 index.html。
 	r.RedirectTrailingSlash = false
 
+	// 限流器在装配阶段构造：配置非法（负数、开着但 burst=0）要尽早失败，
+	// 而不是等到第一个请求才暴露。两档都为 0 时内部是 nil，RateLimit
+	// 中间件退化成纯透传。
+	rateLimiter, err := platform.NewRateLimiter(platform.RateLimitConfig{
+		GeneralPerMinute: cfg.RateLimitPerMinute,
+		GeneralBurst:     cfg.RateLimitBurst,
+		LLMPerMinute:     cfg.RateLimitLLMPerMinute,
+		LLMBurst:         cfg.RateLimitLLMBurst,
+	})
+	if err != nil {
+		return fmt.Errorf("configure rate limiter: %w", err)
+	}
+
+	// 【中间件顺序是三件事的折中】
+	//   · SecurityHeaders 必须在 Recovery 之前：它在 c.Next() 之前把安全头
+	//     写进 Header map，panic 后 Recovery 写出的 500 Problem 才会带上这些头；
+	//   · RateLimit 必须在 OriginCheck 之后：跨站请求先被 403 掉，不浪费本机
+	//     用户的限流额度；顺序反过来，恶意站点可以先把你的额度刷光；
+	//   · Recovery 放在 SecurityHeaders 之后、业务中间件之前：既兜住
+	//     OriginCheck/RateLimit 的 panic，兜底响应又带安全头。
 	r.Use(
 		platform.RequestID(),
-		platform.OriginCheck(cfg),
+		platform.SecurityHeaders(),
 		platform.Recovery(logger),
+		platform.OriginCheck(cfg),
+		platform.RateLimit(rateLimiter),
 	)
 
 	srv := api.NewServer(api.Deps{
