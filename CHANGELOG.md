@@ -26,6 +26,39 @@
 
 ---
 
+## [6.2.0] - 2026-11-14
+
+架构解耦与性能基线版本。**无运行时行为变更**，升级不需要任何额外操作。
+
+### 变更
+
+- **HTTP 层按资源域拆分**：`apps/api/internal/api/server.go` 从 2049 行拆成
+  `server.go`（外壳与公共工具）+ `convert.go`（DTO 转换）+ 六个
+  `handler_*.go`（知识库/文档、科研助手、arXiv、BYOK 与用量、会话与 SSE、Agent）。
+  决策与验收方式见 [ADR-009](docs/adr/009-api-handler-layout.md)。
+- **切词规则去重**：`knowledge` 包里那份与 `tokenize` 重复的切分实现删除，
+  统一走 `tokenize.Tokens`（保留词频，供 SimHash 使用）；`tokenize.Text`
+  在它之上做去重。检索与指纹从此共用同一套规则。
+- **近重复去重性能改造**：`retrieval.dedupeNearDuplicates` 的 5-gram 集合表示
+  从字符串换成排序去重的 64 位哈希切片。同机同语料：`203,333 → 161,000 ns/op`、
+  `186,564 → 48,664 B/op`、`3,319 → 22 allocs/op`。旧实现保留在测试里作为对照。
+- **纯函数基准与性能文档**：新增 `make bench` / `make bench-dedupe`，覆盖
+  tokenize、grounding、retrieval、knowledge、platform、visualize 六个包共 12 组
+  生产基准 + 2 组对照基准（大 topK 场景与旧实现对跑）；基线与测法写进
+  [docs/performance.md](docs/performance.md)。
+- **前端请求层契约化**：11 + 4 处手写 `fetch` 改走 `@congorag/api-client`，
+  统一错误解包（RFC7807 的 `type` 重新可见，错误提示回到中文文案而不是原始 JSON）；
+  新增 `scripts/bundle-report.mjs` 与 `docs/perf/bundle-baseline.json`，
+  首屏体积可按基线比较。
+- **质量基线**：新增 [docs/quality-baseline.md](docs/quality-baseline.md)，
+  记录本机可验证的绿灯基线、覆盖率与"只能 CI 验证"的项目清单。
+
+### 升级说明
+
+- 无数据库结构变更、无契约端点变化、无新增环境变量；
+- 契约 `info.version` 与 tag 同步升到 6.2.0（见 ADR-002）；
+- `make bench` 是新增的开发命令，不影响任何运行时路径。
+
 ## [6.0.0] - 2026-11-13
 
 单一主线合并版本。
@@ -450,7 +483,8 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
-[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.1.0...HEAD
+[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.2.0...HEAD
+[6.2.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.1.0...v6.2.0
 [6.1.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0.2...v6.0.0
 [5.0.2]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0.1...v5.0.2

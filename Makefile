@@ -62,6 +62,7 @@ SPECTRAL := npx --yes --no-fund --no-audit @stoplight/spectral-cli@6.15.0
         generate generate-go generate-ts \
         dev dev-web dev-worker build build-web build-web-assets build-web-placeholder build-go \
         test test-integration test-contract lint tidy fmt vet check         release release-dry check-changelog \
+        bench bench-dedupe bundle-report bundle-check \
         lint-spec crash-probe startup-package upgrade rollback
 
 help:
@@ -86,6 +87,10 @@ help:
 	@echo   make release VERSION=3.0 发布：打 tag + 建 Release（正文来自 CHANGELOG）
 	@echo   make release-dry VERSION=3.0  只打印发布内容，不碰 git、不联网
 	@echo   make check              build + vet + test
+	@echo   make bench              跑纯函数基准（不碰数据库/模型）
+	@echo   make bench-dedupe       只跑近重复去重基准（v6.2.0 优化过的那条）
+	@echo   make bundle-report      前端产物体积报告（和基线对比）
+	@echo   make bundle-check       前端体积门禁：超预算直接非零退出
 	@echo   make fmt                格式化
 	@echo   开发前端要开两个终端：一个 make dev，一个 make dev-web，浏览器开 :5173
 	@echo   处理文档上传还要第三个终端：make dev-worker
@@ -238,6 +243,38 @@ check-changelog:
 test:
 	go test ./...
 	pnpm --filter web test
+
+# ── 纯函数基准（v6.2.0 起）────────────────────────────────────
+#
+# 【它回答什么】"这次改动有没有把某条纯路径上的常数改坏"。
+# 基准覆盖：tokenize（切词）、grounding（引用落地检查）、retrieval（RRF 融合、
+# 近重复去重）、knowledge（SimHash 指纹、解析切分、引用图）、platform（游标）、
+# visualize（CSV → 图表代码）。全部不碰数据库、不联网、不调模型，本机随时可跑。
+#
+# 【数字不是门禁，回归才是】不同机器/不同负载下 ns/op 能差一倍，拿一个绝对
+# 阈值卡 CI 只会制造误报；真正要盯的是"同机同会话里的前后对比"，
+# 以及 allocs/op 这种与机器无关的指标。参照数据见 docs/performance.md。
+#
+# 【为什么 -run "^$"】^$ 不匹配任何 Test 函数，go test 就只跑 Benchmark；
+# 写一个假名字（TestNone）也能达到目的，但那个名字会出现在输出里，
+# 读的人得先确认它是不是拼错了。
+# 【-benchmem 不能省】near-duplicate 去重那次改造的收益主要在分配次数上
+# （3319 → 22 allocs/op），只看 ns/op 会低估它。
+bench:
+	go test -run "^$$" -bench . -benchmem ./internal/...
+
+bench-dedupe:
+	go test -run "^$$" -bench "DedupeNearDuplicates" -benchmem -count=4 ./internal/retrieval/
+
+# 前端产物体积报告：解析 apps/api/web/index.html 的入口/预加载与 assets，
+# 和 docs/perf/bundle-baseline.json 里的基线比较。首屏涨了会直接说涨在哪。
+bundle-report:
+	node scripts/bundle-report.mjs
+
+# 体积门禁：首屏 gzip +4% / 单业务 chunk +8% / ReaderPage 与 pdf.worker +5%
+# 超预算直接非零退出。R1 只提供命令，接进 CI 在 R5（那时它才和 E2E 一起跑）。
+bundle-check:
+	node scripts/bundle-report.mjs --check
 
 # ── 集成测试（需要真实 PostgreSQL）────────────────────────────
 #

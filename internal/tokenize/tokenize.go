@@ -17,15 +17,25 @@ import (
 	"unicode"
 )
 
-// Text 返回以空格分隔的检索词序列（英文小写、中文单字 + 双字）。
+// Tokens 返回切分后的检索词序列（英文小写、中文单字 + 双字），保留重复。
 //
 // 规则：
 //   - 拉丁字母/数字：连续串算一个词，转小写（保留 1706.03762 这类编号里的点）
 //   - 汉字：每个字算一个 token；相邻两个字再算一个 bigram
 //   - 其他字符（标点、数学符号）作分隔符
-func Text(s string) string {
+//
+// 【为什么导出这一层，而不是让调用方各自抄一遍】两个调用方需要同一套切分
+// 规则、不同的后处理：
+//   - Text / Query（检索）要去重：重复的 bigram 只会让 OR 查询变长；
+//   - knowledge.ContentFingerprint（SimHash）必须保留词频：去重之后，
+//     "只改了某个词出现次数"的版本修订在指纹上完全看不出来。
+//
+// 规则只能有一份实现。过去 knowledge 包里抄了一份同样逻辑的私有函数，
+// 两份各自演进时不会报错——只会让检索和去重对同一段文字给出不同的理解。
+// 这份实现是从 fingerprint.go 那份搬回来合并的（v6.2.0）。
+func Tokens(s string) []string {
 	if s == "" {
-		return ""
+		return nil
 	}
 	var tokens []string
 	var latin strings.Builder
@@ -70,11 +80,22 @@ func Text(s string) string {
 	}
 	flushLatin()
 	flushHan()
+	return tokens
+}
 
-	// 去重：同一段文字里重复的 bigram 对 tsquery 没有意义，还会让 OR
-	// 查询变长。保留首次出现顺序，方便调试时读。
+// Text 返回以空格分隔的检索词序列（英文小写、中文单字 + 双字），已去重。
+//
+// 去重的原因：同一段文字里重复的 bigram 对 tsquery 没有意义，还会让 OR
+// 查询变长。保留首次出现顺序，方便调试时读。纯分隔符 token（"." / "-" /
+// "_"）也在这里丢掉——它们是拉丁词边界被切开后留下的碎片，进 tsquery 只会
+// 变成噪声。
+func Text(s string) string {
+	tokens := Tokens(s)
+	if len(tokens) == 0 {
+		return ""
+	}
 	seen := make(map[string]struct{}, len(tokens))
-	out := make([]string, 0, len(tokens))
+	var out strings.Builder
 	for _, t := range tokens {
 		if t == "." || t == "-" || t == "_" {
 			continue
@@ -83,9 +104,12 @@ func Text(s string) string {
 			continue
 		}
 		seen[t] = struct{}{}
-		out = append(out, t)
+		if out.Len() > 0 {
+			out.WriteByte(' ')
+		}
+		out.WriteString(t)
 	}
-	return strings.Join(out, " ")
+	return out.String()
 }
 
 // Query 把用户查询变成 Postgres to_tsquery('simple', ...) 能吃的表达式

@@ -109,8 +109,8 @@ func (s *Server) fail(c *gin.Context, err error) {
 //
 // 实现是 platform.InnermostMessage：4xx 的 detail 和 SSE 主帧的
 // platform.SafeDetail 必须是同一份提取逻辑，否则同一个错误在 REST 和流式
-// 两种协议下的文案会不一样。这个名字留在本包是因为 server.go 的
-// writeFallbackError 也调用它。
+// 两种协议下的文案会不一样。这个名字留在本包是因为 handler_conversation.go
+// 的 writeFallbackError 也调用它（handler 按资源域拆文件见 ADR-009）。
 func innermostMessage(err error) string {
 	return platform.InnermostMessage(err)
 }

@@ -1,0 +1,316 @@
+{
+  "generatedAt": "2026-11-13T19:09:10.507Z",
+  "commit": "dcc91f9",
+  "buildDir": "apps/api/web",
+  "initial": {
+    "raw": 604457,
+    "gzip": 179100,
+    "js": {
+      "raw": 511918,
+      "gzip": 162959
+    },
+    "css": {
+      "raw": 92539,
+      "gzip": 16141
+    },
+    "files": [
+      "index-BQfBDJ57.js",
+      "rolldown-runtime-hePW80VL.js",
+      "react-BNDapcX6.js",
+      "tanstack-CJ0TyD5n.js",
+      "vendor-Dzf2eluw.js",
+      "radix-BhSQc_6p.js",
+      "react-router-BG1pyHtA.js",
+      "api-client-DZZMCVYg.js",
+      "index-ChPToVY0.css"
+    ]
+  },
+  "entry": {
+    "name": "index-BQfBDJ57.js",
+    "raw": 40962,
+    "gzip": 11864
+  },
+  "chunks": {
+    "pdf.worker.min": {
+      "raw": 1178002,
+      "gzip": 363302
+    },
+    "ReaderPage": {
+      "raw": 444056,
+      "gzip": 132324
+    },
+    "react": {
+      "raw": 218840,
+      "gzip": 67361
+    },
+    "lib": {
+      "raw": 150399,
+      "gzip": 44204
+    },
+    "radix": {
+      "raw": 97349,
+      "gzip": 31709
+    },
+    "vendor": {
+      "raw": 74572,
+      "gzip": 25274
+    },
+    "KnowledgeBaseDetailPage": {
+      "raw": 44771,
+      "gzip": 13105
+    },
+    "index": {
+      "raw": 40962,
+      "gzip": 11864
+    },
+    "react-router": {
+      "raw": 38588,
+      "gzip": 13753
+    },
+    "tanstack": {
+      "raw": 35030,
+      "gzip": 10150
+    },
+    "lowlight": {
+      "raw": 22517,
+      "gzip": 8606
+    },
+    "SettingsPage": {
+      "raw": 20845,
+      "gzip": 5973
+    },
+    "ConversationPage": {
+      "raw": 20504,
+      "gzip": 7704
+    },
+    "streamChat": {
+      "raw": 15564,
+      "gzip": 5170
+    },
+    "AgentDetailPage": {
+      "raw": 9394,
+      "gzip": 3709
+    },
+    "OnboardingPage": {
+      "raw": 7684,
+      "gzip": 2841
+    },
+    "typescript": {
+      "raw": 7601,
+      "gzip": 3064
+    },
+    "AgentFormDialog": {
+      "raw": 6784,
+      "gzip": 2847
+    },
+    "javascript": {
+      "raw": 6344,
+      "gzip": 2603
+    },
+    "UsagePage": {
+      "raw": 6114,
+      "gzip": 2089
+    },
+    "api-client": {
+      "raw": 5861,
+      "gzip": 2420
+    },
+    "sql": {
+      "raw": 5561,
+      "gzip": 2396
+    },
+    "checkbox": {
+      "raw": 5058,
+      "gzip": 2082
+    },
+    "useDocuments": {
+      "raw": 4996,
+      "gzip": 1814
+    },
+    "ConversationsPage": {
+      "raw": 4177,
+      "gzip": 1919
+    },
+    "python": {
+      "raw": 3258,
+      "gzip": 1460
+    },
+    "bash": {
+      "raw": 2835,
+      "gzip": 1556
+    },
+    "ToolCallCard": {
+      "raw": 2796,
+      "gzip": 1323
+    },
+    "AgentsPage": {
+      "raw": 2744,
+      "gzip": 1292
+    },
+    "useAgents": {
+      "raw": 2560,
+      "gzip": 1143
+    },
+    "RunTracePage": {
+      "raw": 2168,
+      "gzip": 1012
+    },
+    "markdown": {
+      "raw": 2071,
+      "gzip": 873
+    },
+    "xml": {
+      "raw": 1898,
+      "gzip": 776
+    },
+    "yaml": {
+      "raw": 1836,
+      "gzip": 826
+    },
+    "badge": {
+      "raw": 1463,
+      "gzip": 693
+    },
+    "CopyButton": {
+      "raw": 1420,
+      "gzip": 867
+    },
+    "go": {
+      "raw": 1403,
+      "gzip": 698
+    },
+    "pagination": {
+      "raw": 1307,
+      "gzip": 540
+    },
+    "makefile": {
+      "raw": 1045,
+      "gzip": 584
+    },
+    "ini": {
+      "raw": 926,
+      "gzip": 534
+    },
+    "label": {
+      "raw": 808,
+      "gzip": 502
+    },
+    "useConversations": {
+      "raw": 807,
+      "gzip": 407
+    },
+    "rolldown-runtime": {
+      "raw": 716,
+      "gzip": 428
+    },
+    "json": {
+      "raw": 586,
+      "gzip": 417
+    },
+    "diff": {
+      "raw": 580,
+      "gzip": 309
+    },
+    "dockerfile": {
+      "raw": 405,
+      "gzip": 316
+    },
+    "copy": {
+      "raw": 266,
+      "gzip": 227
+    },
+    "shell": {
+      "raw": 227,
+      "gzip": 205
+    },
+    "arrow-left": {
+      "raw": 195,
+      "gzip": 178
+    },
+    "activeModel": {
+      "raw": 190,
+      "gzip": 151
+    },
+    "check": {
+      "raw": 154,
+      "gzip": 158
+    },
+    "plaintext": {
+      "raw": 105,
+      "gzip": 114
+    }
+  },
+  "topChunks": [
+    {
+      "name": "pdf.worker.min",
+      "file": "pdf.worker.min-CGwSHl62.js",
+      "raw": 1178002,
+      "gzip": 363302
+    },
+    {
+      "name": "ReaderPage",
+      "file": "ReaderPage-Du_esxum.js",
+      "raw": 444056,
+      "gzip": 132324
+    },
+    {
+      "name": "react",
+      "file": "react-BNDapcX6.js",
+      "raw": 218840,
+      "gzip": 67361
+    },
+    {
+      "name": "lib",
+      "file": "lib-BKYUNj2c.js",
+      "raw": 150399,
+      "gzip": 44204
+    },
+    {
+      "name": "radix",
+      "file": "radix-BhSQc_6p.js",
+      "raw": 97349,
+      "gzip": 31709
+    },
+    {
+      "name": "vendor",
+      "file": "vendor-Dzf2eluw.js",
+      "raw": 74572,
+      "gzip": 25274
+    },
+    {
+      "name": "KnowledgeBaseDetailPage",
+      "file": "KnowledgeBaseDetailPage-CcCSGB5F.js",
+      "raw": 44771,
+      "gzip": 13105
+    },
+    {
+      "name": "index",
+      "file": "index-BQfBDJ57.js",
+      "raw": 40962,
+      "gzip": 11864
+    },
+    {
+      "name": "react-router",
+      "file": "react-router-BG1pyHtA.js",
+      "raw": 38588,
+      "gzip": 13753
+    },
+    {
+      "name": "tanstack",
+      "file": "tanstack-CJ0TyD5n.js",
+      "raw": 35030,
+      "gzip": 10150
+    }
+  ],
+  "pdfWorker": {
+    "name": "pdf.worker.min",
+    "file": "pdf.worker.min-CGwSHl62.js",
+    "raw": 1178002,
+    "gzip": 363302
+  },
+  "totals": {
+    "files": 58,
+    "raw": 2675301,
+    "gzip": 878558
+  }
+}

@@ -45,7 +45,7 @@
 |---|---|---|---|
 | v1（科研助手） | system："只依据编号资料写作；每个事实句末尾用 [n]；输出 Markdown；资料不足直接说明无法完成"；user：主题 + 体例任务（相关工作/摘要/提纲）+ 编号片段（含"文件名 第 N 页"） | 写作输出必须可核对：逐句引用 + 引用列表让读者能回原文 | 759 字相关工作草稿，[n] 与引用列表一一对应 |
 
-**代码**：`apps/api/internal/api/server.go`（`buildWritingPrompt`）。
+**代码**：`apps/api/internal/api/handler_research.go`（`buildWritingPrompt`；handler 按资源域拆文件见 ADR-009）。
 
 ## 6. 翻译提示词
 

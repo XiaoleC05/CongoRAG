@@ -1,6 +1,7 @@
 package retrieval
 
 import (
+	"sort"
 	"strings"
 	"unicode"
 
@@ -35,9 +36,9 @@ func dedupeNearDuplicates(chunks []domain.Chunk, limit int) []domain.Chunk {
 		return nil
 	}
 	kept := make([]domain.Chunk, 0, limit)
-	keptSets := make([]map[string]struct{}, 0, limit)
+	keptSets := make([][]uint64, 0, limit)
 	for _, c := range chunks {
-		set := shingleSet(c.Content)
+		set := shingleHashes(c.Content)
 		if len(set) == 0 {
 			// 空/纯符号分块：保留，但不参与去重比较（没有可比的内容）。
 			kept = append(kept, c)
@@ -49,7 +50,7 @@ func dedupeNearDuplicates(chunks []domain.Chunk, limit int) []domain.Chunk {
 		}
 		dup := false
 		for _, prev := range keptSets {
-			if len(prev) > 0 && jaccard(set, prev) >= dedupeThreshold {
+			if len(prev) > 0 && jaccard(prev, set) >= dedupeThreshold {
 				dup = true
 				break
 			}
@@ -66,42 +67,86 @@ func dedupeNearDuplicates(chunks []domain.Chunk, limit int) []domain.Chunk {
 	return kept
 }
 
-// shingleSet 把文本归一化成字符 5-gram 集合。
+// shingleHashes 把文本归一化成 5-gram 的【排序去重后的 64 位哈希】切片。
 //
 // 归一化：小写、只保留字母/数字（去掉空格、标点、换行）——OCR 与排版差异
 // 大多落在这些字符上，去掉它们能让同一段文字的不同版对齐。
-func shingleSet(text string) map[string]struct{} {
-	var b strings.Builder
-	b.Grow(len(text))
-	for _, r := range strings.ToLower(text) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			b.WriteRune(r)
+//
+// 【为什么存哈希而不是字符串】v6.2.0 的性能改造。旧实现给每个 5-gram 建一个
+// 新字符串（一块 ~1200 字的中文分块 → ~1200 个短字符串）再塞进 map，一次
+// top-50 去重要分配十几万个对象；改成"每窗口算一个 uint64、排序后去重"之后，
+// 每个分块只剩一个 []uint64，集合交并也退化成两个有序切片的双指针合并。
+// 对 0.85 这种粗粒度阈值来说，64 位哈希碰撞带来的误差（同一次去重里量级
+// 约 1e-10）远小于阈值本身的不确定性，而分配和 GC 的收益是数量级的。
+func shingleHashes(text string) []uint64 {
+	runes := normalizedRunes(text)
+	n := len(runes)
+	if n < dedupeShingleRunes {
+		return nil
+	}
+	out := make([]uint64, 0, n-dedupeShingleRunes+1)
+	for i := 0; i+dedupeShingleRunes <= n; i++ {
+		out = append(out, hashShingle(runes[i:i+dedupeShingleRunes]))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	// 去重：同一段文字里重复的 5-gram 对集合没有意义，留着只会让后面的
+	// 双指针合并多走几轮。
+	w := 1
+	for r := 1; r < len(out); r++ {
+		if out[r] != out[w-1] {
+			out[w] = out[r]
+			w++
 		}
 	}
-	runes := []rune(b.String())
-	if len(runes) < dedupeShingleRunes {
-		return map[string]struct{}{}
-	}
-	set := make(map[string]struct{}, len(runes)-dedupeShingleRunes+1)
-	for i := 0; i+dedupeShingleRunes <= len(runes); i++ {
-		set[string(runes[i:i+dedupeShingleRunes])] = struct{}{}
-	}
-	return set
+	return out[:w]
 }
 
-func jaccard(a, b map[string]struct{}) float64 {
+// normalizedRunes 返回只含字母/数字的小写 rune 序列。
+func normalizedRunes(text string) []rune {
+	out := make([]rune, 0, len(text))
+	for _, r := range strings.ToLower(text) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// hashShingle 对固定长度的 rune 窗口做 FNV-1a。
+//
+// 窗口长度固定为 5，循环展开没有收益，直接相乘即可；FNV 的分布对
+// "只差一个字符"的窗口足够散——那正是 OCR 变体最常见的情况。
+func hashShingle(window []rune) uint64 {
+	const (
+		offset64 = 14695981039346656037
+		prime64  = 1099511628211
+	)
+	h := uint64(offset64)
+	for _, r := range window {
+		h ^= uint64(r)
+		h *= prime64
+	}
+	return h
+}
+
+// jaccard 计算两个【有序去重】哈希切片的 Jaccard 相似度。
+//
+// 双指针合并，O(len(a)+len(b))，不分配。
+func jaccard(a, b []uint64) float64 {
 	if len(a) == 0 || len(b) == 0 {
 		return 0
 	}
 	inter := 0
-	// 遍历较小的一侧，减少比较次数。
-	small, large := a, b
-	if len(b) < len(a) {
-		small, large = b, a
-	}
-	for k := range small {
-		if _, ok := large[k]; ok {
+	for i, j := 0, 0; i < len(a) && j < len(b); {
+		switch {
+		case a[i] == b[j]:
 			inter++
+			i++
+			j++
+		case a[i] < b[j]:
+			i++
+		default:
+			j++
 		}
 	}
 	union := len(a) + len(b) - inter

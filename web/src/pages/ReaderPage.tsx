@@ -10,11 +10,13 @@ import type { PDFDocumentProxy } from 'pdfjs-dist'
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker'
 import { ChevronLeft, ChevronRight, ExternalLink, Languages, X, ZoomIn, ZoomOut } from 'lucide-react'
 
+import { api } from '@congorag/api-client'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { ErrorText } from '@/components/ErrorText'
 import { PageFallback } from '@/components/PageFallback'
 import { useDocumentOutline, useDocumentReferences } from '@/hooks/useDocuments'
+import { unwrap } from '@/lib/apiResult'
 
 // PDF.js 的 worker 必须显式指定。workerPort 接一个真的 Worker 实例，
 // 比 workerSrc 再让 pdf.js 自己按 URL 去 import 更可控（见上面的 ?worker 说明）。
@@ -152,11 +154,12 @@ function ReaderView({
   // 文档元信息：文件名、页数、回到知识库的链接。
   useEffect(() => {
     let cancelled = false
-    fetch(`/api/v1/documents/${id}`)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return (await r.json()) as DocumentMeta
-      })
+    // 走契约客户端而不是手写 fetch：失败抛出来的是 RFC 7807 Problem 对象，
+    // 下面的 ErrorText 才能按 type 给出中文说明（手写 fetch 抛的 Error 没有 type，
+    // 用户看到的是后端 JSON 原文）。Document 结构上覆盖了本页要用的 DocumentMeta。
+    api
+      .GET('/api/v1/documents/{id}', { params: { path: { id } } })
+      .then((result) => unwrap(result))
       .then((m) => {
         if (!cancelled) setMeta(m)
       })
@@ -280,13 +283,9 @@ function ReaderView({
     try {
       const text = await loadPageText(pageNo)
       if (!text) throw new Error('这一页没有可提取的文字（可能是纯图片页）')
-      const res = await fetch('/api/v1/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, targetLang }),
-      })
-      if (!res.ok) throw new Error('HTTP ' + res.status)
-      const data = (await res.json()) as { translation: string }
+      const data = unwrap(
+        await api.POST('/api/v1/translate', { body: { text, targetLang } }),
+      )
       setTranslations((prev) => ({ ...prev, [pageNo]: data.translation }))
     } catch (e) {
       setTranslateError(e)
@@ -302,13 +301,9 @@ function ReaderView({
     const clipped = text.slice(0, 600)
     setSelection({ text: clipped, translation: null, loading: true })
     try {
-      const res = await fetch('/api/v1/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: clipped, targetLang }),
-      })
-      if (!res.ok) throw new Error('HTTP ' + res.status)
-      const data = (await res.json()) as { translation: string }
+      const data = unwrap(
+        await api.POST('/api/v1/translate', { body: { text: clipped, targetLang } }),
+      )
       setSelection({ text: clipped, translation: data.translation, loading: false })
     } catch {
       setSelection({ text: clipped, translation: '翻译失败，请重试', loading: false })
@@ -363,14 +358,10 @@ function ReaderView({
         return
       }
       setHover({ x, y, text: sentence, translation: null })
-      void fetch('/api/v1/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: sentence, targetLang }),
-      })
-        .then(async (res) => {
-          if (!res.ok) throw new Error('HTTP ' + res.status)
-          const data = (await res.json()) as { translation: string }
+      void api
+        .POST('/api/v1/translate', { body: { text: sentence, targetLang } })
+        .then((result) => unwrap(result))
+        .then((data) => {
           hoverCache.current.set(sentence, data.translation)
           setHover((prev) => (prev?.text === sentence ? { ...prev, translation: data.translation } : prev))
         })

@@ -5,7 +5,7 @@
 上传一篇论文，问它问题。系统先检索证据，再逐句生成带页码和原文位置的回答；点引用就回到 PDF 那一页。
 它也支持中英对照阅读、arXiv 追踪、引用图谱和写作草稿。所有生成都走同一套引用与校验。
 
-当前版本 **v6.1.0**（2026-11-13）。在线演示：<https://congorag.cloud>；
+当前版本 **v6.2.0**（2026-11-14）。在线演示：<https://congorag.cloud>；
 提交材料（技术文档、演示视频、自检清单、评测报告）在
 [docs/submission/](docs/submission/README.md)。
 
@@ -26,7 +26,7 @@
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Version](https://img.shields.io/badge/version-6.1.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-6.2.0-blue)](CHANGELOG.md)
 
 本地优先的 RAG 问答与 Agent 平台。文档、向量、API Key 都留在自己的机器上，
 模型服务由使用者提供（BYOK）。
@@ -276,7 +276,9 @@ flowchart LR
 `ctxmgr`、`conversation`、`agent`。两个进程各自的装配根在
 `apps/*/internal/app/app.go`。依赖方向有几条由编译期保证的约定，改动时不要绕过：
 
-- 业务包（`internal/` 下那八个）不 import gin、不知道 HTTP 状态码
+- 业务包（`internal/` 下那八个）不 import gin、不用 `net/http` 状态码表达 API 语义。
+  唯一的结构例外是 `platform` 的中间件（它就在 HTTP 边界上）；例外表与守卫
+  测试在 `internal/arch_test.go`
 - 跨包的「我需要什么」由消费方声明成 port，实现方零 import 边
   （例子：`llm.DocumentReindexer` 由 llm 声明、`knowledge.Usecase` 实现，连接点只在
   `apps/api/internal/app/app.go` 的装配顺序上）
@@ -360,7 +362,7 @@ Agent 那条流的首帧永远是 `run_started`（`data: {"runId": ...}`），�
 `null` 表示到底了。游标是不透明的，不要解析它，格式随时可能变（见契约里
 `Cursor` 参数的描述）。
 
-契约的 `info.version` 跟产品版本走（当前 `6.1.0` ↔ tag `v6.1.0`），由发布脚本在发布前
+契约的 `info.version` 跟产品版本走（当前 `6.2.0` ↔ tag `v6.2.0`），由发布脚本在发布前
 断言两者一致，见 [ADR-002](docs/adr/002-contract-versioning.md)。它不表示兼容性
 承诺。兼容边界是路径里的 `/api/v1`。
 
@@ -377,6 +379,8 @@ Agent 那条流的首帧永远是 `run_started`（`data: {"runId": ...}`），�
 | `make dev-worker` | 起 worker，处理文档上传 |
 | `make generate` | 从契约重新生成 Go 和 TS 两端代码 |
 | `make check` | build-go + vet + test + lint |
+| `make bench` | 纯函数基准（不碰数据库/模型），基线与测法见 [docs/performance.md](docs/performance.md) |
+| `make bundle-report` | 前端产物体积报告；`make bundle-check` 按基线判超预算 |
 
 改前端要开两个终端：一个 `make dev`，一个 `make dev-web`，浏览器开 `:5173`。
 `:3210` 提供的是 `go:embed` 进去的构建产物。改了 `web/src/` 不重新
@@ -411,6 +415,13 @@ make test-integration    # 集成测试：自己起一个一次性的 PostgreSQL
 PostgreSQL。第一次跑要拉镜像，会慢一些。
 要在本机也开竞态检测就加 `GO_TEST_FLAGS=-race`，但本机没有 gcc 时 `-race` 跑不
 起来（CI 的 ubuntu runner 才有），这是它与 CI 唯一的一处差异。
+
+性能基线是另一条独立的链：`make bench` 跑 tokenize / grounding / retrieval /
+knowledge / platform / visualize 六个包的纯函数基准，它不连数据库、不调模型，
+本机随时可跑。数字与测法（含一次近重复去重的优化前后对照）见
+[docs/performance.md](docs/performance.md)。前端产物体积用 `make bundle-report`
+看，`make bundle-check` 会拿 [docs/perf/bundle-baseline.json](docs/perf/bundle-baseline.json)
+的基线判是否超预算。
 
 只有 `evals/` 不在这条链路上：它测的是检索质量本身（语料、20 道题、指标脚本），
 与 `measure_recall.sh` 测的 HNSW 近似索引误差分工不同，见 [`evals/README.md`](evals/README.md)。
@@ -452,7 +463,9 @@ CongoRAG/
 ├── apps/
 │   ├── api/                    HTTP 服务 + go:embed 的前端产物
 │   │   ├── main.go             只做 go:embed 和调用 app.Run
-│   │   ├── internal/api/       路由、错误、SSE、SPA；generated.go 是产物
+│   │   ├── internal/api/       HTTP 边界：server.go 外壳 + convert.go 转换
+│   │   │                       + handler_*.go 按资源域分的端点 + SSE/SPA；
+│   │   │                       generated.go 是契约产物（见 ADR-009）
 │   │   └── internal/app/       装配根
 │   └── worker/                 River 消费端：文档处理 + 孤儿文件对账
 ├── internal/
@@ -474,12 +487,16 @@ CongoRAG/
 ├── landing/                    公开首页（静态 HTML + 真实界面截图）
 ├── docs/
 │   ├── modules.md              六个功能模块与关键接口
+│   ├── performance.md          纯函数基准、优化对照与前端体积基线
+│   ├── quality-baseline.md     本机绿灯基线、覆盖率与"只能 CI 验证"清单
 │   ├── evaluation/             检索/引用评测脚本与结果
 │   ├── submission/             技术文档、演示视频、评测报告、自检清单
 │   ├── prompt-audit.md         Prompt 版本、原因与效果
 │   └── adr/                    架构决策记录
 ├── evals/                      检索召回的测量脚本
-├── scripts/seed-demo.mjs       演示数据种子（只走公开 API）
+├── scripts/
+│   ├── seed-demo.mjs           演示数据种子（只走公开 API）
+│   └── bundle-report.mjs       前端产物体积报告与门禁
 ├── web/                        React SPA 源码，规范见 web/README.md
 └── Makefile                    所有开发命令的入口
 ```

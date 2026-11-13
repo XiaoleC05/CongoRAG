@@ -2,10 +2,17 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 
 import { api } from '@congorag/api-client'
 import type { Schemas } from '@congorag/api-client'
+import { unwrap, unwrapVoid } from '@/lib/apiResult'
 import { flattenPages, nextPageParam } from '@/lib/pagination'
 
-/** 写作草稿的类型（与契约的 enum 一致）。 */
-export type WritingKind = 'related_work' | 'summary' | 'outline' | 'framework'
+/**
+ * 写作草稿的类型。
+ *
+ * 【为什么从契约取，而不是手写四个字面量】手写的那份在后端加第五种体例时
+ * 不会报任何错——它只会让"下拉里出现一个后端不认的值"这种坏法静默存在。
+ * 从 Schemas 取的话，契约一改，这里的类型跟着变，下游的 <select> 会红。
+ */
+export type WritingKind = Schemas['WritingRequest']['kind']
 
 /**
  * 写作 Copilot（科研助手 M6）：POST /knowledge-bases/{id}/writing。
@@ -21,45 +28,35 @@ export function useWritingDraft(kbId: string) {
       topic: string
       kind: WritingKind
       topK?: number
-    }): Promise<Schemas['WritingResponse']> => {
-      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/writing`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `HTTP ${res.status}`)
-      }
-      return (await res.json()) as Schemas['WritingResponse']
-    },
+    }): Promise<Schemas['WritingResponse']> =>
+      unwrap(
+        await api.POST('/api/v1/knowledge-bases/{id}/writing', {
+          params: { path: { id: kbId } },
+          body: input,
+        }),
+      ),
   })
-}
-
-/** 参考文献条目（科研助手 M5 引用图谱）。 */
-export type DocumentReference = {
-  index: number
-  text: string
-  page: number
-  matchedDocumentId: string | null
-  matchedFilename: string | null
 }
 
 /**
  * 阅读器「参考文献」面板：GET /documents/{id}/references。
+ *
+ * 【类型直接用契约的 ReferenceEntry】之前这里有一份手写的 DocumentReference，
+ * 字段和契约一模一样——多一份就多一个会悄悄过期的副本（契约加字段时它不会红）。
  *
  * 【为什么和 outline 一样单独缓存】参考文献只在阅读器里用，而且它依赖
  * "库内其它文档"——知识库新增/删除文档后结果会变，所以 staleTime 比
  * outline 短，并在重新索引后由 ReaderPage 的文档查询失效间接触发。
  */
 export function useDocumentReferences(docId: string) {
-  return useQuery<DocumentReference[]>({
+  return useQuery<Schemas['ReferenceEntry'][]>({
     queryKey: ['document-references', docId],
-    queryFn: async (): Promise<DocumentReference[]> => {
-      const res = await fetch(`/api/v1/documents/${docId}/references`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      return (await res.json()) as DocumentReference[]
-    },
+    queryFn: async (): Promise<Schemas['ReferenceEntry'][]> =>
+      unwrap(
+        await api.GET('/api/v1/documents/{id}/references', {
+          params: { path: { id: docId } },
+        }),
+      ),
     enabled: docId !== '',
     staleTime: 30 * 1000,
   })
@@ -73,18 +70,16 @@ export function useDocumentReferences(docId: string) {
  */
 export function useCompareDraft(kbId: string) {
   return useMutation({
-    mutationFn: async (input: { question: string; topK?: number }): Promise<Schemas['CompareResponse']> => {
-      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/compare`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `HTTP ${res.status}`)
-      }
-      return (await res.json()) as Schemas['CompareResponse']
-    },
+    mutationFn: async (input: {
+      question: string
+      topK?: number
+    }): Promise<Schemas['CompareResponse']> =>
+      unwrap(
+        await api.POST('/api/v1/knowledge-bases/{id}/compare', {
+          params: { path: { id: kbId } },
+          body: input,
+        }),
+      ),
   })
 }
 
@@ -100,11 +95,12 @@ export function useDocumentOutline(docId: string) {
   // 选项组合（enabled/staleTime）下会退化成 any，目录因此丢类型。
   return useQuery<Schemas['OutlineEntry'][]>({
     queryKey: ['document-outline', docId],
-    queryFn: async (): Promise<Schemas['OutlineEntry'][]> => {
-      const res = await fetch(`/api/v1/documents/${docId}/outline`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      return (await res.json()) as Schemas['OutlineEntry'][]
-    },
+    queryFn: async (): Promise<Schemas['OutlineEntry'][]> =>
+      unwrap(
+        await api.GET('/api/v1/documents/{id}/outline', {
+          params: { path: { id: docId } },
+        }),
+      ),
     enabled: docId !== '',
     // 目录来自解析产物，重新索引前不会变；不自动轮询。
     staleTime: 5 * 60 * 1000,
@@ -434,14 +430,12 @@ export function useResolveDuplicate(kbId: string) {
  */
 export function useCitationGraph(kbId: string) {
   return useMutation({
-    mutationFn: async (): Promise<Schemas['CitationGraph']> => {
-      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/citation-graph`)
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `HTTP ${res.status}`)
-      }
-      return (await res.json()) as Schemas['CitationGraph']
-    },
+    mutationFn: async (): Promise<Schemas['CitationGraph']> =>
+      unwrap(
+        await api.GET('/api/v1/knowledge-bases/{id}/citation-graph', {
+          params: { path: { id: kbId } },
+        }),
+      ),
   })
 }
 
@@ -457,71 +451,58 @@ export function useVisualizeCSV() {
       csv: string
       chartType?: 'auto' | 'line' | 'bar' | 'radar'
       title?: string
-    }): Promise<Schemas['VisualizeResult']> => {
-      const res = await fetch('/api/v1/visualize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `HTTP ${res.status}`)
-      }
-      return (await res.json()) as Schemas['VisualizeResult']
-    },
+    }): Promise<Schemas['VisualizeResult']> =>
+      unwrap(
+        await api.POST('/api/v1/visualize', {
+          // 【chartType 为什么要显式补默认值】契约里它带 `@default auto`，但
+          // openapi-typescript 只把 default 写进注释，生成类型仍是**必填**。
+          // 服务端的默认值就是 auto，所以补上它不改变行为，只是让类型通过。
+          body: { csv: input.csv, chartType: input.chartType ?? 'auto', title: input.title },
+        }),
+      ),
   })
 }
 
 /** arXiv 推荐（M4）：POST /knowledge-bases/{id}/arxiv-recommendations。 */
 export function useArxivRecommendations(kbId: string) {
   return useMutation({
-    mutationFn: async (): Promise<Schemas['ArxivRecommendationList']> => {
-      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/arxiv-recommendations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ limit: 6 }),
-      })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `HTTP ${res.status}`)
-      }
-      return (await res.json()) as Schemas['ArxivRecommendationList']
-    },
+    mutationFn: async (): Promise<Schemas['ArxivRecommendationList']> =>
+      unwrap(
+        await api.POST('/api/v1/knowledge-bases/{id}/arxiv-recommendations', {
+          params: { path: { id: kbId } },
+          body: { limit: 6 },
+        }),
+      ),
   })
 }
 
 /** 赞/踩（M4）：POST /knowledge-bases/{id}/arxiv-feedback。 */
 export function useArxivFeedback(kbId: string) {
   return useMutation({
-    mutationFn: async (input: { arxivId: string; vote: 'up' | 'down' }) => {
-      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/arxiv-feedback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `HTTP ${res.status}`)
-      }
-    },
+    mutationFn: async (input: { arxivId: string; vote: 'up' | 'down' }) =>
+      unwrapVoid(
+        await api.POST('/api/v1/knowledge-bases/{id}/arxiv-feedback', {
+          params: { path: { id: kbId } },
+          body: input,
+        }),
+      ),
   })
 }
 
 /** 下钻入库（M4）：POST /knowledge-bases/{id}/arxiv-ingest，后端下载 PDF 并入队。 */
 export function useArxivIngest(kbId: string) {
   return useMutation({
-    mutationFn: async (input: { arxivId: string; pdfUrl: string; title: string }) => {
-      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/arxiv-ingest`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `HTTP ${res.status}`)
-      }
-      return (await res.json()) as Schemas['Document']
-    },
+    mutationFn: async (input: {
+      arxivId: string
+      pdfUrl: string
+      title: string
+    }): Promise<Schemas['Document']> =>
+      unwrap(
+        await api.POST('/api/v1/knowledge-bases/{id}/arxiv-ingest', {
+          params: { path: { id: kbId } },
+          body: input,
+        }),
+      ),
   })
 }
 
@@ -531,35 +512,27 @@ export function useVersionDiff() {
     mutationFn: async (input: {
       docId: string
       otherDocumentId: string
-    }): Promise<Schemas['VersionDiff']> => {
-      const res = await fetch(`/api/v1/documents/${input.docId}/version-diff`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ otherDocumentId: input.otherDocumentId }),
-      })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `HTTP ${res.status}`)
-      }
-      return (await res.json()) as Schemas['VersionDiff']
-    },
+    }): Promise<Schemas['VersionDiff']> =>
+      unwrap(
+        await api.POST('/api/v1/documents/{id}/version-diff', {
+          params: { path: { id: input.docId } },
+          body: { otherDocumentId: input.otherDocumentId },
+        }),
+      ),
   })
 }
 
 /** 引用图谱自动综述（M5 加分项）：POST /knowledge-bases/{id}/citation-survey。 */
 export function useCitationSurvey(kbId: string) {
   return useMutation({
-    mutationFn: async (focus?: string): Promise<Schemas['CitationSurvey']> => {
-      const res = await fetch(`/api/v1/knowledge-bases/${kbId}/citation-survey`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ focus: focus ?? '' }),
-      })
-      if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text || `HTTP ${res.status}`)
-      }
-      return (await res.json()) as Schemas['CitationSurvey']
-    },
+    mutationFn: async (focus?: string): Promise<Schemas['CitationSurvey']> =>
+      unwrap(
+        await api.POST('/api/v1/knowledge-bases/{id}/citation-survey', {
+          params: { path: { id: kbId } },
+          // 【保持原样发空串】改造前这里就是 `focus ?? ''`，服务端按"可选字符串"
+          // 处理；换成 undefined 会让线上请求体少一个字段，是另一套语义。
+          body: { focus: focus ?? '' },
+        }),
+      ),
   })
 }
