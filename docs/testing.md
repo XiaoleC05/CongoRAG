@@ -354,3 +354,73 @@ run** 往下跑——第一条 INSERT 撞上 `UNIQUE (run_id, seq)`，而轨迹�
 
 记住这条的形状：**同一个量在两个地方各算一次，而其中一处的输入被存储层
 规范化过。** 遇到它的时候，单测那种"存取原样"的假实现一定抓不到。
+
+## E2E（Playwright）：协作约定
+
+这一节定义端到端的**边界与约定**；具体实现由 fullstack 在 `web/e2e/` 落地，QA 负责
+约定、flake 政策与验收。在实现落地之前，唯一的浏览器自动化是 `_record/` 下的临时
+冒烟脚本（见 `docs/quality-baseline.md` 的 Playwright 段）。
+
+- **入口**：`make test-e2e` → `pnpm --filter web exec playwright test`。首次跑要装浏览器
+  （`pnpm --filter web exec playwright install chromium`）；产物目录
+  `web/test-results/`、`web/playwright-report/` 已在 `.gitignore`。
+- **不连真实后端**：所有 `/api/v1/**` 由 `page.route()` 全量 mock，fixture 放
+  `web/e2e/fixtures/`。"未被 mock 的请求"必须让用例失败，而不是落到 Vite 代理（否则
+  测试会安静地依赖某个正在跑的本地服务）。
+- **不产生外部副作用**：不写真实数据库、不发真实模型调用；`page.route` 对非本机
+  URL 一律 abort。
+- **视口**：桌面 1440×900、移动 390×844 两档；移动端额外断言
+  `document.documentElement.scrollWidth <= clientWidth`（防止横向溢出）。
+- **flake 政策**：同一用例连续两次结果不一致视为 flake；flake 用例要么修到确定，
+  要么标记并记录原因，不允许"重跑就当过了"。
+- **谁维护**：新增页面/改路由的人补对应 E2E；QA 在每轮验收跑一次并在
+  `docs/quality-baseline.md` 记录结果。
+
+## 基准回归门禁（bench-gate）
+
+`make bench` 只打印数字；门禁由 `make bench-gate`（= `node scripts/bench-gate.mjs`）执行。
+它跑 `go test -run "^$" -bench . -benchmem -count=3 ./internal/...`（只跑 Benchmark，不碰
+数据库/模型/网络），把每条 benchmark 的三次采样取中位数，与
+`benchmarks/baseline.json` 比较：
+
+| 指标 | 判红条件（默认阈值，可被基线文件覆盖） |
+| --- | --- |
+| allocs/op | 超过基线观测上界（确定性 benchmark 等价于"任何上涨"，阈值 +0） |
+| B/op | 超过基线观测上界 +5% |
+| ns/op | > +30% **且** 绝对增量 > 200ns（否则最多告警；用三次采样的最优值比较，压制偶发抢占） |
+
+分配类指标用"本次样本下界 vs 基线样本上界"比较：像 `visualize/Build` 这类
+benchmark 的分配次数会随 map 迭代顺序抖动（实测 29,232~29,233），严格比较会随机
+翻红；确定性 benchmark（min==max）仍然等价于"上涨一次就失败"。
+
+ns/op 用"本次样本最小值 vs 基线样本最小值"比较：共享机器上偶发抢占（比如同一台机器
+上正在跑前端构建）会把一两次采样整体抬高，用中位数会把噪声判成回归；真实回归会让
+三次采样一起变慢，最优值同样会变慢。三档阈值本身（+30% 且 >200ns）不变。
+
+退出码：`0` 通过（允许警告）/ `1` 回归 / `2` 环境或解析错误（go 不可用、编译失败、
+超时、基线缺失或损坏）。换机器或升级 Go 后跑 `node scripts/bench-gate.mjs --write`
+重写基线，并在提交信息里说明；`--json [path]` 输出机器可读结果，`--current <file>`
+可直接拿一次已有输出复算（调试/复现用）。完整基线与一次真实优化的测法见
+[docs/performance.md](performance.md)。
+
+## 压测模拟（loadtest）
+
+`make loadtest`（= `node ops/loadtest/stream-load.mjs`）用内置 mock SSE 服务测
+**压测器 + SSE 分帧/解析路径**的容量：并发连接数、TTFB 分位、事件吞吐、接收字节率、
+错误数与进程 RSS 峰值。它不需要数据库、不需要模型 Key，默认 50 并发 × 10 秒。
+
+```bash
+# 默认：mock 目标
+make loadtest
+# 三档并发，输出机器可读 JSON 与 Markdown 片段
+node ops/loadtest/stream-load.mjs --concurrency 25,50,100 --duration 10 \
+  --json ops/loadtest/results/stream-$(date +%Y%m%d-%H%M%S).json --markdown /tmp/loadtest.md
+# 真实服务：指向正在跑的 api（需要数据库；聊天接口是 POST，鉴权头可选）
+node ops/loadtest/stream-load.mjs --target http://127.0.0.1:3210/api/v1/conversations/<id>/messages \
+  --method POST --body '{"text":"你好"}' --header "Authorization: Bearer <token>" --duration 15
+```
+
+**读结果前先看边界**：mock 目标的延迟只包含本机回环 + 客户端解析成本，**不代表**后端
+（检索 SQL、模型首字延迟）的真实吞吐；真实目标测出来的是整条链路，其中模型延迟通常
+占主导。三档并发（25/50/100）的实测结果与环境、方法论写在
+[docs/loadtest-report.md](loadtest-report.md)。

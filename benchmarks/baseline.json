@@ -1,0 +1,618 @@
+{
+  "schemaVersion": 1,
+  "kind": "go-benchmarks",
+  "generatedAt": "2026-11-13T19:58:53.122Z",
+  "gitHead": "faa0e2b",
+  "goVersion": "go1.26.4",
+  "goos": "windows",
+  "goarch": "amd64",
+  "gomaxprocs": 28,
+  "machine": {
+    "platform": "win32",
+    "release": "10.0.26300",
+    "cpus": 28,
+    "totalMemGB": 31.8,
+    "node": "v22.19.0"
+  },
+  "count": 3,
+  "packages": "./internal/...",
+  "command": "go test -run \"^$\" -bench . -benchmem -count=3 ./internal/...",
+  "statistic": "median",
+  "thresholds": {
+    "allocsDelta": 0,
+    "bytesPct": 5,
+    "nsPct": 30,
+    "nsAbsFloor": 200,
+    "nsWarnPct": 15
+  },
+  "benchmarks": {
+    "BenchmarkBuild": {
+      "nsPerOp": {
+        "median": 4943342,
+        "min": 3175331,
+        "max": 7550434,
+        "samples": [
+          3175331,
+          4943342,
+          7550434
+        ]
+      },
+      "bytesPerOp": {
+        "median": 14632425,
+        "min": 14632387,
+        "max": 14632748,
+        "samples": [
+          14632425,
+          14632387,
+          14632748
+        ]
+      },
+      "allocsPerOp": {
+        "median": 29232,
+        "min": 29232,
+        "max": 29233,
+        "samples": [
+          29232,
+          29232,
+          29233
+        ]
+      },
+      "iterations": {
+        "median": 360,
+        "min": 187,
+        "max": 388,
+        "samples": [
+          388,
+          360,
+          187
+        ]
+      }
+    },
+    "BenchmarkBuildCitationGraph": {
+      "nsPerOp": {
+        "median": 3008,
+        "min": 2921,
+        "max": 3029,
+        "samples": [
+          3029,
+          2921,
+          3008
+        ]
+      },
+      "bytesPerOp": {
+        "median": 4072,
+        "min": 4072,
+        "max": 4072,
+        "samples": [
+          4072,
+          4072,
+          4072
+        ]
+      },
+      "allocsPerOp": {
+        "median": 14,
+        "min": 14,
+        "max": 14,
+        "samples": [
+          14,
+          14,
+          14
+        ]
+      },
+      "iterations": {
+        "median": 384866,
+        "min": 337203,
+        "max": 531087,
+        "samples": [
+          531087,
+          384866,
+          337203
+        ]
+      }
+    },
+    "BenchmarkContentFingerprint": {
+      "nsPerOp": {
+        "median": 321836,
+        "min": 307515,
+        "max": 339098,
+        "samples": [
+          321836,
+          307515,
+          339098
+        ]
+      },
+      "bytesPerOp": {
+        "median": 203265,
+        "min": 203265,
+        "max": 203267,
+        "samples": [
+          203267,
+          203265,
+          203265
+        ]
+      },
+      "allocsPerOp": {
+        "median": 3376,
+        "min": 3376,
+        "max": 3376,
+        "samples": [
+          3376,
+          3376,
+          3376
+        ]
+      },
+      "iterations": {
+        "median": 4054,
+        "min": 3800,
+        "max": 4058,
+        "samples": [
+          3800,
+          4058,
+          4054
+        ]
+      }
+    },
+    "BenchmarkCursorRoundTrip": {
+      "nsPerOp": {
+        "median": 227.5,
+        "min": 227,
+        "max": 329.2,
+        "samples": [
+          227.5,
+          227,
+          329.2
+        ]
+      },
+      "bytesPerOp": {
+        "median": 512,
+        "min": 512,
+        "max": 512,
+        "samples": [
+          512,
+          512,
+          512
+        ]
+      },
+      "allocsPerOp": {
+        "median": 7,
+        "min": 7,
+        "max": 7,
+        "samples": [
+          7,
+          7,
+          7
+        ]
+      },
+      "iterations": {
+        "median": 5208375,
+        "min": 4113150,
+        "max": 5306782,
+        "samples": [
+          5306782,
+          5208375,
+          4113150
+        ]
+      }
+    },
+    "BenchmarkDedupeNearDuplicates": {
+      "nsPerOp": {
+        "median": 162319,
+        "min": 162192,
+        "max": 172145,
+        "samples": [
+          162192,
+          162319,
+          172145
+        ]
+      },
+      "bytesPerOp": {
+        "median": 48664,
+        "min": 48664,
+        "max": 48664,
+        "samples": [
+          48664,
+          48664,
+          48664
+        ]
+      },
+      "allocsPerOp": {
+        "median": 22,
+        "min": 22,
+        "max": 22,
+        "samples": [
+          22,
+          22,
+          22
+        ]
+      },
+      "iterations": {
+        "median": 7485,
+        "min": 7113,
+        "max": 7568,
+        "samples": [
+          7113,
+          7485,
+          7568
+        ]
+      }
+    },
+    "BenchmarkDedupeNearDuplicates_LegacyReference": {
+      "nsPerOp": {
+        "median": 277941,
+        "min": 270945,
+        "max": 280504,
+        "samples": [
+          280504,
+          270945,
+          277941
+        ]
+      },
+      "bytesPerOp": {
+        "median": 191001,
+        "min": 191001,
+        "max": 191001,
+        "samples": [
+          191001,
+          191001,
+          191001
+        ]
+      },
+      "allocsPerOp": {
+        "median": 3354,
+        "min": 3354,
+        "max": 3354,
+        "samples": [
+          3354,
+          3354,
+          3354
+        ]
+      },
+      "iterations": {
+        "median": 5359,
+        "min": 4624,
+        "max": 5572,
+        "samples": [
+          5572,
+          4624,
+          5359
+        ]
+      }
+    },
+    "BenchmarkDedupeNearDuplicates_Top20": {
+      "nsPerOp": {
+        "median": 1136954,
+        "min": 1130392,
+        "max": 1167706,
+        "samples": [
+          1167706,
+          1136954,
+          1130392
+        ]
+      },
+      "bytesPerOp": {
+        "median": 218672,
+        "min": 218672,
+        "max": 218672,
+        "samples": [
+          218672,
+          218672,
+          218672
+        ]
+      },
+      "allocsPerOp": {
+        "median": 92,
+        "min": 92,
+        "max": 92,
+        "samples": [
+          92,
+          92,
+          92
+        ]
+      },
+      "iterations": {
+        "median": 1034,
+        "min": 996,
+        "max": 1084,
+        "samples": [
+          1084,
+          996,
+          1034
+        ]
+      }
+    },
+    "BenchmarkFuseRRF": {
+      "nsPerOp": {
+        "median": 38289,
+        "min": 33418,
+        "max": 46611,
+        "samples": [
+          33418,
+          38289,
+          46611
+        ]
+      },
+      "bytesPerOp": {
+        "median": 33019,
+        "min": 33019,
+        "max": 33019,
+        "samples": [
+          33019,
+          33019,
+          33019
+        ]
+      },
+      "allocsPerOp": {
+        "median": 134,
+        "min": 134,
+        "max": 134,
+        "samples": [
+          134,
+          134,
+          134
+        ]
+      },
+      "iterations": {
+        "median": 32616,
+        "min": 30408,
+        "max": 50919,
+        "samples": [
+          50919,
+          30408,
+          32616
+        ]
+      }
+    },
+    "BenchmarkParseAndChunk": {
+      "nsPerOp": {
+        "median": 223797,
+        "min": 221080,
+        "max": 261173,
+        "samples": [
+          223797,
+          221080,
+          261173
+        ]
+      },
+      "bytesPerOp": {
+        "median": 264808,
+        "min": 264808,
+        "max": 264808,
+        "samples": [
+          264808,
+          264808,
+          264808
+        ]
+      },
+      "allocsPerOp": {
+        "median": 296,
+        "min": 296,
+        "max": 296,
+        "samples": [
+          296,
+          296,
+          296
+        ]
+      },
+      "iterations": {
+        "median": 5542,
+        "min": 4183,
+        "max": 6211,
+        "samples": [
+          6211,
+          5542,
+          4183
+        ]
+      }
+    },
+    "BenchmarkQuery": {
+      "nsPerOp": {
+        "median": 2344,
+        "min": 2300,
+        "max": 2532,
+        "samples": [
+          2532,
+          2300,
+          2344
+        ]
+      },
+      "bytesPerOp": {
+        "median": 2432,
+        "min": 2432,
+        "max": 2432,
+        "samples": [
+          2432,
+          2432,
+          2432
+        ]
+      },
+      "allocsPerOp": {
+        "median": 33,
+        "min": 33,
+        "max": 33,
+        "samples": [
+          33,
+          33,
+          33
+        ]
+      },
+      "iterations": {
+        "median": 489268,
+        "min": 468969,
+        "max": 648060,
+        "samples": [
+          648060,
+          489268,
+          468969
+        ]
+      }
+    },
+    "BenchmarkText_Paragraph": {
+      "nsPerOp": {
+        "median": 23493,
+        "min": 22557,
+        "max": 32265,
+        "samples": [
+          22557,
+          23493,
+          32265
+        ]
+      },
+      "bytesPerOp": {
+        "median": 40624,
+        "min": 40624,
+        "max": 40624,
+        "samples": [
+          40624,
+          40624,
+          40624
+        ]
+      },
+      "allocsPerOp": {
+        "median": 466,
+        "min": 466,
+        "max": 466,
+        "samples": [
+          466,
+          466,
+          466
+        ]
+      },
+      "iterations": {
+        "median": 52246,
+        "min": 43586,
+        "max": 55756,
+        "samples": [
+          55756,
+          52246,
+          43586
+        ]
+      }
+    },
+    "BenchmarkText_Query": {
+      "nsPerOp": {
+        "median": 2282,
+        "min": 2198,
+        "max": 2306,
+        "samples": [
+          2198,
+          2282,
+          2306
+        ]
+      },
+      "bytesPerOp": {
+        "median": 2016,
+        "min": 2016,
+        "max": 2016,
+        "samples": [
+          2016,
+          2016,
+          2016
+        ]
+      },
+      "allocsPerOp": {
+        "median": 31,
+        "min": 31,
+        "max": 31,
+        "samples": [
+          31,
+          31,
+          31
+        ]
+      },
+      "iterations": {
+        "median": 635626,
+        "min": 544972,
+        "max": 944784,
+        "samples": [
+          544972,
+          635626,
+          944784
+        ]
+      }
+    },
+    "BenchmarkTokens_Paragraph": {
+      "nsPerOp": {
+        "median": 25081,
+        "min": 22642,
+        "max": 31033,
+        "samples": [
+          31033,
+          25081,
+          22642
+        ]
+      },
+      "bytesPerOp": {
+        "median": 26000,
+        "min": 26000,
+        "max": 26000,
+        "samples": [
+          26000,
+          26000,
+          26000
+        ]
+      },
+      "allocsPerOp": {
+        "median": 456,
+        "min": 456,
+        "max": 456,
+        "samples": [
+          456,
+          456,
+          456
+        ]
+      },
+      "iterations": {
+        "median": 43542,
+        "min": 41839,
+        "max": 52122,
+        "samples": [
+          41839,
+          43542,
+          52122
+        ]
+      }
+    },
+    "BenchmarkVerify": {
+      "nsPerOp": {
+        "median": 9246,
+        "min": 9221,
+        "max": 11121,
+        "samples": [
+          9221,
+          9246,
+          11121
+        ]
+      },
+      "bytesPerOp": {
+        "median": 9802,
+        "min": 9800,
+        "max": 9804,
+        "samples": [
+          9802,
+          9800,
+          9804
+        ]
+      },
+      "allocsPerOp": {
+        "median": 152,
+        "min": 152,
+        "max": 152,
+        "samples": [
+          152,
+          152,
+          152
+        ]
+      },
+      "iterations": {
+        "median": 128395,
+        "min": 123010,
+        "max": 133045,
+        "samples": [
+          133045,
+          128395,
+          123010
+        ]
+      }
+    }
+  }
+}

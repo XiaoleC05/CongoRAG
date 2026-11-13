@@ -62,7 +62,7 @@ SPECTRAL := npx --yes --no-fund --no-audit @stoplight/spectral-cli@6.15.0
         generate generate-go generate-ts \
         dev dev-web dev-worker build build-web build-web-assets build-web-placeholder build-go \
         test test-integration test-contract lint tidy fmt vet check         release release-dry check-changelog \
-        bench bench-dedupe bundle-report bundle-check \
+        bench bench-dedupe bench-gate bundle-report bundle-check test-e2e loadtest \
         lint-spec crash-probe startup-package upgrade rollback
 
 help:
@@ -91,6 +91,9 @@ help:
 	@echo   make bench-dedupe       只跑近重复去重基准（v6.2.0 优化过的那条）
 	@echo   make bundle-report      前端产物体积报告（和基线对比）
 	@echo   make bundle-check       前端体积门禁：超预算直接非零退出
+	@echo   make bench-gate         纯函数基准回归门禁（对比 benchmarks/baseline.json）
+	@echo   make test-e2e           Playwright 端到端测试（mock API，无需数据库）
+	@echo   make loadtest           SSE 并发压测模拟（mock 目标，写 docs/loadtest-report.md）
 	@echo   make fmt                格式化
 	@echo   开发前端要开两个终端：一个 make dev，一个 make dev-web，浏览器开 :5173
 	@echo   处理文档上传还要第三个终端：make dev-worker
@@ -275,6 +278,22 @@ bundle-report:
 # 超预算直接非零退出。R1 只提供命令，接进 CI 在 R5（那时它才和 E2E 一起跑）。
 bundle-check:
 	node scripts/bundle-report.mjs --check
+
+# 基准回归门禁：allocs/op 上涨即失败，B/op +5% 失败，ns/op +30% 且 >200ns 才失败。
+# 基线文件 benchmarks/baseline.json 由 --write 生成，换机器/升级 Go 后要重写基线
+# 并在提交信息里说明。
+bench-gate:
+	node scripts/bench-gate.mjs
+
+# 端到端测试：Playwright + page.route 全量 mock /api/v1，不需要数据库与模型 Key。
+# 首次跑要安装浏览器：pnpm --filter web exec playwright install chromium
+test-e2e:
+	pnpm --filter web exec playwright test
+
+# SSE 并发压测模拟：默认起一个本地 mock SSE 服务，测压测器与解析路径的容量；
+# --target http://127.0.0.1:3210 可指向真实 api（需要数据库与模型）。
+loadtest:
+	node ops/loadtest/stream-load.mjs
 
 # ── 集成测试（需要真实 PostgreSQL）────────────────────────────
 #

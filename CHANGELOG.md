@@ -26,6 +26,37 @@
 
 ---
 
+## [6.6.0] - 2026-11-14
+
+自动化测试与压测版本。**无运行时行为变更、无端点/环境变量/数据库变更**；
+新增的是"怎么证明它是对的"那部分能力。
+
+### 变更
+
+- **Playwright E2E（13 个用例）接入 CI**：`web/e2e/`（全量 mock `/api/v1/**`，
+  外部域名 abort）覆盖桌面 9 页 + 窄屏 3 场景 + 命令面板交互；断言 h1、
+  无 console/pageerror、无横向溢出、未 mock 接口为零；CI 新增 `e2e` job
+  （chromium，失败上传 test-results）。首次跑需
+  `pnpm --filter web exec playwright install chromium`。
+- **benchmark 回归门禁**：`scripts/bench-gate.mjs` + `benchmarks/baseline.json`，
+  解析 14 条基准的 ns/B/allocs，与基线中位数比较；allocs 严格、B/op +5%、
+  ns/op +30% 且 >200ns 才失败（共享 runner 降噪）；支持 `--write` 重写基线。
+  新增 `make bench-gate` 与 CI 的 advisory `bench` job。
+- **SSE 高并发压测模拟**：`ops/loadtest/stream-load.mjs`（零依赖）内置 mock
+  SSE 服务与和前端一致的分帧逻辑，25/50/100 三档输出成功率、TTFB 分位、
+  events/s、RSS；`--target URL` 可打真实 api。方法与三档实测见
+  [docs/loadtest-report.md](docs/loadtest-report.md)、`make loadtest`。
+- **Go SSE benchmark**：`BenchmarkSSEEmit`（161.7 ns/64B/4 allocs）与
+  `BenchmarkSSESinkConcurrent`（8/32 goroutine，锁竞争 +20.7%/+33.4%）。
+- **测试文档**：`docs/testing.md` 增加 E2E/基准门禁/压测模拟三节；
+  `docs/performance.md` 增加 bench-gate 用法。
+
+### 升级说明
+
+- 无数据库/契约 schema 变更；契约 `info.version` 与 tag 同步到 6.6.0；
+- CI 从 7 个 job 变 8 个（新增 e2e；bench 为 advisory）；
+- 开发者本机需要时再装 Playwright 浏览器，不影响原有 `make test`。
+
 ## [6.5.0] - 2026-11-14
 
 UI/UX 与响应式版本。**无端点/环境变量/数据库变更**；模型输出与接口语义不变。
@@ -602,7 +633,8 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
-[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.5.0...HEAD
+[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.6.0...HEAD
+[6.6.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.5.0...v6.6.0
 [6.5.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.4.0...v6.5.0
 [6.4.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.3.0...v6.4.0
 [6.3.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.2.0...v6.3.0

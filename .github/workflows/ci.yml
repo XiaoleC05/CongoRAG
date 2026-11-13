@@ -1,8 +1,8 @@
 name: CI
 
-# 每个 push / PR 都跑六个互相独立的检查。
+# 每个 push / PR 都跑八个互相独立的检查。
 #
-# 【六个 job 之间没有 needs】它们查的是六件不相干的事，串起来只会让反馈变慢。
+# 【八个 job 之间没有 needs】它们查的是八件不相干的事，串起来只会让反馈变慢。
 # 唯一的例外是 integration 依赖一个正常的 Postgres 服务，那由 GitHub 的
 # service container 提供，不需要靠 job 顺序解决。
 on:
@@ -422,3 +422,73 @@ jobs:
             exit 1
           fi
           echo "缺 CONGORAG_DB_URL 时如预期非零退出"
+# ── 8. 纯函数基准回归（advisory）────────────────────────────────
+  #
+  # 【这个 job 不挡合并】共享 runner 上 ns/op 会随邻居负载漂 2–3 倍，拿死阈值
+  # 当硬门禁只会制造误报。脚本自己把"allocs/op 上涨"设为硬失败（与机器无关），
+  # 但整体在 CI 里标成 advisory：结果照样展示，红了要人看一眼再合。
+  #
+  # 基线是在 Windows 开发机上生成的（benchmarks/baseline.json 里有全套环境
+  # 指纹）；换机器/升 Go 之后要用 scripts/bench-gate.mjs --write 重写基线，
+  # 并在提交信息里说明。跨机器差异由 ns/op 的 +30% 且 >200ns 那一档吸收。
+  bench:
+    name: Benchmark gate (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Bench gate
+        run: node scripts/bench-gate.mjs
+
+  # ── 7. 浏览器端到端（Playwright，全量 mock /api/v1） ──────────────
+  #
+  # 【这个 job 不依赖 Postgres / 模型 Key】所有 /api/v1/** 请求由
+  # web/e2e/fixtures.ts 的 page.route 接管（外部域名一律 abort），
+  # 所以它和单位测试一样是确定性、不花钱的。它查的是 jsdom 查不到的东西：
+  # 横向溢出、focus 转移、Radix portal、PDF canvas。
+  e2e:
+    name: E2E (Playwright / chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 【只装 chromium】playwright.config.ts 里也只有 chromium 一个 project。
+      # 装齐三个浏览器会多下 ~200MB，而 Safari/Firefox 的排版差异不是本项目的
+      # 门禁目标。--with-deps 装的是 Linux 上缺的系统库（字体、libnss 等），
+      # 不装的话启动浏览器会直接报 "Host system is missing dependencies"。
+      - name: Install Chromium
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: E2E
+        run: pnpm --filter web e2e
+
+      # 【失败也要上传】test-results 里是失败用例的截图、trace 与
+      # error-context.md；没有它，CI 上只看到一行 locator 超时。
+      # if: always() 保证用例失败（上一步非零）时这一步仍会执行。
+      - name: Upload test-results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+

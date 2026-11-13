@@ -5,7 +5,7 @@
 上传一篇论文，问它问题。系统先检索证据，再逐句生成带页码和原文位置的回答；点引用就回到 PDF 那一页。
 它也支持中英对照阅读、arXiv 追踪、引用图谱和写作草稿。所有生成都走同一套引用与校验。
 
-当前版本 **v6.5.0**（2026-11-14）。在线演示：<https://congorag.cloud>；
+当前版本 **v6.6.0**（2026-11-14）。在线演示：<https://congorag.cloud>；
 提交材料（技术文档、演示视频、自检清单、评测报告）在
 [docs/submission/](docs/submission/README.md)。
 
@@ -26,7 +26,7 @@
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Version](https://img.shields.io/badge/version-6.5.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-6.6.0-blue)](CHANGELOG.md)
 
 本地优先的 RAG 问答与 Agent 平台。文档、向量、API Key 都留在自己的机器上，
 模型服务由使用者提供（BYOK）。
@@ -299,6 +299,10 @@ flowchart LR
   `apps/api/internal/app/app.go` 的装配顺序上）
 - 两个进程各有自己的装配根，重复十几行是正常的，不要为此造共享装配包
 
+完整的分层、包依赖图、五条关键请求流与数据模型见
+[`docs/architecture.md`](docs/architecture.md)；生产部署、反代与故障处置见
+[`docs/deployment.md`](docs/deployment.md)。
+
 设计取舍写在 [`docs/adr/`](docs/adr/) 里（模块化单体、契约版本、两套迁移系统、
 为什么用 halfvec、为什么客户端不用 EventSource、checkpoint 分层、恢复语义、
 幂等重放窗口）。流式协议的字节格式规范在 [`docs/sse-protocol.md`](docs/sse-protocol.md)，
@@ -384,7 +388,7 @@ Agent 那条流的首帧永远是 `run_started`（`data: {"runId": ...}`），�
 `null` 表示到底了。游标是不透明的，不要解析它，格式随时可能变（见契约里
 `Cursor` 参数的描述）。
 
-契约的 `info.version` 跟产品版本走（当前 `6.5.0` ↔ tag `v6.5.0`），由发布脚本在发布前
+契约的 `info.version` 跟产品版本走（当前 `6.6.0` ↔ tag `v6.6.0`），由发布脚本在发布前
 断言两者一致，见 [ADR-002](docs/adr/002-contract-versioning.md)。它不表示兼容性
 承诺。兼容边界是路径里的 `/api/v1`。
 
@@ -418,8 +422,18 @@ Agent 那条流的首帧永远是 `run_started`（`data: {"runId": ...}`），�
 ```bash
 make test                # 等价于 go test ./... + 前端单测
 make check               # build-go + vet + test + lint
+make test-e2e            # Playwright E2E（全量 mock API，不需要数据库/Key）
+make bench-gate          # 基准回归门禁（对比 benchmarks/baseline.json）
+make loadtest            # SSE 并发压测模拟（mock 目标；--target 可指向真实 api）
 make test-integration    # 集成测试：自己起一个一次性的 PostgreSQL 容器
 ```
+
+E2E 首次运行要先装浏览器：`pnpm --filter web exec playwright install chromium`。
+它覆盖桌面 9 页 + 窄屏 3 个场景 + 命令面板交互，全部 `page.route` mock 掉
+`/api/v1/**`（外部域名一律 abort），所以不依赖数据库、模型 Key 与公网。
+压测结果与方法见 [docs/loadtest-report.md](docs/loadtest-report.md)；基准门禁的
+判据（allocs 严格、B/op +5%、ns/op +30% 且 >200ns）见
+[docs/testing.md](docs/testing.md)。
 
 大部分测试不连数据库。需要真实 PostgreSQL 的集成测试用 `CONGORAG_TEST_DB_URL`
 门控；没设这个变量就跳过，所以本地 `make test` 全绿不代表那些 SQL 跑得起来。
@@ -448,7 +462,7 @@ knowledge / platform / visualize 六个包的纯函数基准，它不连数据�
 只有 `evals/` 不在这条链路上：它测的是检索质量本身（语料、20 道题、指标脚本），
 与 `measure_recall.sh` 测的 HNSW 近似索引误差分工不同，见 [`evals/README.md`](evals/README.md)。
 
-CI 里有六个 job：Go 编译与单元测试（带 `-race`）、契约生成物是否最新、契约本身的
+CI 里有八个 job：Go 编译与单元测试（带 `-race`）、契约生成物是否最新、契约本身的
 spectral lint、前端构建与 `go:embed`、在真实 PostgreSQL 服务上跑集成测试，以及
 交付形态的容器装配（构建三个镜像、校验两份 compose、把 migrate 镜像对着一个临时
 PostgreSQL 真跑一次）。见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)。
@@ -510,6 +524,13 @@ CongoRAG/
 ├── landing/                    公开首页（静态 HTML + 真实界面截图）
 ├── docs/
 │   ├── modules.md              六个功能模块与关键接口
+│   ├── architecture.md         分层、包依赖图、关键请求流与数据模型
+│   ├── deployment.md           生产部署 runbook（配置/反代/升级回滚/故障处置）
+│   ├── iterations.md           六轮迭代记录（v6.2.0 → v6.7.0）
+│   ├── performance.md          纯函数基准、优化对照与前端体积基线
+│   ├── loadtest-report.md      SSE 并发压测模拟的方法与三档实测
+│   ├── quality-baseline.md     本机绿灯基线、覆盖率与"只能 CI 验证"清单
+│   ├── defense/                答辩 Q&A、Demo 脚本、评分证据矩阵
 │   ├── performance.md          纯函数基准、优化对照与前端体积基线
 │   ├── quality-baseline.md     本机绿灯基线、覆盖率与"只能 CI 验证"清单
 │   ├── evaluation/             检索/引用评测脚本与结果

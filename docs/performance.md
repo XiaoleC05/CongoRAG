@@ -138,3 +138,14 @@ Jaccard 数值与字符串定义一致）。
 | `visualize.Build` | 500 行 CSV 一次调用 14.6 MB 分配、29k allocs | 它不在请求主路径上（用户点一次生成一次），但分配量偏大；下一步是把表格解析与代码模板生成改成按列预分配 / `strings.Builder` 复用 |
 | `knowledge.ContentFingerprint` | 20KB 正文 3,376 allocs | 与 `tokenize.Tokens` 共用切分后仍逐 token 新建字符串；若上传吞吐成为瓶颈再做流式哈希 |
 | 大 topK 去重 | Top20 1.03 ms | 需要 MinHash/LSH 级别的方案，单独评估 |
+
+## 5. 门禁与压测入口
+
+- **基准回归门禁**：`make bench-gate`（`node scripts/bench-gate.mjs`）把 §1 的这批
+  benchmark 与 `benchmarks/baseline.json` 比较：allocs/op 超过基线观测上界即失败（确定性基准等价于上涨即失败）、B/op > +5% 失败、
+  ns/op > +30% 且绝对增量 >200ns 才失败（阈值与退出码的完整说明见 `docs/testing.md`
+  的「基准回归门禁」一节）。基线用 `node scripts/bench-gate.mjs --write` 重写，
+  换机器或升级 Go 时要重写并在提交信息里说明。
+- **并发压测模拟**：`make loadtest`（`node ops/loadtest/stream-load.mjs`）用 mock SSE
+  服务测压测器与 SSE 分帧路径的容量；真实后端用 `--target URL` 指向。方法论与三档
+  实测结果见 [docs/loadtest-report.md](loadtest-report.md)。
