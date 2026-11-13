@@ -41,6 +41,8 @@ const AgentsPage = lazy(() => import('@/pages/AgentsPage'))
 const AgentDetailPage = lazy(() => import('@/pages/AgentDetailPage'))
 const RunTracePage = lazy(() => import('@/pages/RunTracePage'))
 const UsagePage = lazy(() => import('@/pages/UsagePage'))
+// 质量证据页：把后端装配的 Prompt 注册表（版本/哈希/变更原因）摊开给人看
+const PromptsPage = lazy(() => import('@/pages/PromptsPage'))
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'))
 
 /**
@@ -139,6 +141,7 @@ export function AppRouter() {
             />
             <Route path="agents/:agentId/runs/:runId" element={<RunTracePage />} />
             <Route path="usage" element={<UsagePage />} />
+            <Route path="prompts" element={<PromptsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>

@@ -23,6 +23,7 @@ import (
 
 	"github.com/XiaoleC05/CongoRAG/internal/knowledge"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
+	"github.com/XiaoleC05/CongoRAG/internal/prompt"
 )
 
 func (s *Server) ListKnowledgeBases(c *gin.Context) {
@@ -293,7 +294,7 @@ func (s *Server) DiffDocumentVersions(c *gin.Context, id openapi_types.UUID) {
 		s.fail(c, err)
 		return
 	}
-	system := "你是学术论文版本对比助手。只根据给出的两版开头片段，用中文列出 3-5 条修订要点（Markdown 无序列表）；片段不足以判断时明确说明，不要编造。"
+	system := prompt.MustRender("versiondiff.system", nil)
 	user := fmt.Sprintf("旧版本《%s》开头片段：\n%s\n\n新版本《%s》开头片段：\n%s\n\n请输出 3-5 条修订要点。",
 		older.Filename, excerptChunks(olderChunks, 2600), newer.Filename, excerptChunks(newerChunks, 2600))
 	summary, err := s.deps.LLM.Generate(ctx, system, user)

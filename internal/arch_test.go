@@ -69,16 +69,16 @@ var allowedInternalEdges = map[string][]string{
 
 	// conversation 是聊天的业务层：上下文预算（ctxmgr）、证据落地（grounding）、
 	// 模型调用（llm）、平台基础设施（platform）。
-	"conversation": {"ctxmgr", "domain", "grounding", "llm", "platform"},
+	"conversation": {"ctxmgr", "domain", "grounding", "llm", "platform", "prompt"},
 
 	// ctxmgr 要按 llm.Tokenizer 计 token，依赖的是 llm 声明的接口（方向由消费方定）。
-	"ctxmgr": {"domain", "llm"},
+	"ctxmgr": {"domain", "llm", "prompt"},
 
 	// knowledge 管知识库与文档；内容指纹要和检索用同一套切词规则，所以依赖 tokenize。
 	"knowledge": {"domain", "platform", "tokenize"},
 
 	// llm 是模型配置与调用适配器；它不依赖任何业务包。
-	"llm": {"domain", "platform"},
+	"llm": {"domain", "platform", "prompt"},
 
 	// pdfparse 只把 PDF sidecar 的 JSON 解析成 domain 的块结构。
 	"pdfparse": {"domain"},
@@ -92,6 +92,10 @@ var allowedInternalEdges = map[string][]string{
 
 	// visualize 是 CSV→图表的纯计算加 platform 的 sentinel。
 	"visualize": {"platform"},
+
+	// prompt 是提示词注册表：纯字符串与元数据，不依赖任何内部包（叶子）。
+	// 需要提示词的包 import 它，它不 import 任何人——依赖方向永远是单向的。
+	"prompt": {},
 
 	// domain / platform / tokenize / grounding / testdb 没有出边：
 	// domain 是中性类型叶；platform 是基础设施；tokenize/grounding 是纯算法；

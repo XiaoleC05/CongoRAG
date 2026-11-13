@@ -23,6 +23,7 @@ import (
 
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
+	"github.com/XiaoleC05/CongoRAG/internal/prompt"
 	"github.com/XiaoleC05/CongoRAG/internal/visualize"
 )
 
@@ -93,7 +94,7 @@ func (s *Server) figureCaption(ctx context.Context, chart visualize.Chart, fallb
 	if err != nil {
 		return "", err
 	}
-	system := "你是学术写作助手。根据给定的图表数据，写一句中文 Figure Caption：说明图表类型、横纵轴变量、主要趋势与极值；不要 Markdown、不要解释。"
+	system := prompt.MustRender("caption.system", nil)
 	user := "图表数据（JSON）：\n" + string(data) + "\n\n确定性草稿（可改写但不要偏离数据）：\n" + fallback
 	return s.deps.LLM.Generate(ctx, system, user)
 }
@@ -145,8 +146,12 @@ func (s *Server) GetCitationSurvey(c *gin.Context, id openapi_types.UUID) {
 	for _, e := range graph.Edges {
 		rels.WriteString("- " + filename[e.From] + " 引用了 " + filename[e.To] + "（" + strconv.Itoa(e.Weight) + " 条参考文献）\n")
 	}
-	system := "你是学术综述助手。基于给定的库内论文片段与引用关系，用中文写一份 400-600 字的领域综述（Markdown，包含研究脉络、代表工作、引用关系），然后给出 3 条 Future Work 方向。对于 Future Work，只列出结合论文标题/编号年份线索判断仍开放的方向；疑似已被后续论文覆盖的不要列出，无法判断的最多保留一条并标注「不确定」；只能使用给定材料，不要编造未出现的论文或结论；材料不足时明确说明。"
-	user := "关注方向：" + focus + "\n\n论文片段：\n" + docs.String() + "\n引用关系：\n" + rels.String() + "\n请输出综述 + Future Work。"
+	system := prompt.MustRender("survey.system", nil)
+	user := prompt.MustRender("survey.user", map[string]string{
+		"focus":     focus,
+		"docs":      docs.String(),
+		"relations": rels.String(),
+	})
 	markdown, err := s.deps.LLM.Generate(ctx, system, user)
 	if err != nil {
 		s.fail(c, err)
@@ -324,22 +329,23 @@ func (s *Server) ComparePapers(c *gin.Context, id openapi_types.UUID) {
 // 【编号与 citations 顺序一致】citations 就是 chunks 顺序；提示词里的
 // [n] 由模型按资料编号生成，前端据此把 [n] 渲染成可点来源。
 func buildComparePrompt(question string, chunks []domain.Chunk) (system, user string) {
-	var b strings.Builder
-	b.WriteString("对比问题：")
-	b.WriteString(question)
-	b.WriteString("\n\n资料（每条前面的编号就是引用编号，括号里是来源文件与页码）：\n")
+	// 证据块仍由这里按 citations 顺序拼：[n] 的编号必须与返回给前端的
+	// citations 数组一致，否则点 [2] 会跳到另一篇论文。提示词文本本身
+	// 在 internal/prompt 注册表（compare.system / compare.user）。
+	var evidence strings.Builder
 	for i, ch := range chunks {
-		fmt.Fprintf(&b, "\n[%d] ", i+1)
+		fmt.Fprintf(&evidence, "\n[%d] ", i+1)
 		if ch.PageStart > 0 {
-			fmt.Fprintf(&b, "（%s 第 %d 页）", ch.Filename, ch.PageStart)
+			fmt.Fprintf(&evidence, "（%s 第 %d 页）", ch.Filename, ch.PageStart)
 		}
-		b.WriteString(ch.Content)
+		evidence.WriteString(ch.Content)
 	}
-	system = "你是科研文献对比助手。只依据给出的编号资料回答；" +
-		"用 Markdown 表格对比不同论文/不同来源在同一问题上的观点、方法与证据（列可以按主题自拟），" +
-		"表格后用 2~3 句给综合结论；每个事实句末尾用 [n] 标注来源编号；" +
-		"资料不足时直接说明「根据现有资料无法完成对比」，不要编造。"
-	return system, b.String()
+	system = prompt.MustRender("compare.system", nil)
+	user = prompt.MustRender("compare.user", map[string]string{
+		"question": question,
+		"evidence": evidence.String(),
+	})
+	return system, user
 }
 
 // 多篇对比的 topK 边界（与契约里的 minimum/maximum 一致）。
@@ -355,35 +361,27 @@ const (
 // 顺序；草稿里的 [n] 由模型按提示词里的 [n] 生成，前端据此把 [n] 变成
 // 可点击的来源卡片。
 func buildWritingPrompt(kind, topic string, chunks []domain.Chunk) (system, user string) {
-	var task string
-	switch kind {
-	case "summary":
-		task = "写一段 200~300 字的摘要式总结，概括这些资料的核心方法与结论"
-	case "outline":
-		task = "写一份章节提纲（Markdown 多级列表），覆盖资料涉及的主要主题与它们之间的关系"
-	case "framework":
-		task = "写一份完整的论文框架（Markdown）：包含 Abstract、Introduction、Related Work、" +
-			"Method（分点提纲）、Experiments（分点提纲）、Conclusion 与 References；" +
-			"References 只能列资料中出现过的真实文献，写不出完整条目时保留可核对的标题/年份/来源，不要编造"
-	default: // related_work
-		task = "写一段 300~500 字的「相关工作」综述，按方法脉络组织（不要逐篇罗列），指出各方法的差异与联系"
+	// 体例任务文本也是提示词资产（writing.task.*）；未知体例退回「相关工作」，
+	// 与 v6.2.0 的 default 分支行为一致。
+	task, err := prompt.WritingTaskText(kind)
+	if err != nil {
+		task = prompt.MustRender("writing.task.related_work", nil)
 	}
 
-	var b strings.Builder
-	b.WriteString("写作主题：")
-	b.WriteString(topic)
-	b.WriteString("\n\n任务：")
-	b.WriteString(task)
-	b.WriteString("。\n\n可用资料（每条前面的编号就是引用编号）：\n")
+	var evidence strings.Builder
 	for i, ch := range chunks {
-		fmt.Fprintf(&b, "\n[%d] %s", i+1, ch.Content)
+		fmt.Fprintf(&evidence, "\n[%d] %s", i+1, ch.Content)
 		if ch.PageStart > 0 {
-			fmt.Fprintf(&b, "（%s 第 %d 页）", ch.Filename, ch.PageStart)
+			fmt.Fprintf(&evidence, "（%s 第 %d 页）", ch.Filename, ch.PageStart)
 		}
 	}
-	system = "你是科研写作助手。只依据给出的编号资料写作；每个事实句末尾用 [n] 标注来源编号；" +
-		"输出 Markdown，不要输出与写作任务无关的解释。资料不足时直接说明" + "「根据现有资料无法完成」" + "，不要编造。"
-	return system, b.String()
+	system = prompt.MustRender("writing.system", nil)
+	user = prompt.MustRender("writing.user", map[string]string{
+		"topic":    topic,
+		"task":     task,
+		"evidence": evidence.String(),
+	})
+	return system, user
 }
 
 // writingGraphviz 生成论文框架的 Graphviz DOT 脚本（M6 的拓扑图输出之一）。

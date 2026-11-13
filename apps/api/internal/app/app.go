@@ -34,6 +34,7 @@ import (
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
 	"github.com/XiaoleC05/CongoRAG/internal/pdfparse"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
+	"github.com/XiaoleC05/CongoRAG/internal/prompt"
 	"github.com/XiaoleC05/CongoRAG/internal/recommend"
 	"github.com/XiaoleC05/CongoRAG/internal/retrieval"
 
@@ -63,6 +64,13 @@ func Run(webFS embed.FS) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 	logger := platform.NewLogger(cfg)
+
+	// 提示词注册表是"代码即配置"的资产：变量漏声明、Active 指错版本、key 重名，
+	// 都不会编译失败，只会在某个端点上静默渲染成空串。配错了就在启动时说，
+	// 与数据库连不上 / tiktoken 词表下载失败同一条原则。
+	if err := prompt.Validate(); err != nil {
+		return fmt.Errorf("validate prompt registry: %w", err)
+	}
 
 	// ── 基础设施 ────────────────────────────────────────
 	//

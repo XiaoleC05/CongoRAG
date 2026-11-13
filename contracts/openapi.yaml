@@ -9,7 +9,7 @@ info:
   #
   # 【必须加引号】不加的话 YAML 会把 2.0 解析成浮点数，而 info.version 的
   # 类型是 string——校验会报 "Incorrect type. Expected string"。
-  version: "6.2.0"
+  version: "6.3.0"
   description: |
     依靠上下文提供 RAG 服务的全栈开源工具
 
@@ -1266,6 +1266,23 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/prompts:
+
+    get:
+      operationId: listPrompts
+      summary: 列出 Prompt 注册表（版本、内容哈希、变更原因、引用位置与变量）
+      responses:
+        '200':
+          description: Prompt 注册表（按 key 字典序）
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PromptEntry'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/agents:
 
     get:
@@ -1601,6 +1618,105 @@ components:
 
   # ── 数据长什么样 ────────────────────────────────────────────
   schemas:
+
+    # ── Prompt 注册表（v6.3.0）─────────────────────────────────
+    #
+    # 「可审计的提示词资产」：每个 Prompt 的当前生效版本、历史版本、内容哈希、
+    # 变更原因、引用的代码位置与变量。字段设计见 docs/adr/010-prompt-registry.md。
+    # content 是完整提示词文本（含 {{var}} 占位符）——对审计者可见，不做隐藏。
+
+    PromptEntry:
+      type: object
+      required: [key, title, description, activeVersion, versions, variables, codeRefs]
+      properties:
+        key:
+          type: string
+          description: 稳定的机器可读标识（如 chat.system）
+        title:
+          type: string
+        description:
+          type: string
+        activeVersion:
+          type: integer
+          description: 当前生效的版本号（从 1 开始）
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromptVersion'
+        variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromptVariable'
+        codeRefs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromptCodeRef'
+
+    PromptVersion:
+      type: object
+      required: [version, content, contentHash, changeReason, createdAt, activatedAt]
+      properties:
+        version:
+          type: integer
+        content:
+          type: string
+        contentHash:
+          type: string
+          description: content 的 SHA-256（小写十六进制，64 位）
+        changeReason:
+          type: string
+        createdAt:
+          type: string
+        activatedAt:
+          type: string
+        sampling:
+          $ref: '#/components/schemas/PromptSampling'
+        metrics:
+          $ref: '#/components/schemas/PromptMetrics'
+
+    PromptVariable:
+      type: object
+      required: [name, description, required]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        required:
+          type: boolean
+
+    PromptCodeRef:
+      type: object
+      required: [file, symbol]
+      properties:
+        file:
+          type: string
+        symbol:
+          type: string
+
+    PromptSampling:
+      type: object
+      properties:
+        temperature:
+          type: number
+          format: float
+        maxTokens:
+          type: integer
+        note:
+          type: string
+
+    PromptMetrics:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        sampleSize:
+          type: integer
+        note:
+          type: string
 
     KnowledgeBase:
       type: object

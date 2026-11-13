@@ -634,6 +634,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/prompts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 列出 Prompt 注册表（版本、内容哈希、变更原因、引用位置与变量） */
+        get: operations["listPrompts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/agents": {
         parameters: {
             query?: never;
@@ -827,6 +844,49 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        PromptEntry: {
+            /** @description 稳定的机器可读标识（如 chat.system） */
+            key: string;
+            title: string;
+            description: string;
+            /** @description 当前生效的版本号（从 1 开始） */
+            activeVersion: number;
+            versions: components["schemas"]["PromptVersion"][];
+            variables: components["schemas"]["PromptVariable"][];
+            codeRefs: components["schemas"]["PromptCodeRef"][];
+        };
+        PromptVersion: {
+            version: number;
+            content: string;
+            /** @description content 的 SHA-256（小写十六进制，64 位） */
+            contentHash: string;
+            changeReason: string;
+            createdAt: string;
+            activatedAt: string;
+            sampling?: components["schemas"]["PromptSampling"];
+            metrics?: components["schemas"]["PromptMetrics"];
+        };
+        PromptVariable: {
+            name: string;
+            description: string;
+            required: boolean;
+        };
+        PromptCodeRef: {
+            file: string;
+            symbol: string;
+        };
+        PromptSampling: {
+            /** Format: float */
+            temperature?: number;
+            maxTokens?: number;
+            note?: string;
+        };
+        PromptMetrics: {
+            name: string;
+            value: string;
+            sampleSize?: number;
+            note?: string;
+        };
         KnowledgeBase: {
             /** Format: uuid */
             id: string;
@@ -2702,6 +2762,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ToolCatalogEntry"][];
+                };
+            };
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listPrompts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Prompt 注册表（按 key 字典序） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptEntry"][];
                 };
             };
             500: components["responses"]["InternalError"];

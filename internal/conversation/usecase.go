@@ -22,6 +22,7 @@ import (
 	"github.com/XiaoleC05/CongoRAG/internal/grounding"
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
+	"github.com/XiaoleC05/CongoRAG/internal/prompt"
 )
 
 // recentMessagesLimit 是每次组装上下文时取的历史消息条数上限。
@@ -1209,15 +1210,15 @@ func (u *Usecase) emitEvent(ctx context.Context, convID uuid.UUID, sink EventSin
 	return sink.Flush()
 }
 
-// defaultSystemPrompt 是 M2 阶段的占位系统提示词。
+// defaultSystemPrompt 是普通聊天的系统提示词。
 //
-// 【故意不做成可配置】技术方案没有把"系统提示词可配置"列为 M2 的验收项——
-// Agent 的 system_prompt 才是数据库字段（agents 表，M4-A），普通聊天
-// 现在只需要一个够用的默认值。
-const defaultSystemPrompt = "你是 CongoRAG 的科研助手。只依据提供的检索片段回答用户问题。" +
-	"回答里的每一句话末尾都必须用方括号标注它依赖的片段编号，例如 [1]、[2]（编号就是片段前面的序号，从 1 开始）；" +
-	"不要输出任何没有引用编号的句子。片段里没有相关信息时，直接回答「根据现有资料无法回答」，" +
-	"不要使用片段之外的知识，不要编造引用编号。"
+// 【为什么不再写字面量】v6.3.0 起提示词统一收在 internal/prompt 注册表：
+// 有版本、内容哈希、变更原因、采样参数与代码位置，评审/答辩可以直接审计
+// "这句话是谁在什么时候为什么改的"。这里只保留一个便于阅读的包级变量名。
+//
+// 【仍然不做成运行时可配置】提示词是受版本管理的代码——允许用户改会让
+// "这条回答是哪版提示词生成的"无法追溯。要调整就在注册表里加版本。
+var defaultSystemPrompt = prompt.MustRender("chat.system", nil)
 
 func toLLMMessages(msgs []*Message) []llm.Message {
 	out := make([]llm.Message, len(msgs))

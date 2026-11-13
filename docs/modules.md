@@ -1,6 +1,6 @@
 # CongoRAG 科研助手：模块与实现
 
-当前版本 v6.2.0。本页按功能模块说明实现位置与关键接口；安装、配置与运行方式见
+当前版本 v6.3.0。本页按功能模块说明实现位置与关键接口；安装、配置与运行方式见
 [README](../README.md)，提交材料见 [docs/submission](submission/README.md)。
 
 ## 1. 文献解析与去重
@@ -86,7 +86,11 @@ Agent 只承担"需要多步工具调用"的任务：检索 arXiv、查知识库
 - 如果将来接入写操作，先加权限边界与人工确认，再考虑多 Agent 路由，不为架构图好看
   提前引入复杂度。
 
-## 9. 评测、Prompt 与复现
+## 9. Prompt 治理、评测与复现
+
+- **Prompt 注册表**：`internal/prompt`，版本 + 完整文本 + SHA-256 + 变更原因 +
+  采样参数 + 代码位置；`GET /api/v1/prompts` 与界面「Prompt 审计」页只读展示，
+  api 启动时校验结构。设计见 [ADR-010](adr/010-prompt-registry.md)。
 
 - 检索评测脚本与结果：[docs/evaluation/](evaluation/)
 - Prompt 审计：[docs/prompt-audit.md](prompt-audit.md)

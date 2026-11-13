@@ -151,6 +151,21 @@ describe('侧栏导航项与已实现模块的一致性', () => {
     expect(screen.getByRole('link', { name: '用量' }).getAttribute('href')).toBe('/usage')
   })
 
+  // Prompt 审计（R2）与用量同属"质量证据"一类：用量回答"花了多少"，
+  // 审计回答"用的到底是什么"。这里断言的是导航表本身（数据）而不是渲染结果：
+  // 位置被挪到别处时，只看"能点开"是发现不了的。
+  it('Prompt 审计是可点的链接，且位于用量与设置之间', () => {
+    renderInAppLayout()
+
+    expect(screen.getByRole('link', { name: 'Prompt 审计' }).getAttribute('href')).toBe(
+      '/prompts',
+    )
+
+    const order = NAV.map((item) => item.to)
+    expect(order.indexOf('/prompts')).toBe(order.indexOf('/usage') + 1)
+    expect(order.indexOf('/prompts')).toBe(order.indexOf('/settings') - 1)
+  })
+
   // 上面两条钉的是今天的状态，这一条钉的是规则本身：**NAV 里标了 soon 的模块，
   // src/pages/ 下就必须真的没有对应页面**。这样一来，将来谁实现了 UsagePage 却
   // 忘了摘 soon，或者反过来给已经能用的模块加上 soon 占位，都会红。

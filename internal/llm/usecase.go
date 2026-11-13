@@ -13,6 +13,7 @@ import (
 
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/platform"
+	"github.com/XiaoleC05/CongoRAG/internal/prompt"
 )
 
 // Usecase 是 BYOK 引导页背后的业务层。
@@ -385,8 +386,7 @@ func (u *Usecase) Translate(ctx context.Context, text, targetLang string) (strin
 	if targetLang == "" {
 		targetLang = "zh-CN"
 	}
-	system := "你是学术论文翻译助手。把用户给出的论文片段准确翻译成" + targetLang +
-		"；保留公式、术语、引用编号与数字原文；只输出译文，不要解释或补充。"
+	system := prompt.MustRender("translate.system", map[string]string{"targetLang": targetLang})
 	return u.complete(ctx, system, text, 0.1)
 }
 

@@ -5,7 +5,7 @@
 上传一篇论文，问它问题。系统先检索证据，再逐句生成带页码和原文位置的回答；点引用就回到 PDF 那一页。
 它也支持中英对照阅读、arXiv 追踪、引用图谱和写作草稿。所有生成都走同一套引用与校验。
 
-当前版本 **v6.2.0**（2026-11-14）。在线演示：<https://congorag.cloud>；
+当前版本 **v6.3.0**（2026-11-14）。在线演示：<https://congorag.cloud>；
 提交材料（技术文档、演示视频、自检清单、评测报告）在
 [docs/submission/](docs/submission/README.md)。
 
@@ -26,7 +26,7 @@
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Version](https://img.shields.io/badge/version-6.2.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-6.3.0-blue)](CHANGELOG.md)
 
 本地优先的 RAG 问答与 Agent 平台。文档、向量、API Key 都留在自己的机器上，
 模型服务由使用者提供（BYOK）。
@@ -46,6 +46,10 @@ api 进程默认只监听 127.0.0.1:3210，不对局域网开放。API Key 用 A
 | 知识库：文档状态、分块数与检索调试 | Agent：执行轨迹与工具调用 |
 | --- | --- |
 | ![知识库详情](docs/assets/knowledge-base.png) | ![Agent 执行轨迹](docs/assets/agent-run.png) |
+
+| Prompt 审计：版本、SHA-256、变更原因与代码位置 | 移动端单列（390px） |
+| --- | --- |
+| ![Prompt 审计](docs/assets/prompts-audit.png) | ![Prompt 审计移动端](docs/assets/prompts-audit-mobile.png) |
 
 - 对话页那张截在生成途中：正文末尾还有光标，来源角标 `[1] [2] [3] [4]`
   已经随流下发，同一个按钮位置已经变成"停止"。这三样都是这一版的交互
@@ -343,6 +347,7 @@ TS 的类型都从它生成。下面是端点总览。
 | GET | `/api/v1/conversations/{id}/events` | 补发 `after_event_id` 之后的事件，补完即结束响应（不持有连接） |
 | GET / POST | `/api/v1/providers` | 模型服务配置 |
 | GET | `/api/v1/usage` | 按模型聚合的 token 用量 |
+| GET | `/api/v1/prompts` | Prompt 注册表（版本、SHA-256、变更原因、采样参数、代码位置；只读） |
 | GET | `/api/v1/tools` | 工具目录 |
 | GET / POST | `/api/v1/agents` | Agent 列表 / 新建 |
 | GET | `/api/v1/agents/{id}` | Agent 详情 |
@@ -362,7 +367,7 @@ Agent 那条流的首帧永远是 `run_started`（`data: {"runId": ...}`），�
 `null` 表示到底了。游标是不透明的，不要解析它，格式随时可能变（见契约里
 `Cursor` 参数的描述）。
 
-契约的 `info.version` 跟产品版本走（当前 `6.2.0` ↔ tag `v6.2.0`），由发布脚本在发布前
+契约的 `info.version` 跟产品版本走（当前 `6.3.0` ↔ tag `v6.3.0`），由发布脚本在发布前
 断言两者一致，见 [ADR-002](docs/adr/002-contract-versioning.md)。它不表示兼容性
 承诺。兼容边界是路径里的 `/api/v1`。
 
@@ -470,6 +475,7 @@ CongoRAG/
 │   └── worker/                 River 消费端：文档处理 + 孤儿文件对账
 ├── internal/
 │   ├── domain/                 跨包的领域类型，不依赖任何其他内部包
+│   ├── prompt/                 提示词注册表：版本、哈希、变更原因、采样参数（叶子包）
 │   ├── platform/               配置、数据库、日志、中间件、加密、调度
 │   ├── llm/                    provider / model 配置与调用
 │   ├── knowledge/              知识库与文档

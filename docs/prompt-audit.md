@@ -1,7 +1,38 @@
 # Prompt 审计记录（科研助手）
 
 > 决赛答辩要求"Prompt 审计记录"，这里按 **版本 / 改动原因 / 效果 / 代码位置**
-> 逐条记录科研助手涉及的全部 Prompt 与提示词级别的防护。时间均为 2026-10-29。
+> 逐条记录科研助手涉及的全部 Prompt 与提示词级别的防护。时间均为 2026-10-29
+> （v6.3.0 补注册表指针与采样参数口径）。
+
+## 0. 注册表（v6.3.0 起）
+
+从 v6.3.0 起，下面所有提示词都收敛到 **`internal/prompt` 注册表**，不再有
+散落在代码里的字面量。这让"审计记录"从人工文档变成可被程序验证的资产：
+
+- 每条提示词有稳定 key、版本时间线、完整文本、**SHA-256**、变更原因、
+  采样参数与代码位置；
+- `GET /api/v1/prompts` 把注册表原样暴露给界面，应用内「Prompt 审计」页面
+  可以直接查看/复制每个版本的全文，并用哈希核对"界面这份 = 仓库这份"；
+- api 启动时校验注册表结构（变量声明与模板占位符一一对应、生效版本必须是
+  最新版本），配错直接拒绝启动，见 `internal/prompt/prompt.go` 的 `Validate`。
+
+| key | 说明 | 版本 | 代码位置 |
+| --- | --- | --- | --- |
+| `chat.system` | 科研问答系统提示（逐句 [n] + 无证据拒答） | v1 → v2 | `internal/conversation/usecase.go` |
+| `chat.compress` / `chat.compress.budget_suffix` / `chat.compress.urgent_suffix` | 历史压缩与 token 预算约束 | v1 | `internal/ctxmgr/compressor.go` |
+| `translate.system` | 论文翻译（temperature=0.1） | v1 | `internal/llm/usecase.go` |
+| `writing.system` / `writing.user` / `writing.task.*` | 写作 Copilot 与四种体例任务 | v1 | `apps/api/internal/api/handler_research.go` |
+| `compare.system` / `compare.user` | 多篇对比 | v1 | `apps/api/internal/api/handler_research.go` |
+| `survey.system` / `survey.user` | 引用综述 + Future Work | v1 | `apps/api/internal/api/handler_research.go` |
+| `caption.system` | Figure Caption | v1 | `apps/api/internal/api/handler_research.go` |
+| `versiondiff.system` | 论文版本差异 | v1 | `apps/api/internal/api/handler_knowledge.go` |
+
+![Prompt 审计页面](../assets/prompts-audit.png)
+
+*（截图来自真实注册表数据：17 条提示词、每条的版本时间线 / 完整文本 / SHA-256 / 变更原因 / 采样参数 / 代码位置。界面只读。）*
+
+> 注册表与本文档必须同步更新：加版本时改 `internal/prompt/prompt.go` 的
+> `Versions` 与 `Active`，并在同一提交里补本文档对应小节（见 ADR-010）。
 
 ## 1. 对话系统提示词（defaultSystemPrompt）
 
@@ -53,7 +84,14 @@
 |---|---|---|---|
 | v1（科研助手） | "把论文片段准确翻译成 zh-CN；保留公式、术语、引用编号与数字原文；只输出译文"；temperature=0.1 | 学术翻译不允许改写数字/编号；低温度减少自由发挥 | Attention 摘要整页翻译准确，编号/公式保留 |
 
-**代码**：`internal/llm/usecase.go`（`Translate`）。
+**代码**：`internal/llm/usecase.go`（`Translate`；提示词文本在
+`internal/prompt` 的 `translate.system`）。
+
+> 【采样参数口径（v6.3.0 修正）】上面写的 temperature=0.1 在 v6.3.0 之前
+> **并未真正生效**：Eino 适配器用 `_ = opts` 把 `WithTemperature` 丢弃了，
+> 模型收到的是默认温度。v6.3.0 起适配置器把 Temperature/MaxTokens 映射成
+> Eino 的 `WithExtraFields`/`WithMaxCompletionTokens`，注册表里登记的采样参数
+> 与运行时一致；回归测试见 `internal/llm/call_options_test.go`。
 
 ## 7. 工具描述（Agent）
 

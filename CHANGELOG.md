@@ -26,6 +26,39 @@
 
 ---
 
+## [6.3.0] - 2026-11-14
+
+Prompt 审计与 Guardrails 版本：提示词从散落的字符串变成可审计资产。
+
+### 行为变更
+
+- **新增 `GET /api/v1/prompts`**：返回提示词注册表（每个条目的版本时间线、
+  完整文本、SHA-256、变更原因、采样参数、代码位置）。只读，不提供写接口。
+- **采样参数真正生效**：`WithTemperature` / `WithMaxTokens` 之前被 Eino 适配器
+  丢弃（`_ = opts`）。升级后翻译等调用会按代码里写的温度执行（翻译 0.1、
+  写作/对比/综述/图注/版本差异 0.3），输出风格可能比之前更稳定。这是本轮
+  **唯一会改变模型输出的变更**。
+
+### 变更
+
+- **提示词注册表**：新增叶子包 `internal/prompt`（17 条提示词、版本化、
+  SHA-256、变更原因、采样参数、可复现指标）；conversation / ctxmgr / llm /
+  handler_research / handler_knowledge 的内联字面量全部改为通过它渲染；
+  api 启动时 `prompt.Validate()` 校验注册表。设计见
+  [ADR-010](docs/adr/010-prompt-registry.md)。
+- **前端「Prompt 审计」页面**：侧栏新增入口，版本时间线与内容/哈希/代码位置
+  可视化（只读）。
+- **提示词审计文档**：`docs/prompt-audit.md` 增加注册表指针，并修正
+  language temperature=0.1 曾未生效的记录。
+- **启动装配**：api 启动时校验提示词注册表，失败拒绝启动（与数据库连不上同一条原则）。
+
+### 升级说明
+
+- 无数据库结构变更、无新增环境变量；
+- 契约 `info.version` 与 tag 同步到 6.3.0（ADR-002）；
+- 唯一行为差异是采样参数生效（见上）；如果某个模型的输出因此变化，可在
+  `internal/prompt` 对应版本里改 `Sampling` 并同步文档。
+
 ## [6.2.0] - 2026-11-14
 
 架构解耦与性能基线版本。**无运行时行为变更**，升级不需要任何额外操作。
@@ -483,7 +516,8 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
-[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.2.0...HEAD
+[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.3.0...HEAD
+[6.3.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.2.0...v6.3.0
 [6.2.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.1.0...v6.2.0
 [6.1.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.0.0...v6.1.0
 [6.0.0]: https://github.com/XiaoleC05/CongoRAG/compare/v5.0.2...v6.0.0

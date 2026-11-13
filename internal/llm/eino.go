@@ -19,6 +19,7 @@ import (
 	"github.com/cloudwego/eino/callbacks"
 	"github.com/cloudwego/eino/components"
 	"github.com/cloudwego/eino/components/embedding"
+	einoModel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
@@ -275,12 +276,7 @@ type einoChatModel struct {
 }
 
 func (c *einoChatModel) Generate(ctx context.Context, msgs []Message, opts ...CallOption) (*Message, error) {
-	// TODO(M3): CallOption（Temperature/MaxTokens）还没有转成 Eino 的
-	// model.Option 传下去。M1 不需要控制这两个参数,先占住接口形状,
-	// 等 conversation.Send 真正需要覆盖默认值时再补这层转换。
-	_ = opts
-
-	out, err := c.inner.Generate(ctx, toEinoMessages(msgs))
+	out, err := c.inner.Generate(ctx, toEinoMessages(msgs), toEinoOptions(opts...)...)
 	if err != nil {
 		return nil, fmt.Errorf("%w: generate: %v", platform.ErrUpstream, err)
 	}
@@ -293,13 +289,47 @@ func (c *einoChatModel) Generate(ctx context.Context, msgs []Message, opts ...Ca
 }
 
 func (c *einoChatModel) Stream(ctx context.Context, msgs []Message, opts ...CallOption) (Stream, error) {
-	_ = opts // 同上
-
-	sr, err := c.inner.Stream(ctx, toEinoMessages(msgs))
+	sr, err := c.inner.Stream(ctx, toEinoMessages(msgs), toEinoOptions(opts...)...)
 	if err != nil {
 		return nil, fmt.Errorf("%w: stream: %v", platform.ErrUpstream, err)
 	}
 	return &einoStream{inner: sr, rec: c.rec, ctx: ctx}, nil
+}
+
+// resolveCallConfig 把 Functional Options 收敛成一个配置结构。
+//
+// 【为什么单独一个函数】它是"调用方要什么"与"适配器怎么传下去"之间的
+// 唯一接缝：单测可以只验它（不需要真的模型），适配器层则只做映射。
+func resolveCallConfig(opts ...CallOption) CallConfig {
+	var cfg CallConfig
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
+	}
+	return cfg
+}
+
+// toEinoOptions 把本包的 CallOption 转成 Eino 的 model.Option。
+//
+// 【v6.3.0 修掉的缺陷】在此之前 Temperature/MaxTokens 被适配器用 _ = opts
+// 直接丢弃：调用方以为"翻译用 0.1"，实际模型收到的是默认温度。这不只是
+// 参数失效——它让 docs/prompt-audit.md 里的采样参数记录与运行时不一致，
+// 而提示词审计恰恰要求这两者能对上。
+//
+// 温度走 WithExtraFields（request body 的额外字段，OpenAI 兼容协议认
+// temperature）；max tokens 用官方的 WithMaxCompletionTokens（新模型不再
+// 接受 max_tokens）。
+func toEinoOptions(opts ...CallOption) []einoModel.Option {
+	cfg := resolveCallConfig(opts...)
+	out := make([]einoModel.Option, 0, 2)
+	if cfg.Temperature != nil {
+		out = append(out, einochatmodel.WithExtraFields(map[string]any{"temperature": *cfg.Temperature}))
+	}
+	if cfg.MaxTokens != nil {
+		out = append(out, einochatmodel.WithMaxCompletionTokens(*cfg.MaxTokens))
+	}
+	return out
 }
 
 type einoStream struct {

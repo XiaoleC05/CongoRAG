@@ -1,4 +1,4 @@
-import { BarChart3, BookOpen, Bot, MessagesSquare, Settings } from 'lucide-react'
+import { BarChart3, BookOpen, Bot, MessagesSquare, ScrollText, Settings } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 /**
@@ -38,6 +38,11 @@ export const NAV: NavItem[] = [
   // 第 4 步与 AppLayout.test.tsx 的"标了 soon 的模块确实没有页面文件"
   // 一起钉着这件事：页面在，soon 就必须摘。
   { to: '/usage', label: '用量', icon: BarChart3 },
+  // 【为什么放在「用量」与「设置」之间】它们是同一类东西：用量回答"花了多少"，
+  // Prompt 审计回答"用的到底是什么"。都服务于"这个系统现在在做什么"的核查，
+  // 而不是日常操作（知识库/对话/Agent 那三块）。放在设置前面而不是后面，
+  // 是因为设置是终点（配置完成就很少回来），审计是随时可能被翻开的证据页。
+  { to: '/prompts', label: 'Prompt 审计', icon: ScrollText },
   // 【设置为什么在这里，而不在侧栏底部】侧栏底部原来是 AppLayout.tsx 里
   // 写死的一个禁用占位，它的注释把归属指向 issue #83。本批次落地了
   // SettingsPage，所以入口挪进这张表——**但底部那个占位不归本批次删**

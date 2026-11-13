@@ -3,10 +3,12 @@ package ctxmgr
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/llm"
+	"github.com/XiaoleC05/CongoRAG/internal/prompt"
 )
 
 var _ Compressor = (*LLMCompressor)(nil)
@@ -36,9 +38,9 @@ func NewLLMCompressor(registry llm.Registry) *LLMCompressor {
 // 那一件事：一次性把攒起来的历史压成摘要，不分级。M1.0 先用一个提示词，
 // 如果将来需要"分级压缩"（比如先压最旧的一半，不够再压更多），
 // 再引入分级参数，不要在没有真实需求之前猜一个分级接口。
-const compressPrompt = "请把下面这段对话历史压缩成一段简洁的摘要，" +
-	"保留关键事实、决定和用户表达过的偏好，去掉寒暄和重复内容。" +
-	"直接输出摘要正文，不要加任何前缀说明。"
+// v6.3.0 起文本本身在 internal/prompt 注册表（key: chat.compress），
+// 这里只保留变量名；评审要审计压缩提示改了什么，去注册表看版本。
+var compressPrompt = prompt.MustRender("chat.compress", nil)
 
 // compressBudgetPrompt 把尺寸约束写进提示词。targetTokens 是调用方算出来的
 // "可压缩区还允许占多少 token"（Build 第 2 步的 remaining），模型只能看见
@@ -50,9 +52,11 @@ func compressBudgetPrompt(targetTokens int) string {
 	if targetTokens <= 0 {
 		// remaining 被夹到 0 时（删除区已经把预算占满）不能写"控制在 0 个
 		// token 以内"——那条指令模型没法遵守，等于什么都没说。
-		return compressPrompt + "这段摘要必须尽可能短。"
+		return compressPrompt + prompt.MustRender("chat.compress.urgent_suffix", nil)
 	}
-	return fmt.Sprintf("%s这段摘要控制在 %d 个 token 以内。", compressPrompt, targetTokens)
+	return compressPrompt + prompt.MustRender("chat.compress.budget_suffix", map[string]string{
+		"targetTokens": strconv.Itoa(targetTokens),
+	})
 }
 
 // Compress 把 items 的内容拼起来发给 chat 模型，请求一段不超过

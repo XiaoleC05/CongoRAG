@@ -17,6 +17,7 @@ import (
 	"github.com/XiaoleC05/CongoRAG/internal/conversation"
 	"github.com/XiaoleC05/CongoRAG/internal/domain"
 	"github.com/XiaoleC05/CongoRAG/internal/knowledge"
+	"github.com/XiaoleC05/CongoRAG/internal/prompt"
 )
 
 // toAPIKB 把业务类型转成契约类型。
@@ -334,4 +335,83 @@ func excerptChunks(chunks []domain.Chunk, limit int) string {
 		runes = runes[:limit]
 	}
 	return strings.TrimSpace(string(runes))
+}
+
+// toAPIPromptEntry 把提示词注册表条目转成契约类型。
+//
+// 【为什么哈希在这里算而不存进注册表】哈希是内容的派生值：存一份就可能与
+// 内容不同步（改了文本忘了更新哈希，而且不会报错）。每次转换时现算，
+// 保证"界面上的哈希"与"界面上的内容"永远一致。
+func toAPIPromptEntry(e prompt.Entry) PromptEntry {
+	versions := make([]PromptVersion, 0, len(e.Versions))
+	for _, v := range e.Versions {
+		out := PromptVersion{
+			Version:      v.Version,
+			Content:      v.Content,
+			ContentHash:  prompt.ContentHash(v.Content),
+			ChangeReason: v.ChangeReason,
+			CreatedAt:    v.CreatedAt,
+			ActivatedAt:  v.ActivatedAt,
+			Sampling:     toAPIPromptSampling(v.Sampling),
+			Metrics:      toAPIPromptMetrics(v.Metrics),
+		}
+		versions = append(versions, out)
+	}
+	variables := make([]PromptVariable, 0, len(e.Variables))
+	for _, v := range e.Variables {
+		variables = append(variables, PromptVariable{
+			Name:        v.Name,
+			Description: v.Description,
+			Required:    v.Required,
+		})
+	}
+	codeRefs := make([]PromptCodeRef, 0, len(e.CodeRefs))
+	for _, ref := range e.CodeRefs {
+		codeRefs = append(codeRefs, PromptCodeRef{File: ref.File, Symbol: ref.Symbol})
+	}
+	return PromptEntry{
+		Key:           e.Key,
+		Title:         e.Title,
+		Description:   e.Description,
+		ActiveVersion: e.Active,
+		Versions:      versions,
+		Variables:     variables,
+		CodeRefs:      codeRefs,
+	}
+}
+
+func toAPIPromptSampling(s *prompt.Sampling) *PromptSampling {
+	if s == nil {
+		return nil
+	}
+	out := &PromptSampling{}
+	if s.Temperature != nil {
+		t := *s.Temperature
+		out.Temperature = &t
+	}
+	if s.MaxTokens > 0 {
+		n := s.MaxTokens
+		out.MaxTokens = &n
+	}
+	if s.Note != "" {
+		note := s.Note
+		out.Note = &note
+	}
+	return out
+}
+
+func toAPIPromptMetrics(m *prompt.Metrics) *PromptMetrics {
+	if m == nil {
+		return nil
+	}
+	out := &PromptMetrics{Name: m.Name, Value: m.Value}
+	if m.SampleSize > 0 {
+		n := m.SampleSize
+		out.SampleSize = &n
+	}
+	if m.Note != "" {
+		note := m.Note
+		out.Note = &note
+	}
+	return out
 }

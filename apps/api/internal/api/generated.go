@@ -873,6 +873,62 @@ type Problem struct {
 	Type string `json:"type"`
 }
 
+// PromptCodeRef defines model for PromptCodeRef.
+type PromptCodeRef struct {
+	File   string `json:"file"`
+	Symbol string `json:"symbol"`
+}
+
+// PromptEntry defines model for PromptEntry.
+type PromptEntry struct {
+	// ActiveVersion 当前生效的版本号（从 1 开始）
+	ActiveVersion int             `json:"activeVersion"`
+	CodeRefs      []PromptCodeRef `json:"codeRefs"`
+	Description   string          `json:"description"`
+
+	// Key 稳定的机器可读标识（如 chat.system）
+	Key       string           `json:"key"`
+	Title     string           `json:"title"`
+	Variables []PromptVariable `json:"variables"`
+	Versions  []PromptVersion  `json:"versions"`
+}
+
+// PromptMetrics defines model for PromptMetrics.
+type PromptMetrics struct {
+	Name       string  `json:"name"`
+	Note       *string `json:"note,omitempty"`
+	SampleSize *int    `json:"sampleSize,omitempty"`
+	Value      string  `json:"value"`
+}
+
+// PromptSampling defines model for PromptSampling.
+type PromptSampling struct {
+	MaxTokens   *int     `json:"maxTokens,omitempty"`
+	Note        *string  `json:"note,omitempty"`
+	Temperature *float32 `json:"temperature,omitempty"`
+}
+
+// PromptVariable defines model for PromptVariable.
+type PromptVariable struct {
+	Description string `json:"description"`
+	Name        string `json:"name"`
+	Required    bool   `json:"required"`
+}
+
+// PromptVersion defines model for PromptVersion.
+type PromptVersion struct {
+	ActivatedAt  string `json:"activatedAt"`
+	ChangeReason string `json:"changeReason"`
+	Content      string `json:"content"`
+
+	// ContentHash content 的 SHA-256（小写十六进制，64 位）
+	ContentHash string          `json:"contentHash"`
+	CreatedAt   string          `json:"createdAt"`
+	Metrics     *PromptMetrics  `json:"metrics,omitempty"`
+	Sampling    *PromptSampling `json:"sampling,omitempty"`
+	Version     int             `json:"version"`
+}
+
 // ProviderWithModels defines model for ProviderWithModels.
 type ProviderWithModels struct {
 	BaseUrl   string             `json:"baseUrl"`
@@ -1462,6 +1518,9 @@ type ServerInterface interface {
 	// UpdateModel 改一个模型条目的配置
 	// (PATCH /api/v1/models/{id})
 	UpdateModel(c *gin.Context, id openapi_types.UUID)
+	// ListPrompts 列出 Prompt 注册表（版本、内容哈希、变更原因、引用位置与变量）
+	// (GET /api/v1/prompts)
+	ListPrompts(c *gin.Context)
 	// ListProviders 列出已配置的模型接入（Key 不会出现在响应里）
 	// (GET /api/v1/providers)
 	ListProviders(c *gin.Context)
@@ -2554,6 +2613,19 @@ func (siw *ServerInterfaceWrapper) UpdateModel(c *gin.Context) {
 	siw.Handler.UpdateModel(c, id)
 }
 
+// ListPrompts operation middleware
+func (siw *ServerInterfaceWrapper) ListPrompts(c *gin.Context) {
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListPrompts(c)
+}
+
 // ListProviders operation middleware
 func (siw *ServerInterfaceWrapper) ListProviders(c *gin.Context) {
 
@@ -2858,6 +2930,7 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.PATCH(options.BaseURL+"/api/v1/models/:id", wrapper.UpdateModel)
 	router.GET(options.BaseURL+"/api/v1/usage", wrapper.GetUsageSummary)
 	router.GET(options.BaseURL+"/api/v1/tools", wrapper.ListToolCatalog)
+	router.GET(options.BaseURL+"/api/v1/prompts", wrapper.ListPrompts)
 	router.GET(options.BaseURL+"/api/v1/agents", wrapper.ListAgents)
 	router.POST(options.BaseURL+"/api/v1/agents", wrapper.CreateAgent)
 	router.GET(options.BaseURL+"/api/v1/agents/:id", wrapper.GetAgent)
