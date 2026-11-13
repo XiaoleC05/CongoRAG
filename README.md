@@ -5,7 +5,7 @@
 上传一篇论文，问它问题。系统先检索证据，再逐句生成带页码和原文位置的回答；点引用就回到 PDF 那一页。
 它也支持中英对照阅读、arXiv 追踪、引用图谱和写作草稿。所有生成都走同一套引用与校验。
 
-当前版本 **v6.4.0**（2026-11-14）。在线演示：<https://congorag.cloud>；
+当前版本 **v6.5.0**（2026-11-14）。在线演示：<https://congorag.cloud>；
 提交材料（技术文档、演示视频、自检清单、评测报告）在
 [docs/submission/](docs/submission/README.md)。
 
@@ -26,7 +26,7 @@
 [![CI](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/XiaoleC05/CongoRAG/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
-[![Version](https://img.shields.io/badge/version-6.4.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-6.5.0-blue)](CHANGELOG.md)
 
 本地优先的 RAG 问答与 Agent 平台。文档、向量、API Key 都留在自己的机器上，
 模型服务由使用者提供（BYOK）。
@@ -50,6 +50,14 @@ api 进程默认只监听 127.0.0.1:3210，不对局域网开放。API Key 用 A
 | Prompt 审计：版本、SHA-256、变更原因与代码位置 | 移动端单列（390px） |
 | --- | --- |
 | ![Prompt 审计](docs/assets/prompts-audit.png) | ![Prompt 审计移动端](docs/assets/prompts-audit-mobile.png) |
+
+| 命令面板（⌘K）：跨知识库/会话/Agent 跳转 | 阅读器窄屏：目录抽屉（390px） |
+| --- | --- |
+| ![命令面板](docs/assets/command-palette.png) | ![阅读器移动端目录](docs/assets/reader-mobile-outline.png) |
+
+| 阅读器：引用 bbox 高亮只落在对应页 | |
+| --- | --- |
+| ![引用定位](docs/assets/reader-citation-bbox.png) | |
 
 - 对话页那张截在生成途中：正文末尾还有光标，来源角标 `[1] [2] [3] [4]`
   已经随流下发，同一个按钮位置已经变成"停止"。这三样都是这一版的交互
@@ -130,6 +138,9 @@ flowchart TB
 - BYOK：provider / model 配置存数据库，API Key 用 AES-GCM 加密后落盘；换
   embedding 模型时可确认「清空并重建」，不必手工清库
 - 用量计量：每次模型调用记一行 token 用量，`GET /api/v1/usage` 按模型聚合
+- 命令面板：⌘K / Ctrl+K 跨知识库、会话、Agent、页面与主题动作跳转；子序列模糊过滤 + 键盘导航，窄屏用全屏面板
+- 阅读器响应式：≥1024px 双栏；窄屏章节目录与双语对照改为抽屉，不再有"点了没反应"的按钮；
+  引用 bbox 高亮只在对应页渲染，翻页自动失效
 - 关闭顺序：Ctrl-C 会先拒新请求、排空在途 SSE、给 worker 的在途任务留收尾时间
 - 单体交付：前端产物 `go:embed` 进 Go 二进制，一个进程同时提供 API 和界面
 
@@ -373,7 +384,7 @@ Agent 那条流的首帧永远是 `run_started`（`data: {"runId": ...}`），�
 `null` 表示到底了。游标是不透明的，不要解析它，格式随时可能变（见契约里
 `Cursor` 参数的描述）。
 
-契约的 `info.version` 跟产品版本走（当前 `6.4.0` ↔ tag `v6.4.0`），由发布脚本在发布前
+契约的 `info.version` 跟产品版本走（当前 `6.5.0` ↔ tag `v6.5.0`），由发布脚本在发布前
 断言两者一致，见 [ADR-002](docs/adr/002-contract-versioning.md)。它不表示兼容性
 承诺。兼容边界是路径里的 `/api/v1`。
 

@@ -1,6 +1,6 @@
 # CongoRAG 科研助手：模块与实现
 
-当前版本 v6.4.0。本页按功能模块说明实现位置与关键接口；安装、配置与运行方式见
+当前版本 v6.5.0。本页按功能模块说明实现位置与关键接口；安装、配置与运行方式见
 [README](../README.md)，提交材料见 [docs/submission](submission/README.md)。
 
 ## 1. 文献解析与去重
@@ -29,7 +29,11 @@
 - PDF.js 直连渲染；章节目录来自 heading 分块；正文引用与 References 双向跳转。
 - 双语对照：原文/译文双栏、滚动同步、划词翻译、悬停翻译；目标语言支持中文/English。
 - 整页翻译：保留公式、术语与引用编号。
-- 代码：`web/src/pages/ReaderPage.tsx`、`internal/llm/usecase.go`、`POST /api/v1/translate`。
+- 响应式与可访问性（v6.5.0）：窄屏目录/双语对照改为抽屉；canvas 带 role=img 与页码标签；
+  加载态 role=status；分区标题用 h2；引用 bbox 只在对应页渲染。
+- 命令面板（v6.5.0）：`web/src/components/CommandPalette.tsx`，⌘K/Ctrl+K，
+  跨知识库/会话/Agent/页面/主题动作跳转，懒加载 + 空闲预取。
+- 代码：`web/src/pages/ReaderPage.tsx`、`web/src/lib/reader.ts`、`internal/llm/usecase.go`、`POST /api/v1/translate`。
 
 ## 4. arXiv 检索、追踪与推荐
 

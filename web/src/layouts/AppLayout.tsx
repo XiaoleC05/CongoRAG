@@ -1,10 +1,11 @@
-import { Moon, Sun } from 'lucide-react'
-import { Suspense, useEffect, useRef } from 'react'
+import { Moon, Search, Sun } from 'lucide-react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 
 import { PageFallback } from '@/components/PageFallback'
 import { RouteErrorBoundary } from '@/components/RouteErrorBoundary'
+import { Button } from '@/components/ui/button'
 import {
   Sidebar,
   SidebarContent,
@@ -29,6 +30,21 @@ import { NAV } from '@/layouts/nav'
  * （oxlint 的 react(only-export-components)），测试也够不着它。
  */
 
+/**
+ * 命令面板按路由拆包思路处理成懒加载。
+ *
+ * 【为什么不直接静态 import】面板在布局层、等于每个页面都要它，静态引进来
+ * 会把「⌘K 才用得到」的代码推上首屏（实测首屏 gzip +2.8KB，并且把
+ * useAgents/useConversations 两个共享 chunk 吸进入口）。
+ *
+ * 【为什么又要在空闲时预取】快捷键的第一体验是"一按就开"。等用户真按了再去
+ * 下载 chunk，慢网下会有几百毫秒的白屏；所以首屏渲染完 2 秒后预取，
+ * 绝大多数用户按键时模块已经在缓存里了。
+ */
+const CommandPalette = lazy(() =>
+  import('@/components/CommandPalette').then((module) => ({ default: module.CommandPalette })),
+)
+
 export default function AppLayout() {
   const { pathname } = useLocation()
   const { theme, toggle } = useTheme()
@@ -38,6 +54,33 @@ export default function AppLayout() {
   }, [current])
   // 主内容容器。除了当滚动容器，它还是路由切换后的焦点落点之一（见 RouteFocus）。
   const contentRef = useRef<HTMLDivElement>(null)
+  // 命令面板的开合。快捷键（⌘K）的监听在 CommandPalette 自己身上；
+  // 这里只负责"可见入口"和受控的 open 状态。
+  const [paletteOpen, setPaletteOpen] = useState(false)
+
+  // 首屏渲染完再预取面板 chunk（见文件上方 CommandPalette 的注释）。
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void import('@/components/CommandPalette')
+    }, 2000)
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  // 【快捷键注册在这里，而不是面板里】面板是懒加载 chunk，chunk 未到时
+  // 它根本没挂载、监听器也不存在——用户首屏后立刻按 ⌘K 会"没反应"。
+  // 布局层一定已加载，所以由它负责开关；打开时顺手把 chunk 拉起来，
+  // 让 Suspense 尽快拿到组件（多数情况下预取已经完成，这一行是兜底）。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        void import('@/components/CommandPalette')
+        setPaletteOpen((open) => !open)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   return (
     <>
@@ -60,6 +103,23 @@ export default function AppLayout() {
               <span className="text-muted-foreground text-[10px] font-normal tracking-wide">科研助手</span>
             </div>
           </div>
+          {/* 命令面板的可见入口。侧栏折叠成图标时只剩放大镜，靠 tooltip 说明；
+              快捷键 ⌘K/Ctrl+K 在 CommandPalette 里全局注册，两条路等价。 */}
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => setPaletteOpen(true)}
+                tooltip="搜索（⌘K）"
+                className="text-muted-foreground"
+              >
+                <Search />
+                <span className="group-data-[collapsible=icon]:hidden">搜索</span>
+                <kbd className="border-border text-muted-foreground ml-auto hidden rounded border px-1 text-[10px] font-normal group-data-[collapsible=icon]:hidden md:inline-block">
+                  ⌘K
+                </kbd>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarHeader>
 
         <SidebarContent>
@@ -114,6 +174,17 @@ export default function AppLayout() {
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
           <span className="truncate text-sm font-medium">{current ?? '科研助手'}</span>
+          {/* 窄屏（侧栏变成抽屉、平时看不见搜索入口）在顶栏留一个图标按钮；
+              桌面已有侧栏入口，这里用 lg:hidden 避免两个入口并排出现。 */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="ml-auto lg:hidden"
+            aria-label="搜索（⌘K）"
+            onClick={() => setPaletteOpen(true)}
+          >
+            <Search />
+          </Button>
         </header>
         {/* 【为什么是 div 而不是 <main>（issue #94 顺手修的）】页面上已经有一个
             <main> 了：shadcn 的 SidebarInset 自己就渲染一个 `<main>`（见
@@ -159,6 +230,15 @@ export default function AppLayout() {
           </span>
         </footer>
       </SidebarInset>
+      {/* fallback 为 null：面板是覆盖层，chunk 没到时页面上不该出现任何占位
+          （它不占布局，所以"晚 50ms 出现"比"闪一个骨架"自然）。 */}
+      <Suspense fallback={null}>
+        <CommandPalette
+          open={paletteOpen}
+          onOpenChange={setPaletteOpen}
+          shortcutEnabled={false}
+        />
+      </Suspense>
       </SidebarProvider>
     </>
   )

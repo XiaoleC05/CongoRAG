@@ -26,6 +26,35 @@
 
 ---
 
+## [6.5.0] - 2026-11-14
+
+UI/UX 与响应式版本。**无端点/环境变量/数据库变更**；模型输出与接口语义不变。
+
+### 变更
+
+- **命令面板（⌘K / Ctrl+K）**：跨知识库、会话、Agent、页面与主题动作跳转；
+  子序列模糊过滤、↑↓/Enter/Esc、分组截断、完整 a11y（combobox/listbox/
+  aria-activedescendant/焦点归还）。面板懒加载 + 空闲预取，快捷键注册在布局层
+  （chunk 未到时也能响应），首屏体积不变。
+- **阅读器窄屏修复**：<1024px 的「章节目录」「双语对照」入口原来点了没反应
+  （桌面栏 hidden 但按钮仍可见），现在改为左右抽屉；桌面保持双栏。
+- **阅读器稳定性**：
+  - PDF 渲染任务在翻页/缩放前 cancel，取消异常不再被当成加载失败；
+  - PDF worker 改为每次加载新建、cleanup 时 terminate（修掉"离开阅读器再进来
+    报 PDFWorker.create - the worker is being destroyed"的真实缺陷）；
+  - 引用 bbox 高亮只在 currentPage === citation.page 时渲染，翻页自动失效；
+  - 目录高亮改为二分查找（原 O(n²)）。
+- **可访问性**：canvas role=img + "PDF 第 N 页，共 M 页"标签；加载态 role=status；
+  章节目录/参考文献/译文区使用 h2；硬编码 red/neutral 色值换成语义 token。
+- **纯函数与测试**：新增 web/src/lib/reader.ts（parseBBox / bboxStyle /
+  activeOutlineIndex / splitSentences）与 20 个边界单测；命令面板 6 个交互测试。
+  前端测试从 32 个文件 / 214 个用例。
+
+### 升级说明
+
+- 无数据库/契约 schema 变更；契约 info.version 与 tag 同步到 6.5.0；
+- 首屏 gzip 179,100 → 179,804 B（+0.39%），ReaderPage +0.69%，都在 bundle 预算内。
+
 ## [6.4.0] - 2026-11-14
 
 安全与异常处理加固版本。默认开启两道新的防线，升级后**不需要改任何配置**，
@@ -573,7 +602,8 @@ v1.0 全量代码经过一轮 15 个维度、带对抗性验证的审查，发�
 
 ---
 
-[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.4.0...HEAD
+[Unreleased]: https://github.com/XiaoleC05/CongoRAG/compare/v6.5.0...HEAD
+[6.5.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.4.0...v6.5.0
 [6.4.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.3.0...v6.4.0
 [6.3.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.2.0...v6.3.0
 [6.2.0]: https://github.com/XiaoleC05/CongoRAG/compare/v6.1.0...v6.2.0
