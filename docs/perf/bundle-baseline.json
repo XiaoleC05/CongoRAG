@@ -1,34 +1,34 @@
 {
-  "generatedAt": "2026-11-13T19:26:51.627Z",
-  "commit": "75a0445",
+  "generatedAt": "2026-11-13T19:39:59.378Z",
+  "commit": "ea79901",
   "buildDir": "apps/api/web",
   "initial": {
-    "raw": 604457,
-    "gzip": 179100,
+    "raw": 605504,
+    "gzip": 179377,
     "js": {
-      "raw": 511918,
-      "gzip": 162959
+      "raw": 512539,
+      "gzip": 163161
     },
     "css": {
-      "raw": 92539,
-      "gzip": 16141
+      "raw": 92965,
+      "gzip": 16216
     },
     "files": [
-      "index-BQfBDJ57.js",
+      "index-CSwJ3LyH.js",
       "rolldown-runtime-hePW80VL.js",
       "react-BNDapcX6.js",
       "tanstack-CJ0TyD5n.js",
-      "vendor-Dzf2eluw.js",
+      "vendor-BM5Loq0t.js",
       "radix-BhSQc_6p.js",
       "react-router-BG1pyHtA.js",
-      "api-client-DZZMCVYg.js",
-      "index-ChPToVY0.css"
+      "api-client-BRNHNukP.js",
+      "index-D8G_Yt9q.css"
     ]
   },
   "entry": {
-    "name": "index-BQfBDJ57.js",
-    "raw": 40962,
-    "gzip": 11864
+    "name": "index-CSwJ3LyH.js",
+    "raw": 41252,
+    "gzip": 11963
   },
   "chunks": {
     "pdf.worker.min": {
@@ -36,8 +36,8 @@
       "gzip": 363302
     },
     "ReaderPage": {
-      "raw": 444056,
-      "gzip": 132324
+      "raw": 444098,
+      "gzip": 132340
     },
     "react": {
       "raw": 218840,
@@ -52,16 +52,16 @@
       "gzip": 31709
     },
     "vendor": {
-      "raw": 74572,
-      "gzip": 25274
+      "raw": 74903,
+      "gzip": 25376
     },
     "KnowledgeBaseDetailPage": {
       "raw": 44771,
       "gzip": 13105
     },
     "index": {
-      "raw": 40962,
-      "gzip": 11864
+      "raw": 41252,
+      "gzip": 11963
     },
     "react-router": {
       "raw": 38588,
@@ -81,19 +81,19 @@
     },
     "ConversationPage": {
       "raw": 20504,
-      "gzip": 7704
+      "gzip": 7702
     },
     "streamChat": {
-      "raw": 15564,
-      "gzip": 5170
+      "raw": 15559,
+      "gzip": 5168
     },
     "AgentDetailPage": {
       "raw": 9394,
-      "gzip": 3709
+      "gzip": 3703
     },
     "OnboardingPage": {
       "raw": 7684,
-      "gzip": 2841
+      "gzip": 2842
     },
     "typescript": {
       "raw": 7601,
@@ -101,7 +101,11 @@
     },
     "AgentFormDialog": {
       "raw": 6784,
-      "gzip": 2847
+      "gzip": 2846
+    },
+    "PromptsPage": {
+      "raw": 6429,
+      "gzip": 2501
     },
     "javascript": {
       "raw": 6344,
@@ -109,11 +113,11 @@
     },
     "UsagePage": {
       "raw": 6114,
-      "gzip": 2089
+      "gzip": 2092
     },
     "api-client": {
       "raw": 5861,
-      "gzip": 2420
+      "gzip": 2421
     },
     "sql": {
       "raw": 5561,
@@ -121,14 +125,14 @@
     },
     "checkbox": {
       "raw": 5058,
-      "gzip": 2082
+      "gzip": 2083
     },
     "useDocuments": {
-      "raw": 4996,
-      "gzip": 1814
+      "raw": 4492,
+      "gzip": 1589
     },
     "ConversationsPage": {
-      "raw": 4177,
+      "raw": 4182,
       "gzip": 1919
     },
     "python": {
@@ -141,19 +145,19 @@
     },
     "ToolCallCard": {
       "raw": 2796,
-      "gzip": 1323
+      "gzip": 1322
     },
     "AgentsPage": {
       "raw": 2744,
-      "gzip": 1292
+      "gzip": 1294
     },
     "useAgents": {
       "raw": 2560,
-      "gzip": 1143
+      "gzip": 1142
     },
     "RunTracePage": {
       "raw": 2168,
-      "gzip": 1012
+      "gzip": 1013
     },
     "markdown": {
       "raw": 2071,
@@ -169,11 +173,11 @@
     },
     "badge": {
       "raw": 1463,
-      "gzip": 693
+      "gzip": 694
     },
     "CopyButton": {
       "raw": 1420,
-      "gzip": 867
+      "gzip": 864
     },
     "go": {
       "raw": 1403,
@@ -211,13 +215,17 @@
       "raw": 580,
       "gzip": 309
     },
+    "apiResult": {
+      "raw": 565,
+      "gzip": 345
+    },
     "dockerfile": {
       "raw": 405,
       "gzip": 316
     },
     "copy": {
       "raw": 266,
-      "gzip": 227
+      "gzip": 228
     },
     "shell": {
       "raw": 227,
@@ -225,7 +233,7 @@
     },
     "arrow-left": {
       "raw": 195,
-      "gzip": 178
+      "gzip": 179
     },
     "activeModel": {
       "raw": 190,
@@ -249,9 +257,9 @@
     },
     {
       "name": "ReaderPage",
-      "file": "ReaderPage-Du_esxum.js",
-      "raw": 444056,
-      "gzip": 132324
+      "file": "ReaderPage-YuaQ-Tb5.js",
+      "raw": 444098,
+      "gzip": 132340
     },
     {
       "name": "react",
@@ -273,21 +281,21 @@
     },
     {
       "name": "vendor",
-      "file": "vendor-Dzf2eluw.js",
-      "raw": 74572,
-      "gzip": 25274
+      "file": "vendor-BM5Loq0t.js",
+      "raw": 74903,
+      "gzip": 25376
     },
     {
       "name": "KnowledgeBaseDetailPage",
-      "file": "KnowledgeBaseDetailPage-CcCSGB5F.js",
+      "file": "KnowledgeBaseDetailPage-BwRkdrQf.js",
       "raw": 44771,
       "gzip": 13105
     },
     {
       "name": "index",
-      "file": "index-BQfBDJ57.js",
-      "raw": 40962,
-      "gzip": 11864
+      "file": "index-CSwJ3LyH.js",
+      "raw": 41252,
+      "gzip": 11963
     },
     {
       "name": "react-router",
@@ -309,8 +317,8 @@
     "gzip": 363302
   },
   "totals": {
-    "files": 58,
-    "raw": 2675301,
-    "gzip": 878558
+    "files": 60,
+    "raw": 2682880,
+    "gzip": 881467
   }
 }
