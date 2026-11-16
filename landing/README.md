@@ -4,7 +4,10 @@
 视觉与演示应用保持同一套深色语言：页面里的截图就是当前应用界面，不再使用旧版纸张主题或个人化展示文案。
 
 - `index.html`：页面、样式与交互全部内联；真实界面截图来自本仓库的演示库。
-- `assets/`：压缩后的界面截图（1400px 宽，JPEG）与 favicon。
+- `assets/`：压缩后的界面截图（1400px 宽，JPEG）、favicon 与公安备案图标
+  `police-beian.png`（页脚用，16px 高显示）。
+- 页脚合规项：ICP 备案（工信部查询页）+ 公安网备（公安部查询页），两者都在
+  `index.html` 的 `<footer>` 里，改版时不要删。
 - 部署：把本目录内容放到 nginx 的 `/opt/congorag-demo/www/`，并在域名 server 中加
 
 ```nginx

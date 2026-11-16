@@ -64,7 +64,7 @@ git worktree remove --force /tmp/congorag-verify
 | `make generate-go` + `pnpm --filter api-client generate` | 0.2s / 1.0s | **幂等**：生成物哈希前后一致，`git diff` 为空 |
 | `node scripts/bundle-report.mjs --check` | 0.2s | `结论：体积在预算内`，exit 0 |
 | `node scripts/bench-gate.mjs` | 66.8s | `BENCH GATE: PASS`；阈值见 scripts/bench-gate.mjs 头注释 |
-| `pnpm --filter web e2e` | 11.3s | **13 passed**（chromium，全 mock API） |
+| `pnpm --filter web e2e` | 11.5s | **14 passed**（chromium，全 mock API；含页脚备案回归 1 条） |
 | `node ops/loadtest/stream-load.mjs`（25/50/100 并发） | 30.1s | 100% 成功、0 错误；明细见 [loadtest-report.md](loadtest-report.md) |
 | `make check-changelog` | 0.1s | `✓ CHANGELOG 格式没问题` |
 | spectral 契约 lint（`npx @stoplight/spectral-cli@6.15.0 ... --fail-severity=warn`） | npx 缓存命中时可跑 | `No results with a severity of 'warn' or higher found!` |
@@ -74,7 +74,7 @@ git worktree remove --force /tmp/congorag-verify
 ## 4. 用例口径
 
 - `grep '^func Test'` = **620 个 Test 函数**；实际执行 **835 个通过用例**（含子测试）。
-  另有 **13 个 Playwright E2E 用例**（`pnpm --filter web e2e`）与 16 条 benchmark。
+  另有 **14 个 Playwright E2E 用例**（`pnpm --filter web e2e`）与 16 条 benchmark。
 - 上一版（R1 冻结态）：576 个 Test 函数 / 764 个用例。R2 新增 13 个 Test 函数 / 13 个用例：
   `internal/prompt` 10 条（Validate / 目录排序与深拷贝 / SHA-256 确定性 / Render 变量与缺失变量 /
   可选变量 / 体例映射 / 历史版本单调 / grounding 契约）、`handler_prompt` 1 条、`call_options` 2 条。

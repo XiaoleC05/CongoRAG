@@ -215,7 +215,7 @@ export default function AppLayout() {
             </Suspense>
           </RouteErrorBoundary>
         </div>
-        {/* 备案号展示在页面底部并链接工信部（ICP 备案要求）；公安备案通过后在此补链接。 */}
+        {/* 底部备案（合规要求）：ICP 链工信部，公安网备链公安部查询页；两个链接都带图标与全号。 */}
         <footer className="text-muted-foreground flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t px-4 py-2 text-[11px] leading-tight">
           <span>CongoRAG 科研助手</span>
           <span className="flex flex-wrap items-center gap-3">
@@ -226,6 +226,21 @@ export default function AppLayout() {
               className="hover:text-foreground"
             >
               鲁ICP备2026038838号-2
+            </a>
+            <a
+              href="https://beian.mps.gov.cn/#/query/webSearch?code=37028202001377"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="hover:text-foreground inline-flex items-center gap-1"
+            >
+              <img
+                src="/police-beian.png"
+                alt="公安备案图标"
+                width={14}
+                height={16}
+                className="rounded-[2px]"
+              />
+              鲁公网安备37028202001377号
             </a>
           </span>
         </footer>
