@@ -1,0 +1,21 @@
+在线演示信息（腾讯云固定实例，已 ICP + 公安联网备案）
+复核时间：2026-11-18 02:00（首页 200、token 入口 302→200、核心 API 200）
+
+网站首页（公开，含备案信息）：https://congorag.cloud/
+演示主入口（token 免密）：https://congorag.cloud/?token=0d728319beef03b7da2a812591bf74ae
+带账号入口：https://congorag.cloud/   用户名 reviewer / 密码 CongoRAG2026
+
+备案信息：
+- ICP 备案号：鲁ICP备2026038838号-2（工信部查询页 https://beian.miit.gov.cn/）
+- 公安联网备案：鲁公网安备37028202001377号（https://beian.mps.gov.cn/#/query/webSearch?code=37028202001377）
+- 页脚同时展示上述两个备案号与图标。
+
+说明：
+- 首页无需登录，展示项目介绍与备案号；「进入演示」按钮走 token 免密进入应用。
+- 应用页（知识库/对话/阅读器等）由 Basic Auth + token cookie 保护；带账号入口可作后备。
+- HTTPS 由 Let's Encrypt 证书提供；Cloudflare 隧道（corrections-administered-expansys-attempts.trycloudflare.com）
+  仅作维护备用，地址可能变化，不要写进评审正式说明。
+- 演示数据：5 个知识库（PDF 学术解析验证、UDL 长文档验证、版本去重演示、引用图谱演示、空知识库（拒答演示））；
+  17 条 Prompt 审计记录；Agent：arXiv 文献助手。
+- 示例会话（3 类）：引用溯源（Attention 训练硬件）/ 无证据拒答（空知识库）/ 541 页长文档检索（overfitting）。
+- 服务：腾讯云固定实例；nginx + systemd 四单元 + PostgreSQL 16 + pgvector 0.8.6。
